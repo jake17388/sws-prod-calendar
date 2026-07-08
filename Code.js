@@ -221,27 +221,26 @@ function fetchCalendarEvents(calId, start, end) {
 // Groups per-day calendar events into one job record per job number.
 // Multi-day jobs show up as separate events per day (often suffixed
 // "(Day 1/2)"/"(Day 2/2)") sharing a job number — the earliest event date
-// becomes the job's startDate. Events with no extractable job number keep
-// rendering under a synthetic key instead of being dropped. Events whose
-// title contains more than one job number (e.g. "3 days 251257 & 260695
-// ...") are split into one job record per number, all sharing the event's
-// data, and flagged so the UI can surface it for a manual look.
+// becomes the job's startDate. Events with no extractable job number (shop
+// tasks like trailer service or oil changes, not production jobs) are
+// dropped entirely. Events whose title contains more than one job number
+// (e.g. "3 days 251257 & 260695 ...") are split into one job record per
+// number, all sharing the event's data, and flagged for a manual look.
 function groupIntoJobs(events) {
   const byKey = {};
   events.forEach(ev => {
-    const keys = ev.jobNums.length ? ev.jobNums : [`untitled:${ev.title}:${ev.eventDate}`];
-    keys.forEach(jobNum => {
-      const jobKey = ev.jobNums.length ? jobNum : jobNum;
+    if (!ev.jobNums.length) return;
+    ev.jobNums.forEach(jobNum => {
+      const jobKey = jobNum;
       if (!byKey[jobKey]) {
         byKey[jobKey] = {
           jobKey,
-          jobNum: ev.jobNums.length ? jobNum : '',
+          jobNum,
           title: ev.title,
           addr: ev.addr,
           crew: ev.crew,
           startDate: ev.eventDate,
           endDate: ev.eventDate,
-          unmatched: !ev.jobNums.length,
           multiJobEvent: ev.jobNums.length > 1,
         };
       } else {

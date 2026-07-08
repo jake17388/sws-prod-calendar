@@ -13,7 +13,6 @@ function flagBadges(job) {
   const badges = [];
   if (job.multiDay) badges.push('<span class="job-card-badge">multi-day</span>');
   if (job.multiJobEvent) badges.push('<span class="job-card-badge flag">multiple job #s</span>');
-  if (job.unmatched) badges.push('<span class="job-card-badge flag">no job #</span>');
   return badges.join('');
 }
 
