@@ -81,12 +81,12 @@
   padding: 0 6px;
   border-radius: 4px;
   background: var(--color-accent-dim);
-  color: #cfe0ff;
+  color: #ffffff;
   font-weight: 600;
 }
 .job-card-badge.flag {
-  background: var(--color-warning);
-  color: #1a1a1a;
+  background: var(--color-brand-gold);
+  color: var(--color-brand-navy);
 }
 
 .job-card-crew {
@@ -99,7 +99,7 @@
   padding: 2px var(--space-2);
   border-radius: 4px;
   background: var(--color-accent-dim);
-  color: #cfe0ff;
+  color: #ffffff;
   border-left: 3px solid var(--color-due-ok);
   overflow: hidden;
   text-overflow: ellipsis;

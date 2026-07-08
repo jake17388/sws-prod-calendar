@@ -1,4 +1,9 @@
 :root {
+  /* SWS brand — sampled from the SummitWest Signs logo and map-pin assets */
+  --color-brand-navy: #1b448b;
+  --color-brand-blue: #2447a3;
+  --color-brand-gold: #f5a31c;
+
   --color-bg: #12151a;
   --color-surface: #1b1f27;
   --color-surface-raised: #232833;
@@ -7,14 +12,19 @@
   --color-text-dim: #8b91a0;
   --color-text-faint: #5b6070;
 
-  --color-accent: #4d7fff;
-  --color-accent-dim: #2f4a99;
+  --color-accent: #6b8fd9;          /* brand blue lifted for dark-bg contrast */
+  --color-accent-dim: #1b448b;
   --color-danger: #e5484d;
   --color-success: #3aad6e;
-  --color-warning: #d4a72c;
+  --color-warning: #f5a31c;
+
+  --color-header-bg: #1b448b;
+  --color-header-text: #ffffff;
+  --color-header-text-dim: rgba(255, 255, 255, 0.72);
+  --color-header-border: rgba(255, 255, 255, 0.28);
 
   --color-due-overdue: #e5484d;
-  --color-due-soon: #d4a72c;
+  --color-due-soon: #f5a31c;
   --color-due-ok: #3aad6e;
   --color-completed-bg: #1a1c22;
   --color-completed-text: #565b68;
@@ -56,6 +66,8 @@
     --color-text: #1a1d24;
     --color-text-dim: #626878;
     --color-text-faint: #9096a3;
+    --color-accent: #2447a3;
+    --color-accent-dim: #2447a3;
     --color-completed-bg: #eceef1;
     --color-completed-text: #a7acb8;
     --shadow-card: 0 1px 2px rgba(20, 22, 30, 0.08);

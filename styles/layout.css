@@ -27,8 +27,9 @@ header.app-header {
   align-items: center;
   gap: var(--space-2) var(--space-4);
   padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-bottom: 3px solid var(--color-brand-gold);
+  background: var(--color-header-bg);
+  color: var(--color-header-text);
   flex-shrink: 0;
 }
 
@@ -48,8 +49,8 @@ header.app-header {
 
 .date-nav button {
   background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-dim);
+  border: 1px solid var(--color-header-border);
+  color: var(--color-header-text-dim);
   border-radius: var(--radius-sm);
   width: 32px;
   height: 32px;
@@ -57,7 +58,7 @@ header.app-header {
   place-items: center;
   transition: background var(--duration-fast) var(--ease-out-expo);
 }
-.date-nav button:hover { background: var(--color-surface-raised); color: var(--color-text); }
+.date-nav button:hover { background: rgba(255, 255, 255, 0.12); color: var(--color-header-text); }
 
 .date-nav .current-range {
   font-weight: 600;
@@ -75,38 +76,37 @@ header.app-header {
   display: flex;
   flex-shrink: 0;
   margin-left: auto;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-header-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-.view-switcher button { white-space: nowrap; }
-
 .view-switcher button {
-  background: var(--color-surface);
+  white-space: nowrap;
+  background: transparent;
   border: none;
-  color: var(--color-text-dim);
+  color: var(--color-header-text-dim);
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
   font-weight: 600;
-  border-left: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-header-border);
   transition: background var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo);
 }
 .view-switcher button:first-child { border-left: none; }
-.view-switcher button.active { background: var(--color-accent); color: #fff; }
-.view-switcher button:not(.active):hover { background: var(--color-surface-raised); color: var(--color-text); }
+.view-switcher button.active { background: var(--color-brand-gold); color: var(--color-brand-navy); }
+.view-switcher button:not(.active):hover { background: rgba(255, 255, 255, 0.12); color: var(--color-header-text); }
 
 .user-badge {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-size: var(--text-sm);
-  color: var(--color-text-dim);
+  color: var(--color-header-text-dim);
 }
 .user-badge button {
   background: none;
   border: none;
-  color: var(--color-text-faint);
+  color: var(--color-header-text-dim);
   text-decoration: underline;
   font-size: var(--text-xs);
 }
