@@ -190,14 +190,16 @@ function fetchCalendarEvents(calId, start, end) {
     const titleLower = title.toLowerCase();
     if (SKIP_KEYWORDS.some(k => titleLower.includes(k))) return;
 
-    const jobNums = [...title.matchAll(/\b(\d{5,6})\b/g)].map(m => m[1]);
+    // (?<![A-Za-z]-) keeps permit codes like "SGNP-251421" from being
+    // mistaken for job numbers, while "251257 & 260695" still matches both
+    const jobNums = [...title.matchAll(/(?<![A-Za-z]-)\b(\d{5,6})\b/g)].map(m => m[1]);
     const crewMatch = title.match(/^\(([^)]+)\)/);
     const crew = crewMatch
       ? normalizeCrew(crewMatch[1].split(/[\/,&]/).map(n => n.trim()).filter(n => n))
       : [];
     let cleanTitle = title
       .replace(/^\([^)]+\)\s*/, '')
-      .replace(/\b\d{5,6}\b\s*[-–]?\s*/g, '')
+      .replace(/(?<![A-Za-z]-)\b\d{5,6}\b\s*[-–]?\s*/g, '')
       .replace(/\s*&\s*/, ' ')
       .replace(/^\s*[-–]\s*/, '')
       .replace(/\(Day \d+\/\d+\)\s*$/i, '')
