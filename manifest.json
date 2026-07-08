@@ -1,0 +1,13 @@
+{
+  "name": "SWS Production Calendar",
+  "short_name": "SWS Prod",
+  "description": "Summit West Signs production due-date calendar.",
+  "start_url": "/sws-prod-calendar/",
+  "display": "standalone",
+  "background_color": "#12151a",
+  "theme_color": "#12151a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

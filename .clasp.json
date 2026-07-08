@@ -1,0 +1,17 @@
+{
+  "scriptId": "1_9Y-sPFaKqJ6wIbFHmlWi-4bczOkVDmwchl53xOLJhRmDoc4xMIcADBr",
+  "projectId": "sws-prod-calendar",
+  "rootDir": "",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [],
+  "skipSubdirectories": true
+}

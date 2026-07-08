@@ -1,0 +1,131 @@
+/* ── Month view ─────────────────────────────────────────────────────────── */
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-auto-rows: minmax(120px, 1fr);
+  border-top: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+}
+
+.month-weekday-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.month-weekday-row div {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-faint);
+}
+
+.month-cell {
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+}
+.month-cell.outside-month { background: var(--color-completed-bg); }
+.month-cell.is-today .cell-date { color: var(--color-accent); }
+
+.cell-date {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-dim);
+}
+
+.month-cell-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+}
+
+.month-cell-more {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  padding: 2px var(--space-1);
+}
+
+/* ── Week view ──────────────────────────────────────────────────────────── */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-top: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+  min-height: 100%;
+}
+
+.week-day-col {
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.week-day-header {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  text-align: center;
+}
+.week-day-header .dow { font-size: var(--text-xs); color: var(--color-text-faint); text-transform: uppercase; }
+.week-day-header .dom { font-size: var(--text-lg); font-weight: 700; }
+.week-day-header.is-today .dom { color: var(--color-accent); }
+
+.week-day-jobs {
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+/* ── Schedule view ──────────────────────────────────────────────────────── */
+.schedule-list {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+.schedule-day-group {
+  margin-bottom: var(--space-5);
+}
+
+.schedule-day-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-3);
+  position: sticky;
+  top: 0;
+  background: var(--color-bg);
+}
+.schedule-day-heading .num { font-size: var(--text-xl); font-weight: 700; }
+.schedule-day-heading.is-today .num { color: var(--color-accent); }
+.schedule-day-heading .dow { color: var(--color-text-dim); font-size: var(--text-sm); text-transform: uppercase; }
+
+.schedule-day-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-text-faint);
+  padding: var(--space-6);
+}
