@@ -31,9 +31,13 @@ export function renderMonth(container, refDate, jobs) {
     jobsWrap.className = 'month-cell-jobs';
     dayJobs.slice(0, MAX_VISIBLE_PER_CELL).forEach(job => jobsWrap.appendChild(renderJobChip(job)));
     if (dayJobs.length > MAX_VISIBLE_PER_CELL) {
-      const more = document.createElement('div');
+      const more = document.createElement('button');
       more.className = 'month-cell-more';
       more.textContent = `+${dayJobs.length - MAX_VISIBLE_PER_CELL} more`;
+      more.addEventListener('click', () => {
+        dayJobs.slice(MAX_VISIBLE_PER_CELL).forEach(job => jobsWrap.insertBefore(renderJobChip(job), more));
+        more.remove();
+      });
       jobsWrap.appendChild(more);
     }
     cell.appendChild(jobsWrap);

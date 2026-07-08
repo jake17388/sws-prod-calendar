@@ -1,6 +1,7 @@
 import { toggleComplete, updateNotes, updateChecklist } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { progressBarHtml } from './progressBar.js';
+import { fmtMD } from '../dates.js';
 
 let notesSaveTimer = null;
 
@@ -52,9 +53,9 @@ export function openJobDetail(jobKey) {
   const job = findJob(jobKey);
   if (!job) return;
 
-  document.getElementById('job-detail-title').textContent = `${job.jobNum ? '#' + job.jobNum + ' — ' : ''}${job.title}`;
+  document.getElementById('job-detail-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
   document.getElementById('job-detail-meta').textContent =
-    `${job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned'} · starts ${job.startDate}${job.multiDay ? ' – ' + job.endDate : ''} · due ${job.dueDate}`;
+    `${job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned'} · starts ${fmtMD(job.startDate)}${job.multiDay ? ' – ' + fmtMD(job.endDate) : ''} · due ${fmtMD(job.dueDate)}`;
 
   const completeBtn = document.getElementById('job-detail-complete');
   completeBtn.checked = job.completed;

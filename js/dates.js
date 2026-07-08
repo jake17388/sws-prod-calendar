@@ -7,6 +7,9 @@ export function parseISO(iso) {
   return new Date(y, m - 1, d);
 }
 
+/** @param {string} iso "YYYY-MM-DD" @returns {string} "MM/DD" */
+export const fmtMD = iso => `${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+
 /** @param {Date} date @returns {string} "YYYY-MM-DD" */
 export function formatISO(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;

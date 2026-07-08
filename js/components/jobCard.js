@@ -1,4 +1,5 @@
 import { toggleComplete } from '../api.js';
+import { fmtMD } from '../dates.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { progressBarHtml } from './progressBar.js';
@@ -24,18 +25,18 @@ function handleCheckboxToggle(job, checkboxEl) {
   });
 }
 
-/** Full card used in schedule/week day lists. @param {object} job @returns {HTMLElement} */
-export function renderJobCard(job) {
+/** Full card used in schedule/week day lists. @param {object} job @param {boolean} showCrew @returns {HTMLElement} */
+export function renderJobCard(job, showCrew = true) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
   el.innerHTML = `
     <button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>
     <div class="job-card-body">
-      <div class="job-card-title">${job.jobNum ? `#${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
+      <div class="job-card-title">${job.jobNum ? `${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">
-        <span class="job-card-crew">${crewLabel(job)}</span>
-        <span>due ${job.dueDate}</span>
+        ${showCrew ? `<span class="job-card-crew">${crewLabel(job)}</span>` : ''}
+        <span>due ${fmtMD(job.dueDate)}</span>
         ${flagBadges(job)}
       </div>
       ${progressBarHtml(job.progressPct)}
@@ -54,8 +55,8 @@ export function renderJobChip(job) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-chip ${state} ${job.completed ? 'completed' : ''}`.trim();
-  el.title = `${job.jobNum ? '#' + job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
-  el.innerHTML = `<span class="job-chip-check"></span><span>${job.jobNum ? '#' + job.jobNum + ' ' : ''}${escapeHtml(job.title)}</span>`;
+  el.title = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
+  el.innerHTML = `<span class="job-chip-check"></span><span class="job-chip-text">${job.jobNum ? job.jobNum + ' ' : ''}${escapeHtml(job.title)}</span>`;
   el.querySelector('.job-chip-check').addEventListener('click', e => {
     e.stopPropagation();
     handleCheckboxToggle(job);

@@ -2,7 +2,8 @@
 .month-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: minmax(120px, 1fr);
+  /* auto max lets a row grow when "+N more" expands a cell */
+  grid-auto-rows: minmax(120px, auto);
   border-top: 1px solid var(--color-border);
   border-left: 1px solid var(--color-border);
 }
@@ -53,9 +54,15 @@
 
 .month-cell-more {
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  font-weight: 600;
+  color: var(--color-accent);
   padding: 2px var(--space-1);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
 }
+.month-cell-more:hover { text-decoration: underline; }
 
 /* ── Week view ──────────────────────────────────────────────────────────── */
 .week-grid {

@@ -26,7 +26,7 @@ export function renderWeek(container, refDate, jobs) {
     if (!dayJobs.length) {
       jobsWrap.innerHTML = '';
     } else {
-      dayJobs.forEach(job => jobsWrap.appendChild(renderJobCard(job)));
+      dayJobs.forEach(job => jobsWrap.appendChild(renderJobCard(job, false)));
     }
     col.appendChild(jobsWrap);
     grid.appendChild(col);
