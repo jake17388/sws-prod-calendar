@@ -180,6 +180,18 @@
   font-size: var(--text-sm);
 }
 
+/* Mobile: bottom sheet instead of a full-height right-side panel — a
+   full-height panel starts flush with the top of the viewport and its
+   header collides with the phone's status bar / notch. */
 @media (max-width: 640px) {
-  .job-detail-panel { width: 100%; }
+  #job-detail-overlay { align-items: flex-end; justify-content: center; }
+  .job-detail-panel {
+    width: 100%;
+    height: auto;
+    max-height: 80vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    transform: translateY(110%);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #job-detail-overlay.open .job-detail-panel { transform: translateY(0); }
 }
