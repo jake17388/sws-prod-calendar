@@ -1,4 +1,3 @@
-import { APP_VERSION } from './config.js';
 import { fetchProductionJobs } from './api.js';
 import { initAuth, currentUser, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
@@ -38,12 +37,70 @@ function switchView(view) {
 
 function refreshJobs() {
   return fetchProductionJobs()
-    .then(jobs => setJobs(jobs))
+    .then(jobs => {
+      setJobs(jobs);
+      document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
+      document.getElementById('last-updated').textContent =
+        `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    })
     .catch(() => {});
 }
 
+// The version this page load booted with — captured from version.json on
+// first fetch, so it's always correct with nothing to manually keep in
+// sync. Later checks compare a fresh fetch against this instead of a
+// hardcoded constant that's easy to forget to bump on deploy.
+let bootVersion = null;
+
+function checkForUpdate(manual) {
+  const checkBtn = document.getElementById('settings-check-btn');
+  if (manual) checkBtn.textContent = 'Checking…';
+  fetch('version.json', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      if (bootVersion === null) bootVersion = data.version;
+      document.getElementById('settings-version-text').textContent = bootVersion || '';
+      if (data.version && data.version !== bootVersion) {
+        document.getElementById('update-banner').classList.add('show');
+        if (manual) checkBtn.textContent = 'Update available — see banner above';
+      } else if (manual) {
+        checkBtn.textContent = "You're up to date";
+        setTimeout(() => { checkBtn.textContent = 'Check for updates'; }, 2500);
+      }
+    })
+    .catch(() => {
+      if (manual) {
+        checkBtn.textContent = 'Could not check — try again';
+        setTimeout(() => { checkBtn.textContent = 'Check for updates'; }, 2500);
+      }
+    });
+}
+
+const ZOOM_STEPS = [80, 90, 100, 110, 125, 150];
+const ZOOM_KEY = 'sws_prod_cal_zoom';
+const savedZoomIdx = ZOOM_STEPS.indexOf(+localStorage.getItem(ZOOM_KEY));
+let zoomIdx = savedZoomIdx !== -1 ? savedZoomIdx : ZOOM_STEPS.indexOf(100);
+
+function applyZoom() {
+  const pct = ZOOM_STEPS[zoomIdx];
+  document.getElementById('view-area').style.zoom = pct / 100;
+  document.getElementById('zoom-label').textContent = `${pct}%`;
+  localStorage.setItem(ZOOM_KEY, pct);
+}
+
+function openSettings() {
+  document.getElementById('settings-backdrop').classList.add('show');
+  document.getElementById('settings-panel').classList.add('show');
+}
+function closeSettings() {
+  document.getElementById('settings-backdrop').classList.remove('show');
+  document.getElementById('settings-panel').classList.remove('show');
+}
+
 function boot() {
-  document.getElementById('user-name').textContent = currentUser() || '';
+  document.getElementById('user-badge').textContent = currentUser() || '';
+  applyZoom();
+
   document.querySelectorAll('.view-switcher button').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
@@ -59,26 +116,33 @@ function boot() {
     refDate = new Date();
     renderActiveView();
   });
-  document.getElementById('sign-out-btn').addEventListener('click', signOut);
+  document.getElementById('refresh-btn').addEventListener('click', refreshJobs);
   document.getElementById('job-detail-close').addEventListener('click', closeJobDetail);
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
   });
 
+  document.getElementById('settings-btn').addEventListener('click', openSettings);
+  document.getElementById('settings-close-btn').addEventListener('click', closeSettings);
+  document.getElementById('settings-backdrop').addEventListener('click', closeSettings);
+  document.getElementById('settings-signout-btn').addEventListener('click', () => { closeSettings(); signOut(); });
+  document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
+  document.getElementById('zoom-in-btn').addEventListener('click', () => {
+    zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);
+    applyZoom();
+  });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => {
+    zoomIdx = Math.max(zoomIdx - 1, 0);
+    applyZoom();
+  });
+  document.getElementById('zoom-reset-btn').addEventListener('click', () => {
+    zoomIdx = ZOOM_STEPS.indexOf(100);
+    applyZoom();
+  });
+
   subscribe(renderActiveView);
   refreshJobs();
   checkForUpdate();
-}
-
-function checkForUpdate() {
-  fetch('version.json', { cache: 'no-store' })
-    .then(r => r.json())
-    .then(data => {
-      if (data.version && data.version !== APP_VERSION) {
-        document.getElementById('update-banner').classList.add('show');
-      }
-    })
-    .catch(() => {});
 }
 
 document.getElementById('update-reload-btn').addEventListener('click', () => {
