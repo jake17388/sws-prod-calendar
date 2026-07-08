@@ -1,4 +1,4 @@
-import { APP_VERSION, VIEW_KEY } from './config.js';
+import { APP_VERSION } from './config.js';
 import { fetchProductionJobs } from './api.js';
 import { initAuth, currentUser, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
@@ -14,7 +14,7 @@ const VIEWS = {
   schedule: { render: renderSchedule, label: () => 'Schedule', step: (d, dir) => addDays(d, dir * 30) },
 };
 
-let activeView = localStorage.getItem(VIEW_KEY) || 'month';
+let activeView = 'week';
 let refDate = new Date();
 
 function renderActiveView() {
@@ -33,7 +33,6 @@ function renderActiveView() {
 
 function switchView(view) {
   activeView = view;
-  localStorage.setItem(VIEW_KEY, view);
   renderActiveView();
 }
 

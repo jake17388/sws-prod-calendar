@@ -6,6 +6,5 @@ export const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz8bqqB_Okjx6
 export const APP_VERSION = '2026.07.08.2';
 
 export const AUTH_KEY = 'sws_prod_cal_auth_v1';
-export const VIEW_KEY = 'sws_prod_cal_view_v1';
 
 export const DUE_SOON_DAYS = 2;
