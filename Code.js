@@ -215,6 +215,10 @@ function fetchCalendarEvents(calId, start, end) {
       crew,
       jobNums,
       eventDate: formatDate(event.getStartTime()),
+      // Case-sensitive on purpose: "REMOVAL" is the crew's convention for a
+      // remove-only trip, distinct from mixed-case titles like "Remove and
+      // Install" that describe the actual production visit.
+      isRemoval: /\bREMOVAL\b/.test(title),
     });
   });
   return out;
@@ -222,39 +226,47 @@ function fetchCalendarEvents(calId, start, end) {
 
 // Groups per-day calendar events into one job record per job number.
 // Multi-day jobs show up as separate events per day (often suffixed
-// "(Day 1/2)"/"(Day 2/2)") sharing a job number — the earliest event date
-// becomes the job's startDate. Events with no extractable job number (shop
-// tasks like trailer service or oil changes, not production jobs) are
-// dropped entirely. Events whose title contains more than one job number
-// (e.g. "3 days 251257 & 260695 ...") are split into one job record per
-// number, all sharing the event's data, and flagged for a manual look.
+// "(Day 1/2)"/"(Day 2/2)") sharing a job number. Events with no
+// extractable job number (shop tasks like trailer service or oil
+// changes, not production jobs) are dropped entirely. Events whose
+// title contains more than one job number (e.g. "3 days 251257 &
+// 260695 ...") are split into one job record per number, all sharing
+// the event's data, and flagged for a manual look.
 function groupIntoJobs(events) {
-  const byKey = {};
+  const byJobNum = {};
   events.forEach(ev => {
     if (!ev.jobNums.length) return;
     ev.jobNums.forEach(jobNum => {
-      const jobKey = jobNum;
-      if (!byKey[jobKey]) {
-        byKey[jobKey] = {
-          jobKey,
-          jobNum,
-          title: ev.title,
-          addr: ev.addr,
-          crew: ev.crew,
-          startDate: ev.eventDate,
-          endDate: ev.eventDate,
-          multiJobEvent: ev.jobNums.length > 1,
-        };
-      } else {
-        const job = byKey[jobKey];
-        if (ev.eventDate < job.startDate) job.startDate = ev.eventDate;
-        if (ev.eventDate > job.endDate) job.endDate = ev.eventDate;
-        ev.crew.forEach(c => { if (!job.crew.includes(c)) job.crew.push(c); });
-      }
+      (byJobNum[jobNum] = byJobNum[jobNum] || []).push({ ...ev, multiJobEvent: ev.jobNums.length > 1 });
     });
   });
 
-  const jobs = Object.values(byKey);
+  const jobs = Object.entries(byJobNum).map(([jobNum, jobEvents]) => {
+    // A remove-only trip (e.g. pulling a sign down for shop refurbishment)
+    // shouldn't drive the production due date — that's set by the actual
+    // install/reinstall visit. Only fall back to the removal date if
+    // that's genuinely the only event this job number has.
+    const nonRemoval = jobEvents.filter(ev => !ev.isRemoval);
+    const dateSource = nonRemoval.length ? nonRemoval : jobEvents;
+
+    const dates = dateSource.map(ev => ev.eventDate);
+    const startDate = dates.reduce((a, b) => (b < a ? b : a));
+    const endDate = dates.reduce((a, b) => (b > a ? b : a));
+    const crew = [];
+    dateSource.forEach(ev => ev.crew.forEach(c => { if (!crew.includes(c)) crew.push(c); }));
+
+    return {
+      jobKey: jobNum,
+      jobNum,
+      title: dateSource[0].title,
+      addr: dateSource[0].addr,
+      crew,
+      startDate,
+      endDate,
+      multiJobEvent: jobEvents.some(ev => ev.multiJobEvent),
+    };
+  });
+
   jobs.forEach(job => {
     job.dueDate = formatDate(subtractBusinessDays(parseDate(job.startDate), DUE_DATE_BUSINESS_DAYS));
     job.multiDay = job.startDate !== job.endDate;
