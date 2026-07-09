@@ -356,10 +356,10 @@ main.view-area {
   #last-updated { display: none; }
 
   .nav-row { padding: 6px 10px; gap: 6px; }
-  .date-nav { gap: 4px; }
-  .date-nav button { width: 26px; height: 26px; font-size: var(--text-xs); }
+  .date-nav { gap: 4px; flex: 1 1 auto; }
+  .date-nav button { height: 26px; font-size: var(--text-xs); flex: 1 1 0; }
   .date-nav .today-btn { padding: 0 6px; font-size: 11px; }
-  .date-nav .current-range { font-size: 11px; }
-  .view-switcher { margin-left: 0; flex-shrink: 0; }
+  .date-nav .current-range { font-size: 11px; flex: 0 0 auto; }
+  .view-switcher { margin-left: 0; flex: 0 0 auto; }
   .view-switcher button { padding: 4px 8px; font-size: 11px; }
 }
