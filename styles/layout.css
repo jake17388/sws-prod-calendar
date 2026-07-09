@@ -3,6 +3,7 @@
 html, body {
   margin: 0;
   height: 100%;
+  height: 100dvh; /* true visual viewport incl. safe areas — 100% falls short in standalone iOS PWAs, which then lets html's overflow:hidden clip fixed content above the true bottom edge */
   overflow: hidden;
   overscroll-behavior: none;
   background: var(--color-bg);

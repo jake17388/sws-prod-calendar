@@ -72,7 +72,7 @@ function pinDel() {
 function submitPin(onLogin) {
   pinBusy = true;
   const errorEl = document.getElementById('pin-error');
-  errorEl.textContent = '';
+  errorEl.textContent = 'Verifying…';
   scriptPost({ action: 'login', pin: pinEntry })
     .then(res => {
       pinBusy = false;
