@@ -11,10 +11,10 @@ export function renderWeek(container, refDate, jobs) {
   grid.className = 'week-grid';
   days.forEach(day => {
     const iso = formatISO(day);
-    const col = document.createElement('div');
-    col.className = 'week-day-col';
-
     const isToday = isSameDay(day, today);
+    const col = document.createElement('div');
+    col.className = `week-day-col ${isToday ? 'is-today' : ''}`.trim();
+
     const headerEl = document.createElement('div');
     headerEl.className = `week-day-header ${isToday ? 'is-today' : ''}`.trim();
     headerEl.innerHTML = `<div class="dow">${DAY_NAMES[day.getDay()]}</div><div class="dom">${day.getDate()}</div>`;
