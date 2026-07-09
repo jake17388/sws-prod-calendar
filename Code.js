@@ -169,6 +169,8 @@ function getProductionJobs(e) {
     job.completed = !!t.completed;
     job.notes = t.notes || '';
     job.checklist = t.checklist || [];
+    job.completedAt = t.completedAt || '';
+    job.completedBy = t.completedBy || '';
     job.progressPct = job.checklist.length
       ? Math.round((job.checklist.filter(i => i.done).length / job.checklist.length) * 100)
       : null;
@@ -294,7 +296,7 @@ function getTrackingSheet() {
   if (!ss) {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
-    ss.getActiveSheet().appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by']);
+    ss.getActiveSheet().appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by']);
   }
   return ss.getActiveSheet();
 }
@@ -304,11 +306,14 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson] = data[i];
+    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy] = data[i];
     if (!jobKey) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
-    tracking[String(jobKey)] = { completed: !!completed, notes: notes || '', checklist };
+    tracking[String(jobKey)] = {
+      completed: !!completed, notes: notes || '', checklist,
+      completedAt: completedAt || '', completedBy: completedBy || '',
+    };
   }
   return tracking;
 }
@@ -325,14 +330,23 @@ function setTracking(jobKey, patch, user) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: '', checklist: [] }
+      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '' }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: data[rowIndex - 1][2] || '',
           checklist: (() => { try { return JSON.parse(data[rowIndex - 1][3] || '[]'); } catch (e) { return []; } })(),
+          completedAt: data[rowIndex - 1][6] || '',
+          completedBy: data[rowIndex - 1][7] || '',
         };
     const next = { ...current, ...patch };
-    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user];
+    // completedAt/completedBy only change on an actual complete/un-complete
+    // toggle (patch.completed present) — editing notes or the checklist
+    // shouldn't touch who/when it was marked done.
+    if (patch.completed !== undefined) {
+      next.completedAt = patch.completed ? new Date().toISOString() : '';
+      next.completedBy = patch.completed ? user : '';
+    }
+    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {

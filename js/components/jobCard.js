@@ -16,12 +16,16 @@ function flagBadges(job) {
   return badges.join('');
 }
 
-function handleCheckboxToggle(job, checkboxEl) {
+function handleCheckboxToggle(job) {
   const nextCompleted = !job.completed;
   patchJob(job.jobKey, { completed: nextCompleted });
-  toggleComplete(job.jobKey, nextCompleted).catch(() => {
-    patchJob(job.jobKey, { completed: job.completed }); // revert on failure
-  });
+  toggleComplete(job.jobKey, nextCompleted)
+    .then(res => {
+      if (res.success) patchJob(job.jobKey, { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy });
+    })
+    .catch(() => {
+      patchJob(job.jobKey, { completed: job.completed }); // revert on failure
+    });
 }
 
 /** Full card used in schedule/week day lists. @param {object} job @param {boolean} showCrew @returns {HTMLElement} */
@@ -55,7 +59,13 @@ export function renderJobChip(job) {
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-chip ${state} ${job.completed ? 'completed' : ''}`.trim();
   el.title = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
-  el.innerHTML = `<span class="job-chip-check"></span><span class="job-chip-text">${job.jobNum ? job.jobNum + ' ' : ''}${escapeHtml(job.title)}</span>`;
+  el.innerHTML = `
+    <span class="job-chip-check"></span>
+    <span class="job-chip-text">
+      <span class="job-chip-num">${escapeHtml(job.jobNum || job.title)}</span>
+      <span class="job-chip-title">${job.jobNum ? ' ' + escapeHtml(job.title) : ''}</span>
+    </span>
+  `;
   el.querySelector('.job-chip-check').addEventListener('click', e => {
     e.stopPropagation();
     handleCheckboxToggle(job);

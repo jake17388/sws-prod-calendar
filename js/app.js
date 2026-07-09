@@ -151,4 +151,12 @@ document.getElementById('update-reload-btn').addEventListener('click', () => {
   window.location.href = url.toString();
 });
 
+// A home-screen PWA left open in the background is often resumed from a
+// suspended in-memory instance rather than a real reload, so it never
+// re-runs boot()'s one-time version check. Re-check whenever it regains
+// focus/visibility so the update banner reliably shows up.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkForUpdate();
+});
+
 initAuth(boot);

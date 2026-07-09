@@ -94,14 +94,14 @@
   color: var(--color-text-faint);
 }
 
-/* month/week cells render a condensed chip variant */
+/* month/week cells render a condensed chip variant — the whole chip is
+   colored by due status (red/yellow/green) rather than just an accent. */
 .job-chip {
   font-size: var(--text-xs);
   padding: 2px var(--space-2);
   border-radius: 4px;
-  background: var(--color-accent-dim);
+  background: var(--color-due-ok);
   color: #ffffff;
-  border-left: 3px solid var(--color-due-ok);
   overflow: hidden;
   cursor: pointer;
   display: flex;
@@ -114,14 +114,14 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-.job-chip.due-soon { border-left-color: var(--color-due-soon); }
-.job-chip.due-overdue { border-left-color: var(--color-due-overdue); }
+.job-chip.due-soon { background: var(--color-due-soon); color: var(--color-brand-navy); }
+.job-chip.due-overdue { background: var(--color-due-overdue); }
 .job-chip.completed {
   background: var(--color-completed-bg);
   color: var(--color-completed-text);
   text-decoration: line-through;
-  border-left-color: var(--color-border);
 }
+.job-chip .job-card-badge { background: rgba(255, 255, 255, 0.3); color: inherit; }
 .job-chip-check {
   flex-shrink: 0;
   width: 10px;
@@ -131,6 +131,12 @@
   border: 1.5px solid currentColor;
 }
 .job-chip.completed .job-chip-check { background: currentColor; }
+
+@media (max-width: 640px) {
+  .job-chip-check, .job-chip-title { display: none; }
+  .job-chip { padding: 2px 3px; }
+  .job-chip-num { font-weight: 700; font-size: 10px; white-space: nowrap; }
+}
 
 /* ── Progress bar ───────────────────────────────────────────────────────── */
 .progress-bar {

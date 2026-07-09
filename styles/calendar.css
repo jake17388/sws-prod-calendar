@@ -1,7 +1,7 @@
 /* ── Month view ─────────────────────────────────────────────────────────── */
 .month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: var(--week-cols);
   /* auto max lets a row grow when "+N more" expands a cell */
   grid-auto-rows: minmax(120px, auto);
   border-top: 1px solid var(--color-border);
@@ -10,7 +10,7 @@
 
 .month-weekday-row {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: var(--week-cols);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   position: sticky;
@@ -67,7 +67,7 @@
 /* ── Week view ──────────────────────────────────────────────────────────── */
 .week-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: var(--week-cols);
   border-top: 1px solid var(--color-border);
   border-left: 1px solid var(--color-border);
   min-height: 100%;
@@ -118,6 +118,11 @@
     text-align: left;
     position: static;
   }
+
+  .month-cell { padding: 2px; gap: 2px; }
+  .month-cell-jobs { gap: 2px; }
+  .cell-date { font-size: 10px; }
+  .month-cell-more { font-size: 10px; padding: 0; }
 }
 
 /* ── Schedule view ──────────────────────────────────────────────────────── */

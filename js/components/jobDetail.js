@@ -9,6 +9,23 @@ function computeProgress(checklist) {
   return checklist.length ? Math.round((checklist.filter(i => i.done).length / checklist.length) * 100) : null;
 }
 
+const abbreviateName = name => {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts[1][0]}` : name;
+};
+
+const formatCompletedStamp = iso => {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+};
+
+function renderCompletedInfo(job) {
+  document.getElementById('completed-info').textContent =
+    job.completed && job.completedBy ? `Completed by: ${abbreviateName(job.completedBy)} on ${formatCompletedStamp(job.completedAt)}` : '';
+}
+
 function saveChecklist(jobKey, checklist) {
   const progressPct = computeProgress(checklist);
   patchJob(jobKey, { checklist, progressPct });
@@ -59,13 +76,22 @@ export function openJobDetail(jobKey) {
 
   const completeBtn = document.getElementById('job-detail-complete');
   completeBtn.checked = job.completed;
+  renderCompletedInfo(job);
   completeBtn.onchange = () => {
     const nextCompleted = completeBtn.checked;
     patchJob(job.jobKey, { completed: nextCompleted });
-    toggleComplete(job.jobKey, nextCompleted).catch(() => {
-      completeBtn.checked = !nextCompleted;
-      patchJob(job.jobKey, { completed: !nextCompleted });
-    });
+    toggleComplete(job.jobKey, nextCompleted)
+      .then(res => {
+        if (!res.success) throw new Error(res.error || 'failed');
+        const patch = { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy };
+        patchJob(job.jobKey, patch);
+        renderCompletedInfo({ ...job, ...patch });
+      })
+      .catch(() => {
+        completeBtn.checked = !nextCompleted;
+        patchJob(job.jobKey, { completed: !nextCompleted });
+        renderCompletedInfo(job);
+      });
   };
 
   const notesEl = document.getElementById('job-detail-notes');
