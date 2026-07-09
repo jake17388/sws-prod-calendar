@@ -3,6 +3,8 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
