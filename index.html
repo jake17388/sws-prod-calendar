@@ -141,6 +141,19 @@
           <button id="checklist-add-btn">Add</button>
         </div>
       </div>
+
+      <div id="due-date-editor" class="job-detail-section" hidden>
+        <button class="settings-action" id="due-date-edit-btn">Edit due date</button>
+        <div id="due-date-edit-form" class="due-date-edit-form" hidden>
+          <input type="date" id="due-date-input" />
+          <div class="due-date-edit-actions">
+            <button class="settings-action" id="due-date-cancel-btn">Cancel</button>
+            <button class="settings-action" id="due-date-reset-btn">Reset to auto</button>
+            <button class="settings-action primary" id="due-date-save-btn">Save</button>
+          </div>
+          <div id="due-date-edit-hint" class="notes-save-hint"></div>
+        </div>
+      </div>
     </div>
   </section>
 </div>

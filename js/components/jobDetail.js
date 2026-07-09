@@ -1,7 +1,8 @@
-import { toggleComplete, updateNotes, updateChecklist } from '../api.js';
+import { toggleComplete, updateNotes, updateChecklist, updateDueDate } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { progressBarHtml } from './progressBar.js';
 import { fmtMD } from '../dates.js';
+import { canEditDueDates } from '../auth.js';
 
 let notesSaveTimer = null;
 
@@ -24,6 +25,58 @@ const formatCompletedStamp = iso => {
 function renderCompletedInfo(job) {
   document.getElementById('completed-info').textContent =
     job.completed && job.completedBy ? `Completed by: ${abbreviateName(job.completedBy)} on ${formatCompletedStamp(job.completedAt)}` : '';
+}
+
+function updateMetaText(job) {
+  document.getElementById('job-detail-meta').textContent =
+    `${job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned'} · starts ${fmtMD(job.startDate)}${job.multiDay ? ' – ' + fmtMD(job.endDate) : ''} · due ${fmtMD(job.dueDate)}`;
+}
+
+function renderDueDateEditor(job) {
+  const wrap = document.getElementById('due-date-editor');
+  wrap.hidden = !canEditDueDates();
+  if (!canEditDueDates()) return;
+
+  const editBtn = document.getElementById('due-date-edit-btn');
+  const form = document.getElementById('due-date-edit-form');
+  const input = document.getElementById('due-date-input');
+  const hint = document.getElementById('due-date-edit-hint');
+
+  form.hidden = true;
+  editBtn.hidden = false;
+  hint.textContent = '';
+
+  editBtn.onclick = () => {
+    input.value = job.dueDate;
+    form.hidden = false;
+    editBtn.hidden = true;
+  };
+  document.getElementById('due-date-cancel-btn').onclick = () => {
+    form.hidden = true;
+    editBtn.hidden = false;
+  };
+
+  const applyOverride = dueDate => {
+    updateDueDate(job.jobKey, dueDate).then(res => {
+      if (!res.success) throw new Error(res.error || 'failed');
+      job.dueOverride = res.dueOverride;
+      job.dueDate = res.dueOverride || job.autoDueDate;
+      patchJob(job.jobKey, { dueDate: job.dueDate, dueOverride: job.dueOverride });
+      updateMetaText(job);
+      form.hidden = true;
+      editBtn.hidden = false;
+    });
+  };
+
+  document.getElementById('due-date-save-btn').onclick = () => {
+    if (!input.value) { hint.textContent = 'Pick a date first'; return; }
+    hint.textContent = 'Saving…';
+    applyOverride(input.value).catch(() => { hint.textContent = 'Failed to save — try again'; });
+  };
+  document.getElementById('due-date-reset-btn').onclick = () => {
+    hint.textContent = 'Resetting…';
+    applyOverride('').catch(() => { hint.textContent = 'Failed to reset — try again'; });
+  };
 }
 
 function saveChecklist(jobKey, checklist) {
@@ -71,8 +124,8 @@ export function openJobDetail(jobKey) {
   if (!job) return;
 
   document.getElementById('job-detail-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
-  document.getElementById('job-detail-meta').textContent =
-    `${job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned'} · starts ${fmtMD(job.startDate)}${job.multiDay ? ' – ' + fmtMD(job.endDate) : ''} · due ${fmtMD(job.dueDate)}`;
+  updateMetaText(job);
+  renderDueDateEditor(job);
 
   const completeBtn = document.getElementById('job-detail-complete');
   completeBtn.checked = job.completed;

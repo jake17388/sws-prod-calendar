@@ -186,6 +186,20 @@
   font-size: var(--text-sm);
 }
 
+.due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }
+.due-date-edit-form[hidden] { display: none; }
+.due-date-edit-form input[type="date"] {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-sm);
+}
+.due-date-edit-actions { display: flex; gap: var(--space-2); }
+.due-date-edit-actions .settings-action { margin-top: 0; width: auto; flex: 1; }
+
 /* Mobile: bottom sheet instead of a full-height right-side panel — a
    full-height panel starts flush with the top of the viewport and its
    header collides with the phone's status bar / notch. */

@@ -295,6 +295,7 @@ main.view-area {
 }
 .settings-action:active { background: var(--color-surface-raised); }
 .settings-action.danger { color: var(--color-danger); border-color: #f5d0d0; }
+.settings-action.primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 
 /* ── PIN screen ─────────────────────────────────────────────────────────── */
 #pin-screen {

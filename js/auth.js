@@ -16,6 +16,7 @@ function readAuth() {
 
 export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
+export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
 
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
@@ -81,7 +82,7 @@ function submitPin(onLogin) {
         renderDots();
         return;
       }
-      auth = { token: res.token, user: res.user };
+      auth = { token: res.token, user: res.user, isDueDateEditor: !!res.isDueDateEditor };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

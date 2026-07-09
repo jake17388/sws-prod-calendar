@@ -14,6 +14,11 @@ function normalizeCrew(names) {
 
 const DUE_DATE_BUSINESS_DAYS = 2;
 
+// Names (must match a PIN's mapped name exactly) allowed to manually
+// override a job's calculated due date for one-off scheduling edge cases.
+// Add more names here and redeploy to grant the permission to others.
+const DUE_DATE_EDITORS = ['Jake Banks'];
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 // PINs live in this project's own Script Properties, independent of
 // sws-job-map's. Real values are never committed — see setPins() below.
@@ -92,7 +97,7 @@ function checkPin(pin) {
     cache.put('pin_fails', String(fails + 1), 600);
     return { ok: false };
   }
-  return { ok: true, user: user, token: makeToken(user) };
+  return { ok: true, user: user, token: makeToken(user), isDueDateEditor: DUE_DATE_EDITORS.indexOf(user) !== -1 };
 }
 
 function json(obj) {
@@ -135,6 +140,10 @@ function doPost(e) {
   if (data.action === 'updateChecklist') {
     return json(setTracking(data.jobKey, { checklist: data.checklist || [] }, user));
   }
+  if (data.action === 'updateDueDate') {
+    if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
+    return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
+  }
   return json({ error: 'unknown action' });
 }
 
@@ -171,6 +180,11 @@ function getProductionJobs(e) {
     job.checklist = t.checklist || [];
     job.completedAt = t.completedAt || '';
     job.completedBy = t.completedBy || '';
+    // A manually-set due date wins over the calculated one, for one-off
+    // scheduling edge cases the automatic 2-business-day rule gets wrong.
+    job.autoDueDate = job.dueDate;
+    job.dueOverride = t.dueOverride || '';
+    if (job.dueOverride) job.dueDate = job.dueOverride;
     job.progressPct = job.checklist.length
       ? Math.round((job.checklist.filter(i => i.done).length / job.checklist.length) * 100)
       : null;
@@ -295,6 +309,15 @@ function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Sheets silently coerces date-shaped strings ("2026-08-15") written into a
+// cell into an actual Date value, which comes back as a JS Date object
+// (not the string we wrote) on the next read — normalize it back to plain
+// YYYY-MM-DD regardless of which form the cell holds.
+function normalizeDateCell(val) {
+  if (!val) return '';
+  return val instanceof Date ? formatDate(val) : String(val);
+}
+
 // ── Tracking (completed / notes / checklist) ────────────────────────────────
 // Lazily creates its own spreadsheet on first use and remembers the ID in
 // Script Properties, so there's no manual Sheet-ID setup step.
@@ -308,7 +331,11 @@ function getTrackingSheet() {
   if (!ss) {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
-    ss.getActiveSheet().appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by']);
+    const sheet = ss.getActiveSheet();
+    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override']);
+    // Plain-text format on the date-shaped columns so Sheets doesn't
+    // auto-coerce "2026-08-15" into an actual Date cell.
+    sheet.getRange('G:I').setNumberFormat('@');
   }
   return ss.getActiveSheet();
 }
@@ -318,13 +345,14 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy] = data[i];
+    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy, dueOverride] = data[i];
     if (!jobKey) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
     tracking[String(jobKey)] = {
       completed: !!completed, notes: notes || '', checklist,
       completedAt: completedAt || '', completedBy: completedBy || '',
+      dueOverride: normalizeDateCell(dueOverride),
     };
   }
   return tracking;
@@ -342,13 +370,14 @@ function setTracking(jobKey, patch, user) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '' }
+      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '', dueOverride: '' }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: data[rowIndex - 1][2] || '',
           checklist: (() => { try { return JSON.parse(data[rowIndex - 1][3] || '[]'); } catch (e) { return []; } })(),
           completedAt: data[rowIndex - 1][6] || '',
           completedBy: data[rowIndex - 1][7] || '',
+          dueOverride: normalizeDateCell(data[rowIndex - 1][8]),
         };
     const next = { ...current, ...patch };
     // completedAt/completedBy only change on an actual complete/un-complete
@@ -358,7 +387,7 @@ function setTracking(jobKey, patch, user) {
       next.completedAt = patch.completed ? new Date().toISOString() : '';
       next.completedBy = patch.completed ? user : '';
     }
-    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy];
+    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy, next.dueOverride];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {
