@@ -3,6 +3,11 @@ import { renderJobChip } from '../components/jobCard.js';
 
 const MAX_VISIBLE_PER_CELL = 3;
 
+// Module-level (not per-render) so "expanded" survives the full re-renders
+// that fire on every job update — otherwise checking off a job elsewhere
+// would silently re-collapse any cell the user had opened.
+const expandedDays = new Set();
+
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
 export function renderMonth(container, refDate, jobs) {
   const days = monthGridDays(refDate);
@@ -27,18 +32,23 @@ export function renderMonth(container, refDate, jobs) {
     cell.appendChild(dateLabel);
 
     const dayJobs = jobsByDate[iso] || [];
+    const isExpanded = expandedDays.has(iso);
     const jobsWrap = document.createElement('div');
     jobsWrap.className = 'month-cell-jobs';
-    dayJobs.slice(0, MAX_VISIBLE_PER_CELL).forEach(job => jobsWrap.appendChild(renderJobChip(job)));
+    const visibleJobs = isExpanded ? dayJobs : dayJobs.slice(0, MAX_VISIBLE_PER_CELL);
+    visibleJobs.forEach(job => jobsWrap.appendChild(renderJobChip(job)));
+
     if (dayJobs.length > MAX_VISIBLE_PER_CELL) {
-      const more = document.createElement('button');
-      more.className = 'month-cell-more';
-      more.textContent = `+${dayJobs.length - MAX_VISIBLE_PER_CELL} more`;
-      more.addEventListener('click', () => {
-        dayJobs.slice(MAX_VISIBLE_PER_CELL).forEach(job => jobsWrap.insertBefore(renderJobChip(job), more));
-        more.remove();
-      });
-      jobsWrap.appendChild(more);
+      const toggle = document.createElement('button');
+      toggle.className = 'month-cell-more';
+      if (isExpanded) {
+        toggle.textContent = 'See less';
+        toggle.addEventListener('click', () => { expandedDays.delete(iso); renderMonth(container, refDate, jobs); });
+      } else {
+        toggle.textContent = `+${dayJobs.length - MAX_VISIBLE_PER_CELL} more`;
+        toggle.addEventListener('click', () => { expandedDays.add(iso); renderMonth(container, refDate, jobs); });
+      }
+      jobsWrap.appendChild(toggle);
     }
     cell.appendChild(jobsWrap);
     grid.appendChild(cell);
