@@ -229,10 +229,11 @@ function fetchCalendarEvents(calId, start, end) {
       crew,
       jobNums,
       eventDate: formatDate(event.getStartTime()),
-      // Case-sensitive on purpose: "REMOVAL" is the crew's convention for a
-      // remove-only trip, distinct from mixed-case titles like "Remove and
-      // Install" that describe the actual production visit.
-      isRemoval: /\bREMOVAL\b/.test(title),
+      // Case-sensitive on purpose: all-caps "REMOVAL"/"SURVEY" are the crew's
+      // convention for a non-production trip (remove-only or site survey),
+      // distinct from mixed-case titles like "Remove and Install" that
+      // describe the actual production visit.
+      isNonProductionVisit: /\bREMOVAL\b|\bSURVEY\b/.test(title),
     });
   });
   return out;
@@ -256,12 +257,13 @@ function groupIntoJobs(events) {
   });
 
   const jobs = Object.entries(byJobNum).map(([jobNum, jobEvents]) => {
-    // A remove-only trip (e.g. pulling a sign down for shop refurbishment)
-    // shouldn't drive the production due date — that's set by the actual
-    // install/reinstall visit. Only fall back to the removal date if
-    // that's genuinely the only event this job number has.
-    const nonRemoval = jobEvents.filter(ev => !ev.isRemoval);
-    const dateSource = nonRemoval.length ? nonRemoval : jobEvents;
+    // A remove-only trip or a site survey (e.g. pulling a sign down for shop
+    // refurbishment, or scoping a job before it's scheduled) shouldn't drive
+    // the production due date — that's set by the actual install/reinstall
+    // visit. Only fall back to these events if that's genuinely the only
+    // event this job number has.
+    const productionEvents = jobEvents.filter(ev => !ev.isNonProductionVisit);
+    const dateSource = productionEvents.length ? productionEvents : jobEvents;
 
     const dates = dateSource.map(ev => ev.eventDate);
     const startDate = dates.reduce((a, b) => (b < a ? b : a));
