@@ -1,4 +1,4 @@
-import { toggleComplete, updateNotes, updateChecklist, updateDueDate, importScopeOfWork } from '../api.js';
+import { toggleComplete, updateNotes, updateChecklist, updateDueDate } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { progressBarHtml } from './progressBar.js';
 import { fmtMD } from '../dates.js';
@@ -201,34 +201,6 @@ export function openJobDetail(jobKey) {
 
   document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
   renderChecklist(job);
-
-  const importBtn = document.getElementById('scope-import-btn');
-  const importHint = document.getElementById('scope-import-hint');
-  importHint.textContent = '';
-  importBtn.disabled = false;
-  importBtn.textContent = 'Import Scope of Work';
-  importBtn.onclick = () => {
-    importBtn.disabled = true;
-    importBtn.textContent = 'Importing…';
-    importScopeOfWork(job.jobKey)
-      .then(res => {
-        importBtn.disabled = false;
-        importBtn.textContent = 'Import Scope of Work';
-        if (!res.success) { importHint.textContent = res.error || 'Import failed'; return; }
-        const patch = { checklist: res.checklist, progressPct: res.progressPct };
-        patchJob(job.jobKey, patch);
-        Object.assign(job, patch);
-        document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
-        renderChecklist(job);
-        importHint.textContent = 'Imported';
-        setTimeout(() => { importHint.textContent = ''; }, 1500);
-      })
-      .catch(() => {
-        importBtn.disabled = false;
-        importBtn.textContent = 'Import Scope of Work';
-        importHint.textContent = 'Import failed — try again';
-      });
-  };
 
   const addInput = document.getElementById('checklist-add-input');
   addInput.value = '';

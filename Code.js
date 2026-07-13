@@ -278,9 +278,6 @@ function doPost(e) {
   if (data.action === 'updateChecklist') {
     return json(setTracking(data.jobKey, { checklist: data.checklist || [] }, user));
   }
-  if (data.action === 'importScopeOfWork') {
-    return json(importScopeOfWork(data.jobKey, user));
-  }
   if (data.action === 'updateDueDate') {
     if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
     return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
@@ -289,29 +286,41 @@ function doPost(e) {
 }
 
 // ── Calendar jobs ────────────────────────────────────────────────────────────
+// The window the app itself always fetches (no from/to params) — also what
+// "on the calendar" means for the nightly Squarecoil sync below.
+function defaultCalendarWindow() {
+  const now = new Date();
+  const start = new Date(now); start.setDate(start.getDate() - 14);
+  const end = new Date(now); end.setDate(end.getDate() + 90);
+  return { start, end };
+}
+
+function getCalendarJobs(start, end) {
+  const events = [
+    ...fetchCalendarEvents(INSTALL_CAL_ID, start, end),
+    ...fetchCalendarEvents(SUB_INSTALL_CAL_ID, start, end),
+  ];
+  return groupIntoJobs(events);
+}
+
 function getProductionJobs(e) {
   const params = (e && e.parameter) || {};
-  const now = new Date();
+  const defaults = defaultCalendarWindow();
   let start, end;
   if (params.from) {
     const p = params.from.split('-');
     start = new Date(+p[0], +p[1] - 1, +p[2]);
   } else {
-    start = new Date(now); start.setDate(start.getDate() - 14);
+    start = defaults.start;
   }
   if (params.to) {
     const p = params.to.split('-');
     end = new Date(+p[0], +p[1] - 1, +p[2], 23, 59, 59);
   } else {
-    end = new Date(now); end.setDate(end.getDate() + 90);
+    end = defaults.end;
   }
 
-  const events = [
-    ...fetchCalendarEvents(INSTALL_CAL_ID, start, end),
-    ...fetchCalendarEvents(SUB_INSTALL_CAL_ID, start, end),
-  ];
-
-  const jobs = groupIntoJobs(events);
+  const jobs = getCalendarJobs(start, end);
   const tracking = getAllTracking();
 
   jobs.forEach(job => {
@@ -540,4 +549,51 @@ function setTracking(jobKey, patch, user) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ── Squarecoil nightly sync ──────────────────────────────────────────────────
+// Runs once a day via a time-based trigger (see createScopeSyncTrigger()) —
+// there's no user-facing "import" action; Scope of Work just stays in sync on
+// its own. Every job currently on the calendar gets re-scraped, and jobs that
+// have fallen off the calendar (event deleted, window moved past them) have
+// their scope-derived checklist items removed since they're now stale.
+function syncAllScopeOfWork() {
+  const { start, end } = defaultCalendarWindow();
+  const jobs = getCalendarJobs(start, end);
+  const currentJobKeys = new Set(jobs.map(j => j.jobKey));
+
+  jobs.forEach(job => {
+    try {
+      importScopeOfWork(job.jobKey, 'Scope Sync');
+    } catch (err) {
+      // One job's scrape failure (bad job number, Squarecoil hiccup)
+      // shouldn't stop the rest of the nightly sync from running.
+    }
+  });
+
+  pruneRemovedJobsScope(currentJobKeys);
+}
+
+// Drops scope-derived checklist items (qtyTotal set) for any tracked job no
+// longer on the calendar. Manually-added items and completed/notes state are
+// left alone — this only cleans up stale imported line items.
+function pruneRemovedJobsScope(currentJobKeys) {
+  const tracking = getAllTracking();
+  Object.keys(tracking).forEach(jobKey => {
+    if (currentJobKeys.has(jobKey)) return;
+    const checklist = tracking[jobKey].checklist || [];
+    const manualItems = checklist.filter(i => i.qtyTotal === undefined);
+    if (manualItems.length === checklist.length) return;
+    setTracking(jobKey, { checklist: manualItems }, 'Scope Sync');
+  });
+}
+
+// One-time setup: run this once from the Apps Script editor to install the
+// daily sync trigger. Safe to re-run — it clears any existing
+// syncAllScopeOfWork trigger first so there's never more than one.
+function createScopeSyncTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'syncAllScopeOfWork')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('syncAllScopeOfWork').timeBased().everyDays(1).atHour(6).create();
 }

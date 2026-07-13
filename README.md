@@ -56,19 +56,28 @@ Real PINs are never committed. Paste the new set into `DEFAULT_PINS` in the
 Apps Script editor, run `setPins()` once, then undo the edit locally so it
 never lands in git — same workflow as `sws-job-map`.
 
-### Squarecoil Scope of Work import
+### Squarecoil Scope of Work sync
 
 Squarecoil has no public API, so jobs' Scope of Work is fetched by logging
 into `summitwestsigns.squarecoil.net` with a real session cookie and parsing
-the project page's HTML. Credentials are never committed — from the Apps
-Script editor, run once:
+the project page's HTML (`<textarea name="description">` on
+`project.php?id=<jobNum>`) — it will break if Squarecoil changes that page's
+markup.
+
+This runs automatically once a day (6am) via a time-based trigger — there's
+no manual per-job button. Every job currently on the calendar gets its scope
+re-scraped into a quantity-trackable checklist; jobs that have fallen off the
+calendar get their scope-derived checklist items cleared out.
+
+One-time setup, both from the Apps Script editor:
 
 ```js
-setSquarecoilCredentials('username', 'password');
+setSquarecoilCredentials('username', 'password'); // credentials never committed
+createScopeSyncTrigger();                          // installs the daily trigger
 ```
 
-This scrapes `<textarea name="description">` on `project.php?id=<jobNum>`,
-so it will break if Squarecoil changes that page's markup.
+To force a sync immediately instead of waiting for 6am, run
+`syncAllScopeOfWork()` directly from the editor.
 
 ---
 
