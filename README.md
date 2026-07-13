@@ -56,6 +56,20 @@ Real PINs are never committed. Paste the new set into `DEFAULT_PINS` in the
 Apps Script editor, run `setPins()` once, then undo the edit locally so it
 never lands in git — same workflow as `sws-job-map`.
 
+### Squarecoil Scope of Work import
+
+Squarecoil has no public API, so jobs' Scope of Work is fetched by logging
+into `summitwestsigns.squarecoil.net` with a real session cookie and parsing
+the project page's HTML. Credentials are never committed — from the Apps
+Script editor, run once:
+
+```js
+setSquarecoilCredentials('username', 'password');
+```
+
+This scrapes `<textarea name="description">` on `project.php?id=<jobNum>`,
+so it will break if Squarecoil changes that page's markup.
+
 ---
 
 ## One-time setup (GitHub Actions secrets)

@@ -38,6 +38,9 @@ export const updateNotes = (jobKey, notes) =>
 export const updateChecklist = (jobKey, checklist) =>
   scriptPost({ action: 'updateChecklist', jobKey, checklist });
 
+export const importScopeOfWork = jobKey =>
+  scriptPost({ action: 'importScopeOfWork', jobKey });
+
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>
   scriptPost({ action: 'updateDueDate', jobKey, dueDate });

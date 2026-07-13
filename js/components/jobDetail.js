@@ -1,4 +1,4 @@
-import { toggleComplete, updateNotes, updateChecklist, updateDueDate } from '../api.js';
+import { toggleComplete, updateNotes, updateChecklist, updateDueDate, importScopeOfWork } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { progressBarHtml } from './progressBar.js';
 import { fmtMD } from '../dates.js';
@@ -6,8 +6,17 @@ import { canEditDueDates } from '../auth.js';
 
 let notesSaveTimer = null;
 
+// Scope-of-work items (qtyTotal set) count qtyDone/qtyTotal; manually-added
+// items count as a plain 1/0 — matches the server-side calc in Code.js so
+// the bar shown here never disagrees with what a refetch would compute.
 function computeProgress(checklist) {
-  return checklist.length ? Math.round((checklist.filter(i => i.done).length / checklist.length) * 100) : null;
+  if (!checklist.length) return null;
+  let total = 0, done = 0;
+  checklist.forEach(i => {
+    total += i.qtyTotal || 1;
+    done += i.qtyTotal !== undefined ? (i.qtyDone || 0) : (i.done ? 1 : 0);
+  });
+  return total ? Math.round((done / total) * 100) : null;
 }
 
 const abbreviateName = name => {
@@ -86,24 +95,53 @@ function saveChecklist(jobKey, checklist) {
   document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(progressPct);
 }
 
+function updateChecklistItem(job, itemId, patch) {
+  const next = job.checklist.map(i => (i.id === itemId ? { ...i, ...patch } : i));
+  job.checklist = next;
+  saveChecklist(job.jobKey, next);
+  renderChecklist(job);
+}
+
+function renderQtyRow(row, job, item) {
+  row.innerHTML = `
+    <div class="checklist-qty">
+      <input type="number" class="checklist-qty-input" value="${item.qtyDone}" min="0" max="${item.qtyTotal}" />
+      <span class="checklist-qty-total">/ ${item.qtyTotal}</span>
+    </div>
+    <input type="text" value="${item.text.replace(/"/g, '&quot;')}" />
+    <button class="checklist-mark-all" title="Mark all complete" aria-label="Mark all complete">✓</button>
+    <button class="checklist-remove" aria-label="Remove item">&times;</button>
+  `;
+  row.querySelector('.checklist-qty-input').addEventListener('change', e => {
+    const qtyDone = Math.max(0, Math.min(item.qtyTotal, Math.round(+e.target.value) || 0));
+    updateChecklistItem(job, item.id, { qtyDone, done: qtyDone >= item.qtyTotal });
+  });
+  row.querySelector('.checklist-mark-all').addEventListener('click', () => {
+    updateChecklistItem(job, item.id, { qtyDone: item.qtyTotal, done: true });
+  });
+}
+
+function renderPlainRow(row, job, item) {
+  row.innerHTML = `
+    <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done"></button>
+    <input type="text" value="${item.text.replace(/"/g, '&quot;')}" />
+    <button class="checklist-remove" aria-label="Remove item">&times;</button>
+  `;
+  row.querySelector('.checklist-check').addEventListener('click', () => {
+    updateChecklistItem(job, item.id, { done: !item.done });
+  });
+}
+
 function renderChecklist(job) {
   const list = document.getElementById('checklist-items');
   list.innerHTML = '';
   job.checklist.forEach(item => {
+    const isQty = item.qtyTotal !== undefined;
     const row = document.createElement('div');
-    row.className = `checklist-item ${item.done ? 'done' : ''}`;
-    row.innerHTML = `
-      <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done"></button>
-      <input type="text" value="${item.text.replace(/"/g, '&quot;')}" />
-      <button class="checklist-remove" aria-label="Remove item">&times;</button>
-    `;
-    row.querySelector('.checklist-check').addEventListener('click', () => {
-      const next = job.checklist.map(i => (i.id === item.id ? { ...i, done: !i.done } : i));
-      job.checklist = next;
-      saveChecklist(job.jobKey, next);
-      renderChecklist(job);
-    });
-    row.querySelector('input').addEventListener('change', e => {
+    row.className = `checklist-item ${isQty ? 'checklist-item-qty' : ''} ${item.done ? 'done' : ''}`.trim();
+    if (isQty) renderQtyRow(row, job, item); else renderPlainRow(row, job, item);
+
+    row.querySelector('input[type="text"]').addEventListener('change', e => {
       const next = job.checklist.map(i => (i.id === item.id ? { ...i, text: e.target.value } : i));
       job.checklist = next;
       saveChecklist(job.jobKey, next);
@@ -163,6 +201,34 @@ export function openJobDetail(jobKey) {
 
   document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
   renderChecklist(job);
+
+  const importBtn = document.getElementById('scope-import-btn');
+  const importHint = document.getElementById('scope-import-hint');
+  importHint.textContent = '';
+  importBtn.disabled = false;
+  importBtn.textContent = 'Import Scope of Work';
+  importBtn.onclick = () => {
+    importBtn.disabled = true;
+    importBtn.textContent = 'Importing…';
+    importScopeOfWork(job.jobKey)
+      .then(res => {
+        importBtn.disabled = false;
+        importBtn.textContent = 'Import Scope of Work';
+        if (!res.success) { importHint.textContent = res.error || 'Import failed'; return; }
+        const patch = { checklist: res.checklist, progressPct: res.progressPct };
+        patchJob(job.jobKey, patch);
+        Object.assign(job, patch);
+        document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
+        renderChecklist(job);
+        importHint.textContent = 'Imported';
+        setTimeout(() => { importHint.textContent = ''; }, 1500);
+      })
+      .catch(() => {
+        importBtn.disabled = false;
+        importBtn.textContent = 'Import Scope of Work';
+        importHint.textContent = 'Import failed — try again';
+      });
+  };
 
   const addInput = document.getElementById('checklist-add-input');
   addInput.value = '';

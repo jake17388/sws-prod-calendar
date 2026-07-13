@@ -107,6 +107,144 @@ function json(obj) {
 
 const UNAUTHORIZED = { error: 'unauthorized' };
 
+// ── Squarecoil integration ───────────────────────────────────────────────────
+// Squarecoil (our PM software) has no public API — project pages are
+// server-rendered PHP behind a plain session-cookie login. Credentials live
+// in Script Properties, never committed — set once via
+// setSquarecoilCredentials() from the Apps Script editor, same workflow as
+// setPins() above.
+const SQUARECOIL_BASE_URL = 'https://summitwestsigns.squarecoil.net';
+
+function setSquarecoilCredentials(username, password) {
+  PropertiesService.getScriptProperties()
+    .setProperty('SQUARECOIL_CREDS', JSON.stringify({ username, password }));
+}
+
+function getSquarecoilCredentials() {
+  const raw = PropertiesService.getScriptProperties().getProperty('SQUARECOIL_CREDS');
+  if (!raw) throw new Error('Squarecoil credentials not set — run setSquarecoilCredentials() once from the Apps Script editor');
+  return JSON.parse(raw);
+}
+
+// Cached briefly so repeated imports don't re-login every time; Squarecoil's
+// own session timeout (not this cache) is what actually bounds its lifetime.
+function getSquarecoilSessionCookie() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('squarecoil_session');
+  if (cached) return cached;
+
+  const { username, password } = getSquarecoilCredentials();
+
+  // A fresh hit issues the PHPSESSID cookie before any login has happened —
+  // the same cookie is then promoted to "authenticated" by the login POST.
+  const initial = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/login.php?m=1`, { muteHttpExceptions: true });
+  const cookie = extractSessionCookie(initial);
+  if (!cookie) throw new Error('Squarecoil did not issue a session cookie');
+
+  const loginResponse = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/login.php`, {
+    method: 'post',
+    payload: { action: '1', username, password, latlong: '', latlong_error: '', latitude: '', longitude: '' },
+    headers: { Cookie: cookie },
+    followRedirects: false,
+    muteHttpExceptions: true,
+  });
+  if (loginResponse.getResponseCode() !== 302) throw new Error('Squarecoil login failed — check stored credentials');
+
+  cache.put('squarecoil_session', cookie, 15 * 60);
+  return cookie;
+}
+
+function extractSessionCookie(response) {
+  const headers = response.getAllHeaders();
+  const raw = headers['Set-Cookie'] || headers['set-cookie'];
+  if (!raw) return null;
+  const list = Array.isArray(raw) ? raw : [raw];
+  const sessionHeader = list.find(h => h.startsWith('PHPSESSID='));
+  return sessionHeader ? sessionHeader.split(';')[0] : null;
+}
+
+function fetchScopeOfWork(jobNum) {
+  const cookie = getSquarecoilSessionCookie();
+  const response = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/project.php?id=${encodeURIComponent(jobNum)}`, {
+    headers: { Cookie: cookie },
+    muteHttpExceptions: true,
+  });
+  if (response.getResponseCode() !== 200) throw new Error(`Squarecoil returned HTTP ${response.getResponseCode()}`);
+  return parseScopeOfWork(response.getContentText());
+}
+
+// Scope of Work lives in the project page's own <textarea name="description">
+// (the source field behind its CKEditor) as raw HTML — one line item per
+// "<spelled-out qty> (<digit qty>) <description>", separated by <br />.
+// Section headers and notes ("Manufacture and install:", contract numbers,
+// etc.) don't match that shape and are silently skipped.
+function parseScopeOfWork(html) {
+  const fieldMatch = html.match(/<textarea[^>]*name\s*=\s*"description"[^>]*>([\s\S]*?)<\/textarea>/i);
+  if (!fieldMatch) return [];
+
+  const lines = fieldMatch[1]
+    .split(/<br\s*\/?>/i)
+    .map(line => line.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').trim())
+    .filter(Boolean);
+
+  const items = [];
+  lines.forEach(line => {
+    const lineMatch = line.match(/^[A-Za-z]+\s*\((\d+)\)\s*(.+)$/);
+    if (!lineMatch) return;
+    items.push({ qtyTotal: +lineMatch[1], description: lineMatch[2].trim() });
+  });
+  return items;
+}
+
+// Merges freshly-scraped Scope of Work line items into the job's checklist.
+// Matches against existing scope-derived items by description text so
+// in-progress qtyDone counts survive a re-import; manually-added checklist
+// items (no qtyTotal) are left untouched.
+function importScopeOfWork(jobKey, user) {
+  if (!jobKey) return { success: false, error: 'jobKey required' };
+
+  let scopeItems;
+  try {
+    scopeItems = fetchScopeOfWork(jobKey);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+  if (!scopeItems.length) return { success: false, error: 'No itemized Scope of Work lines found' };
+
+  const tracking = getAllTracking();
+  const existing = (tracking[String(jobKey)] || {}).checklist || [];
+
+  const importedItems = scopeItems.map(item => {
+    const match = existing.find(i => i.qtyTotal !== undefined
+      && i.text.trim().toLowerCase() === item.description.trim().toLowerCase());
+    const qtyDone = match ? Math.min(match.qtyDone || 0, item.qtyTotal) : 0;
+    return {
+      id: match ? match.id : Utilities.getUuid(),
+      text: item.description,
+      qtyTotal: item.qtyTotal,
+      qtyDone,
+      done: qtyDone >= item.qtyTotal,
+    };
+  });
+  const manualItems = existing.filter(i => i.qtyTotal === undefined);
+
+  return setTracking(jobKey, { checklist: [...importedItems, ...manualItems] }, user);
+}
+
+// Quantity-aware progress: scope-of-work items count qtyDone/qtyTotal,
+// manually-added items count as a plain 1/0 — summed across all items so a
+// job that's 9/18 done on one line and fully done on two others reflects
+// that partial credit instead of jumping straight from 0% to 100%.
+function computeProgressPct(checklist) {
+  if (!checklist.length) return null;
+  let total = 0, done = 0;
+  checklist.forEach(i => {
+    total += i.qtyTotal || 1;
+    done += i.qtyTotal !== undefined ? (i.qtyDone || 0) : (i.done ? 1 : 0);
+  });
+  return total ? Math.round((done / total) * 100) : null;
+}
+
 // ── Routing ──────────────────────────────────────────────────────────────────
 function doGet(e) {
   const action = e.parameter.action;
@@ -139,6 +277,9 @@ function doPost(e) {
   }
   if (data.action === 'updateChecklist') {
     return json(setTracking(data.jobKey, { checklist: data.checklist || [] }, user));
+  }
+  if (data.action === 'importScopeOfWork') {
+    return json(importScopeOfWork(data.jobKey, user));
   }
   if (data.action === 'updateDueDate') {
     if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
@@ -185,9 +326,7 @@ function getProductionJobs(e) {
     job.autoDueDate = job.dueDate;
     job.dueOverride = t.dueOverride || '';
     if (job.dueOverride) job.dueDate = job.dueOverride;
-    job.progressPct = job.checklist.length
-      ? Math.round((job.checklist.filter(i => i.done).length / job.checklist.length) * 100)
-      : null;
+    job.progressPct = computeProgressPct(job.checklist);
   });
 
   return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end) };
@@ -395,10 +534,7 @@ function setTracking(jobKey, patch, user) {
     } else {
       sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
     }
-    const progressPct = next.checklist.length
-      ? Math.round((next.checklist.filter(i => i.done).length / next.checklist.length) * 100)
-      : null;
-    return { success: true, ...next, progressPct };
+    return { success: true, ...next, progressPct: computeProgressPct(next.checklist) };
   } catch (err) {
     return { success: false, error: err.message };
   } finally {
