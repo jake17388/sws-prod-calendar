@@ -73,29 +73,6 @@ initial deploy finds no `USERS` property yet, migrates the old flat `PINS`
 map into it (Jake Banks becomes the sole Admin, everyone else comes in as a
 Viewer), and everything after that goes through the app.
 
-### Squarecoil Scope of Work sync
-
-Squarecoil has no public API, so jobs' Scope of Work is fetched by logging
-into `summitwestsigns.squarecoil.net` with a real session cookie and parsing
-the project page's HTML (`<textarea name="description">` on
-`project.php?id=<jobNum>`) — it will break if Squarecoil changes that page's
-markup.
-
-This runs automatically once a day (6am) via a time-based trigger — there's
-no manual per-job button. Every job currently on the calendar gets its scope
-re-scraped into a quantity-trackable checklist; jobs that have fallen off the
-calendar get their scope-derived checklist items cleared out.
-
-One-time setup, both from the Apps Script editor:
-
-```js
-setSquarecoilCredentials('username', 'password'); // credentials never committed
-createScopeSyncTrigger();                          // installs the daily trigger
-```
-
-To force a sync immediately instead of waiting for 6am, run
-`syncAllScopeOfWork()` directly from the editor.
-
 ---
 
 ## One-time setup (GitHub Actions secrets)

@@ -259,142 +259,12 @@ function json(obj) {
 
 const UNAUTHORIZED = { error: 'unauthorized' };
 
-// ── Squarecoil integration ───────────────────────────────────────────────────
-// Squarecoil (our PM software) has no public API — project pages are
-// server-rendered PHP behind a plain session-cookie login. Credentials live
-// in Script Properties, never committed — set once via
-// setSquarecoilCredentials() from the Apps Script editor, same workflow as
-// setPins() above.
-const SQUARECOIL_BASE_URL = 'https://summitwestsigns.squarecoil.net';
-
-function setSquarecoilCredentials(username, password) {
-  PropertiesService.getScriptProperties()
-    .setProperty('SQUARECOIL_CREDS', JSON.stringify({ username, password }));
-}
-
-function getSquarecoilCredentials() {
-  const raw = PropertiesService.getScriptProperties().getProperty('SQUARECOIL_CREDS');
-  if (!raw) throw new Error('Squarecoil credentials not set — run setSquarecoilCredentials() once from the Apps Script editor');
-  return JSON.parse(raw);
-}
-
-// Cached briefly so repeated imports don't re-login every time; Squarecoil's
-// own session timeout (not this cache) is what actually bounds its lifetime.
-function getSquarecoilSessionCookie() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('squarecoil_session');
-  if (cached) return cached;
-
-  const { username, password } = getSquarecoilCredentials();
-
-  // A fresh hit issues the PHPSESSID cookie before any login has happened —
-  // the same cookie is then promoted to "authenticated" by the login POST.
-  const initial = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/login.php?m=1`, { muteHttpExceptions: true });
-  const cookie = extractSessionCookie(initial);
-  if (!cookie) throw new Error('Squarecoil did not issue a session cookie');
-
-  const loginResponse = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/login.php`, {
-    method: 'post',
-    payload: { action: '1', username, password, latlong: '', latlong_error: '', latitude: '', longitude: '' },
-    headers: { Cookie: cookie },
-    followRedirects: false,
-    muteHttpExceptions: true,
-  });
-  if (loginResponse.getResponseCode() !== 302) throw new Error('Squarecoil login failed — check stored credentials');
-
-  cache.put('squarecoil_session', cookie, 15 * 60);
-  return cookie;
-}
-
-function extractSessionCookie(response) {
-  const headers = response.getAllHeaders();
-  const raw = headers['Set-Cookie'] || headers['set-cookie'];
-  if (!raw) return null;
-  const list = Array.isArray(raw) ? raw : [raw];
-  const sessionHeader = list.find(h => h.startsWith('PHPSESSID='));
-  return sessionHeader ? sessionHeader.split(';')[0] : null;
-}
-
-function fetchScopeOfWork(jobNum) {
-  const cookie = getSquarecoilSessionCookie();
-  const response = UrlFetchApp.fetch(`${SQUARECOIL_BASE_URL}/project.php?id=${encodeURIComponent(jobNum)}`, {
-    headers: { Cookie: cookie },
-    muteHttpExceptions: true,
-  });
-  if (response.getResponseCode() !== 200) throw new Error(`Squarecoil returned HTTP ${response.getResponseCode()}`);
-  return parseScopeOfWork(response.getContentText());
-}
-
-// Scope of Work lives in the project page's own <textarea name="description">
-// (the source field behind its CKEditor) as raw HTML — one line item per
-// "<spelled-out qty> (<digit qty>) <description>", separated by <br />.
-// Section headers and notes ("Manufacture and install:", contract numbers,
-// etc.) don't match that shape and are silently skipped.
-function parseScopeOfWork(html) {
-  const fieldMatch = html.match(/<textarea[^>]*name\s*=\s*"description"[^>]*>([\s\S]*?)<\/textarea>/i);
-  if (!fieldMatch) return [];
-
-  const lines = fieldMatch[1]
-    .split(/<br\s*\/?>/i)
-    .map(line => line.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').trim())
-    .filter(Boolean);
-
-  const items = [];
-  lines.forEach(line => {
-    const lineMatch = line.match(/^[A-Za-z]+\s*\((\d+)\)\s*(.+)$/);
-    if (!lineMatch) return;
-    items.push({ qtyTotal: +lineMatch[1], description: lineMatch[2].trim() });
-  });
-  return items;
-}
-
-// Merges freshly-scraped Scope of Work line items into the job's checklist.
-// Matches against existing scope-derived items by description text so
-// in-progress qtyDone counts survive a re-import; manually-added checklist
-// items (no qtyTotal) are left untouched.
-function importScopeOfWork(jobKey, user) {
-  if (!jobKey) return { success: false, error: 'jobKey required' };
-
-  let scopeItems;
-  try {
-    scopeItems = fetchScopeOfWork(jobKey);
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
-  if (!scopeItems.length) return { success: false, error: 'No itemized Scope of Work lines found' };
-
-  const tracking = getAllTracking();
-  const existing = (tracking[String(jobKey)] || {}).checklist || [];
-
-  const importedItems = scopeItems.map(item => {
-    const match = existing.find(i => i.qtyTotal !== undefined
-      && i.text.trim().toLowerCase() === item.description.trim().toLowerCase());
-    const qtyDone = match ? Math.min(match.qtyDone || 0, item.qtyTotal) : 0;
-    return {
-      id: match ? match.id : Utilities.getUuid(),
-      text: item.description,
-      qtyTotal: item.qtyTotal,
-      qtyDone,
-      done: qtyDone >= item.qtyTotal,
-    };
-  });
-  const manualItems = existing.filter(i => i.qtyTotal === undefined);
-
-  return setTracking(jobKey, { checklist: [...importedItems, ...manualItems] }, user);
-}
-
-// Quantity-aware progress: scope-of-work items count qtyDone/qtyTotal,
-// manually-added items count as a plain 1/0 — summed across all items so a
-// job that's 9/18 done on one line and fully done on two others reflects
-// that partial credit instead of jumping straight from 0% to 100%.
+// Percentage of a job's checklist that's marked done, or null when the
+// checklist is empty.
 function computeProgressPct(checklist) {
   if (!checklist.length) return null;
-  let total = 0, done = 0;
-  checklist.forEach(i => {
-    total += i.qtyTotal || 1;
-    done += i.qtyTotal !== undefined ? (i.qtyDone || 0) : (i.done ? 1 : 0);
-  });
-  return total ? Math.round((done / total) * 100) : null;
+  const done = checklist.filter(i => i.done).length;
+  return Math.round((done / checklist.length) * 100);
 }
 
 // ── Routing ──────────────────────────────────────────────────────────────────
@@ -448,8 +318,7 @@ function doPost(e) {
 }
 
 // ── Calendar jobs ────────────────────────────────────────────────────────────
-// The window the app itself always fetches (no from/to params) — also what
-// "on the calendar" means for the nightly Squarecoil sync below.
+// The window the app itself always fetches when no from/to params are given.
 function defaultCalendarWindow() {
   const now = new Date();
   const start = new Date(now); start.setDate(start.getDate() - 14);
@@ -713,49 +582,3 @@ function setTracking(jobKey, patch, user) {
   }
 }
 
-// ── Squarecoil nightly sync ──────────────────────────────────────────────────
-// Runs once a day via a time-based trigger (see createScopeSyncTrigger()) —
-// there's no user-facing "import" action; Scope of Work just stays in sync on
-// its own. Every job currently on the calendar gets re-scraped, and jobs that
-// have fallen off the calendar (event deleted, window moved past them) have
-// their scope-derived checklist items removed since they're now stale.
-function syncAllScopeOfWork() {
-  const { start, end } = defaultCalendarWindow();
-  const jobs = getCalendarJobs(start, end);
-  const currentJobKeys = new Set(jobs.map(j => j.jobKey));
-
-  jobs.forEach(job => {
-    try {
-      importScopeOfWork(job.jobKey, 'Scope Sync');
-    } catch (err) {
-      // One job's scrape failure (bad job number, Squarecoil hiccup)
-      // shouldn't stop the rest of the nightly sync from running.
-    }
-  });
-
-  pruneRemovedJobsScope(currentJobKeys);
-}
-
-// Drops scope-derived checklist items (qtyTotal set) for any tracked job no
-// longer on the calendar. Manually-added items and completed/notes state are
-// left alone — this only cleans up stale imported line items.
-function pruneRemovedJobsScope(currentJobKeys) {
-  const tracking = getAllTracking();
-  Object.keys(tracking).forEach(jobKey => {
-    if (currentJobKeys.has(jobKey)) return;
-    const checklist = tracking[jobKey].checklist || [];
-    const manualItems = checklist.filter(i => i.qtyTotal === undefined);
-    if (manualItems.length === checklist.length) return;
-    setTracking(jobKey, { checklist: manualItems }, 'Scope Sync');
-  });
-}
-
-// One-time setup: run this once from the Apps Script editor to install the
-// daily sync trigger. Safe to re-run — it clears any existing
-// syncAllScopeOfWork trigger first so there's never more than one.
-function createScopeSyncTrigger() {
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'syncAllScopeOfWork')
-    .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('syncAllScopeOfWork').timeBased().everyDays(1).atHour(6).create();
-}
