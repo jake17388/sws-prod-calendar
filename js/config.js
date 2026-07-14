@@ -7,10 +7,10 @@ export const DUE_SOON_DAYS = 2;
 
 // Mirrors Code.js's DEPARTMENTS/PM_BLOCKED_EDIT_DEPARTMENTS — the server is
 // the source of truth for what's actually allowed; these only drive which
-// options the User Management screen offers so a Production Manager never
-// even sees a choice the backend would reject.
-export const DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
-export const PM_BLOCKED_DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer'];
+// options the User Management screen offers so a Manager never even sees a
+// choice the backend would reject.
+export const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
+export const PM_BLOCKED_DEPARTMENTS = ['Admin', 'Manager', 'Viewer'];
 
 // Mirrors Code.js's JOB_DEPARTMENTS/JOB_TAGS — job-assignable tags, distinct
 // from the user DEPARTMENTS list above. Ship-In isn't a role anyone logs in

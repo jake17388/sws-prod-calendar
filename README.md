@@ -53,20 +53,19 @@ banner when it doesn't match what the page loaded with.
 
 Users live entirely in Script Properties as one `USERS` JSON array of
 `{ id, name, department, pin }` records — never in git. Each user has a
-department: `Admin`, `Production Manager`, `Viewer`, or one of the
-production departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`,
-`Letters`, `Routing`).
+department: `Admin`, `Manager`, `Viewer`, or one of the production
+departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
+`Routing`).
 
 - **Admin** — full access, including managing every other account
-- **Production Manager** — can add/edit/delete any account except Admin,
-  Production Manager, or Viewer accounts (and can't see Admin/Viewer
-  accounts in the list at all)
+- **Manager** — can add/edit/delete any account except Admin, Manager, or
+  Viewer accounts (and can't see Admin/Viewer accounts in the list at all)
 - **Viewer** and the production departments — no user-management access
 
-Day to day, all of this is self-service: anyone in Admin or Production
-Manager sees a "User Management" button in Settings, where accounts (name,
-department, PIN) can be added, edited, or removed. There's no Apps Script
-editor step for routine changes.
+Day to day, all of this is self-service: anyone in Admin or Manager sees a
+"User Management" button in Settings, where accounts (name, department,
+PIN) can be added, edited, or removed. There's no Apps Script editor step
+for routine changes.
 
 The one-time bootstrap is automatic: the first request after this feature's
 initial deploy finds no `USERS` property yet, migrates the old flat `PINS`

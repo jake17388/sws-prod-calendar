@@ -9,7 +9,7 @@ let users = [];
 // editable or read-only.
 function canManageDepartment(actorDept, targetDept) {
   if (actorDept === 'Admin') return true;
-  if (actorDept === 'Production Manager') return PM_BLOCKED_DEPARTMENTS.indexOf(targetDept) === -1;
+  if (actorDept === 'Manager') return PM_BLOCKED_DEPARTMENTS.indexOf(targetDept) === -1;
   return false;
 }
 

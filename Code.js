@@ -29,7 +29,7 @@ const DUE_DATE_EDITORS = ['Jake Banks'];
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000; // sessions last 30 days
 const MAX_PIN_FAILS = 10;                   // then logins lock for 10 minutes
 
-const DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
+const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
 // Job-assignable tags — distinct from the user DEPARTMENTS list above.
 // Ship-In isn't a role anyone logs in as; it's a job-only tag meaning "made
@@ -38,27 +38,27 @@ const JOB_DEPARTMENTS = ['Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Lett
 const JOB_TAGS = JOB_DEPARTMENTS.concat(['Ship-In']);
 
 function canAssignDepartments(department) {
-  return department === 'Admin' || department === 'Production Manager';
+  return department === 'Admin' || department === 'Manager';
 }
 
-// Departments a Production Manager can't see in the user list at all.
+// Departments a Manager can't see in the user list at all.
 const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer'];
-// Departments a Production Manager can see but can't add/edit/delete —
-// separate from PM_HIDDEN_DEPARTMENTS because a PM *can* see fellow PMs,
-// just not manage them.
-const PM_BLOCKED_EDIT_DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer'];
+// Departments a Manager can see but can't add/edit/delete — separate from
+// PM_HIDDEN_DEPARTMENTS because a Manager *can* see fellow Managers, just
+// not manage them.
+const PM_BLOCKED_EDIT_DEPARTMENTS = ['Admin', 'Manager', 'Viewer'];
 
 function canAccessUserManagement(department) {
-  return department === 'Admin' || department === 'Production Manager';
+  return department === 'Admin' || department === 'Manager';
 }
 
 // Whether a user in `actorDepartment` may add/edit/delete a user in
-// `targetDepartment`. Admins can manage everyone; Production Managers can
-// manage everyone except Admin/Production Manager/Viewer accounts; everyone
-// else has no user-management access at all.
+// `targetDepartment`. Admins can manage everyone; Managers can manage
+// everyone except Admin/Manager/Viewer accounts; everyone else has no
+// user-management access at all.
 function canManageDepartment(actorDepartment, targetDepartment) {
   if (actorDepartment === 'Admin') return true;
-  if (actorDepartment === 'Production Manager') return PM_BLOCKED_EDIT_DEPARTMENTS.indexOf(targetDepartment) === -1;
+  if (actorDepartment === 'Manager') return PM_BLOCKED_EDIT_DEPARTMENTS.indexOf(targetDepartment) === -1;
   return false;
 }
 
@@ -100,10 +100,26 @@ function migrateLegacyPins() {
 function getUsers() {
   const props = PropertiesService.getScriptProperties();
   const raw = props.getProperty('USERS');
-  if (raw) return JSON.parse(raw);
+  if (raw) {
+    const users = JSON.parse(raw);
+    if (renameLegacyManagerLabel(users)) saveUsers(users);
+    return users;
+  }
   const users = migrateLegacyPins() || defaultUsers();
   props.setProperty('USERS', JSON.stringify(users));
   return users;
+}
+
+// One-time rename: the "Production Manager" department became "Manager".
+// Mutates in place and reports whether anything changed, so getUsers() only
+// re-saves when there's actually a legacy value to fix — after the first
+// read post-deploy this is a no-op.
+function renameLegacyManagerLabel(users) {
+  let changed = false;
+  users.forEach(u => {
+    if (u.department === 'Production Manager') { u.department = 'Manager'; changed = true; }
+  });
+  return changed;
 }
 
 function saveUsers(users) {
@@ -197,8 +213,8 @@ function deleteUser(actor, data) {
 }
 
 // Lets any signed-in user change their own name/PIN, independent of
-// canAccessUserManagement — this is how a Viewer (or a Production Manager,
-// who can't edit their own PM-department account through the department
+// canAccessUserManagement — this is how a Viewer (or a Manager, who can't
+// edit their own Manager-department account through the department
 // permission rules above) updates their own credentials. Deliberately
 // ignores any `department` field so nobody can promote themselves.
 function updateSelf(actor, data) {
@@ -357,7 +373,7 @@ function doPost(e) {
   return json({ error: 'unknown action' });
 }
 
-// Only Admins and Production Managers can assign departments to a job. Any
+// Only Admins and Managers can assign departments to a job. Any
 // department not in JOB_TAGS is silently dropped rather than erroring, so a
 // stale/typo'd tag from the client can't corrupt stored state. Checklist
 // items are scoped per department — only departments actually being kept
