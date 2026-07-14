@@ -26,6 +26,7 @@ export function signOut() {
   pinEntry = '';
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-screen').style.display = 'flex';
+  document.getElementById('pin-error').textContent = '';
   renderDots();
 }
 
@@ -88,6 +89,7 @@ function submitPin(onLogin) {
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();
+      errorEl.textContent = '';
       document.getElementById('pin-screen').style.display = 'none';
       document.getElementById('app').style.display = 'flex';
       onLogin();
