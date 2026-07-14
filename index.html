@@ -61,7 +61,11 @@
           <span class="brand-sub">Production Calendar</span>
         </div>
       </div>
-      <div id="user-badge"></div>
+      <div class="header-user-cluster">
+        <span id="dept-badge" class="dept-badge" hidden></span>
+        <div id="user-badge"></div>
+        <button class="hdr-btn settings-btn" id="settings-btn" title="Settings">⚙</button>
+      </div>
     </div>
     <div class="toolbar-row">
       <div class="toolbar-left">
@@ -69,7 +73,7 @@
         <span id="last-updated"></span>
         <span id="header-count"></span>
       </div>
-      <button class="hdr-btn settings-btn" id="settings-btn" title="Settings">⚙</button>
+      <button class="hdr-btn" id="view-btn-assign" hidden>Jobs to Assign</button>
     </div>
     <div class="nav-row">
       <nav class="date-nav" aria-label="Date navigation">
@@ -82,7 +86,6 @@
         <button data-view="month">Month</button>
         <button data-view="week">Week</button>
         <button data-view="schedule">Schedule</button>
-        <button data-view="assign" id="view-btn-assign" hidden>Jobs to Assign</button>
       </div>
     </div>
   </header>

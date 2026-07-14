@@ -1,5 +1,5 @@
 import { fetchProductionJobs, updateSelf } from './api.js';
-import { initAuth, currentUser, currentPin, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
+import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
@@ -124,6 +124,10 @@ function saveMyAccount() {
 
 function boot() {
   document.getElementById('user-badge').textContent = currentUser() || '';
+  const deptBadge = document.getElementById('dept-badge');
+  const department = currentDepartment();
+  deptBadge.textContent = department || '';
+  deptBadge.hidden = !department || department === 'Viewer';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
   applyZoom();
@@ -131,6 +135,7 @@ function boot() {
   document.querySelectorAll('.view-switcher button').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
+  document.getElementById('view-btn-assign').addEventListener('click', () => switchView('assign'));
   document.getElementById('nav-prev').addEventListener('click', () => {
     refDate = VIEWS[activeView].step(refDate, -1);
     renderActiveView();

@@ -65,6 +65,26 @@ header.app-header {
   color: var(--color-brand-gold);
 }
 
+.header-user-cluster {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dept-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: var(--color-brand-gold);
+  color: var(--color-brand-navy);
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.dept-badge[hidden] { display: none; }
+
 #user-badge {
   font-size: 11px;
   background: rgba(255, 255, 255, 0.1);
@@ -417,7 +437,11 @@ main.view-area {
 @media (max-width: 640px) {
   .brand-row { padding-top: calc(10px + env(safe-area-inset-top)); }
   .brand-name { font-size: 11px; }
+  .brand-sub { display: none; }
   #last-updated { display: none; }
+  .header-user-cluster { gap: 5px; }
+  .dept-badge, #user-badge { font-size: 10px; padding: 2px 7px; }
+  .settings-btn { padding: 2px 8px; font-size: 16px; }
 
   .nav-row { padding: 6px 10px; gap: 6px; }
   .date-nav { gap: 4px; flex: 1 1 auto; }
