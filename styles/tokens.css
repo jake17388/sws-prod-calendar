@@ -1,7 +1,6 @@
 :root {
   /* SWS brand — sampled from the SummitWest Signs logo and map-pin assets */
   --color-brand-navy: #1b448b;
-  --color-brand-blue: #2447a3;
   --color-brand-gold: #f5a31c;
 
   /* Sun/Sat columns at 1/3 the width of a weekday — due dates are always
@@ -20,7 +19,6 @@
   --color-accent-dim: #1b448b;
   --color-danger: #e5484d;
   --color-success: #3aad6e;
-  --color-warning: #f5a31c;
 
   --color-header-bg: #1b448b;
   --color-header-text: #ffffff;
@@ -40,7 +38,6 @@
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
   --text-xl: 1.5rem;
-  --text-2xl: clamp(1.5rem, 1.3rem + 0.8vw, 2rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -50,7 +47,6 @@
   --space-6: 2rem;
 
   --radius-sm: 6px;
-  --radius-md: 10px;
   --radius-lg: 16px;
 
   --duration-fast: 120ms;

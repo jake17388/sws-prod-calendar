@@ -1,4 +1,4 @@
-import { weekDays, formatISO, isSameDay, DAY_NAMES, MONTH_NAMES } from '../dates.js';
+import { weekDays, formatISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { renderJobCard } from '../components/jobCard.js';
 
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
@@ -34,14 +34,6 @@ export function renderWeek(container, refDate, jobs) {
 
   container.innerHTML = '';
   container.appendChild(grid);
-}
-
-function groupByDueDate(jobs) {
-  const map = {};
-  jobs.forEach(job => {
-    (map[job.dueDate] = map[job.dueDate] || []).push(job);
-  });
-  return map;
 }
 
 export function weekRangeLabel(refDate) {

@@ -1,4 +1,4 @@
-import { parseISO, isSameDay, DAY_NAMES, MONTH_NAMES } from '../dates.js';
+import { parseISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { renderJobCard } from '../components/jobCard.js';
 
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
@@ -40,12 +40,4 @@ export function renderSchedule(container, refDate, jobs) {
   });
 
   container.appendChild(list);
-}
-
-function groupByDueDate(jobs) {
-  const map = {};
-  jobs.forEach(job => {
-    (map[job.dueDate] = map[job.dueDate] || []).push(job);
-  });
-  return map;
 }

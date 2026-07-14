@@ -16,7 +16,9 @@ function readAuth() {
 
 export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
+export const currentDepartment = () => auth ? auth.department : null;
 export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
+export const canManageUsers = () => !!(auth && auth.canManageUsers);
 
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
@@ -82,7 +84,7 @@ function submitPin(onLogin) {
         renderDots();
         return;
       }
-      auth = { token: res.token, user: res.user, isDueDateEditor: !!res.isDueDateEditor };
+      auth = { token: res.token, user: res.user, department: res.department, isDueDateEditor: !!res.isDueDateEditor, canManageUsers: !!res.canManageUsers };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

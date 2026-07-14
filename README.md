@@ -37,24 +37,41 @@ job's install start date — pulled from the `SWS - Install` and
 const INSTALL_CAL_ID = '...';
 const SUB_INSTALL_CAL_ID = '...';
 const CREW_NAMES = [...];         // canonical casing for installer names
-const DEFAULT_PINS = { '1234': 'Full Name', ... }; // real PINs live in Script Properties, not git — see setPins()
+const DEPARTMENTS = [...];        // full list of departments/roles — see "Users & roles" below
 ```
 
 ### Frontend — `js/config.js`
 ```js
 export const SCRIPT_URL = '...'; // Apps Script /exec URL — update after each deploy
-export const APP_VERSION = '...'; // bump on every deploy, checked against version.json
 ```
 
-Also bump the version string in `version.json` to match `APP_VERSION` on
-every deploy — that's what triggers the "update available" banner for
-installed PWAs.
+Bump the version string in `version.json` on every deploy — the app fetches
+it at boot and again on every tab-focus, and shows the "update available"
+banner when it doesn't match what the page loaded with.
 
-### Changing PINs
+### Users & roles
 
-Real PINs are never committed. Paste the new set into `DEFAULT_PINS` in the
-Apps Script editor, run `setPins()` once, then undo the edit locally so it
-never lands in git — same workflow as `sws-job-map`.
+Users live entirely in Script Properties as one `USERS` JSON array of
+`{ id, name, department, pin }` records — never in git. Each user has a
+department: `Admin`, `Production Manager`, `Viewer`, or one of the
+production departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`,
+`Letters`, `Routing`).
+
+- **Admin** — full access, including managing every other account
+- **Production Manager** — can add/edit/delete any account except Admin,
+  Production Manager, or Viewer accounts (and can't see Admin/Viewer
+  accounts in the list at all)
+- **Viewer** and the production departments — no user-management access
+
+Day to day, all of this is self-service: anyone in Admin or Production
+Manager sees a "User Management" button in Settings, where accounts (name,
+department, PIN) can be added, edited, or removed. There's no Apps Script
+editor step for routine changes.
+
+The one-time bootstrap is automatic: the first request after this feature's
+initial deploy finds no `USERS` property yet, migrates the old flat `PINS`
+map into it (Jake Banks becomes the sole Admin, everyone else comes in as a
+Viewer), and everything after that goes through the app.
 
 ### Squarecoil Scope of Work sync
 

@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="styles/calendar.css" />
 <link rel="stylesheet" href="styles/job-card.css" />
 <link rel="stylesheet" href="styles/job-detail.css" />
+<link rel="stylesheet" href="styles/user-mgmt.css" />
 </head>
 <body>
 
@@ -112,6 +113,7 @@
     </div>
   </div>
   <button class="settings-action" id="settings-check-btn">Check for updates</button>
+  <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
   <button class="settings-action danger" id="settings-signout-btn">Sign out</button>
 </div>
 
@@ -159,6 +161,28 @@
           <div id="due-date-edit-hint" class="notes-save-hint"></div>
         </div>
       </div>
+    </div>
+  </section>
+</div>
+
+<div id="user-mgmt-overlay">
+  <section class="user-mgmt-panel" aria-label="User management">
+    <div class="user-mgmt-header">
+      <h2>User Management</h2>
+      <button id="user-mgmt-close" class="job-detail-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="user-mgmt-body">
+      <div class="user-mgmt-add">
+        <input type="text" id="user-add-name" placeholder="Name" />
+        <select id="user-add-dept"></select>
+        <input type="text" id="user-add-pin" placeholder="PIN" inputmode="numeric" maxlength="4" />
+        <button id="user-add-btn" class="settings-action primary">Add user</button>
+        <div id="user-add-hint" class="notes-save-hint"></div>
+      </div>
+      <div class="user-mgmt-list-header">
+        <span>Name</span><span>Department</span><span>PIN</span><span></span>
+      </div>
+      <div id="user-mgmt-list" class="user-mgmt-list"></div>
     </div>
   </section>
 </div>

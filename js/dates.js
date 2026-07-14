@@ -46,3 +46,12 @@ export function weekDays(date) {
   const start = startOfWeek(date);
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
+
+/** @param {object[]} jobs @returns {Record<string, object[]>} jobs keyed by their dueDate */
+export function groupByDueDate(jobs) {
+  const map = {};
+  jobs.forEach(job => {
+    (map[job.dueDate] = map[job.dueDate] || []).push(job);
+  });
+  return map;
+}

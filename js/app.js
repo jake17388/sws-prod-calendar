@@ -1,7 +1,8 @@
 import { fetchProductionJobs } from './api.js';
-import { initAuth, currentUser, signOut } from './auth.js';
+import { initAuth, currentUser, canManageUsers, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
+import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
@@ -99,6 +100,7 @@ function closeSettings() {
 
 function boot() {
   document.getElementById('user-badge').textContent = currentUser() || '';
+  document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   applyZoom();
 
   document.querySelectorAll('.view-switcher button').forEach(btn => {
@@ -127,6 +129,8 @@ function boot() {
   document.getElementById('settings-backdrop').addEventListener('click', closeSettings);
   document.getElementById('settings-signout-btn').addEventListener('click', () => { closeSettings(); signOut(); });
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
+  document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
+  initUserManagement();
   document.getElementById('zoom-in-btn').addEventListener('click', () => {
     zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);
     applyZoom();

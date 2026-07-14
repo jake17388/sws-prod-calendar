@@ -2,7 +2,7 @@ import { SCRIPT_URL } from './config.js';
 import { getAuth, signOut } from './auth.js';
 
 /** @param {string} action @returns {Promise<any>} */
-export function scriptGet(action, extraParams = {}) {
+function scriptGet(action, extraParams = {}) {
   const auth = getAuth();
   const params = new URLSearchParams({ action, token: auth ? auth.token : '', ...extraParams });
   return fetch(`${SCRIPT_URL}?${params.toString()}`)
@@ -41,3 +41,15 @@ export const updateChecklist = (jobKey, checklist) =>
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>
   scriptPost({ action: 'updateDueDate', jobKey, dueDate });
+
+export const fetchUsers = () => scriptGet('getUsers').then(d => d.users || []);
+
+export const addUser = (name, department, pin) =>
+  scriptPost({ action: 'addUser', name, department, pin });
+
+/** @param {string} id @param {{name?: string, department?: string, pin?: string}} patch */
+export const updateUser = (id, patch) =>
+  scriptPost({ action: 'updateUser', id, ...patch });
+
+export const deleteUser = id =>
+  scriptPost({ action: 'deleteUser', id });

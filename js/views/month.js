@@ -1,4 +1,4 @@
-import { monthGridDays, formatISO, isSameDay, DAY_NAMES, MONTH_NAMES } from '../dates.js';
+import { monthGridDays, formatISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { renderJobChip } from '../components/jobCard.js';
 
 const MAX_VISIBLE_PER_CELL = 3;
@@ -57,14 +57,6 @@ export function renderMonth(container, refDate, jobs) {
   container.innerHTML = '';
   container.appendChild(header);
   container.appendChild(grid);
-}
-
-function groupByDueDate(jobs) {
-  const map = {};
-  jobs.forEach(job => {
-    (map[job.dueDate] = map[job.dueDate] || []).push(job);
-  });
-  return map;
 }
 
 export function monthRangeLabel(refDate) {

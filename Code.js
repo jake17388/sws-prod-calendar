@@ -19,38 +19,171 @@ const DUE_DATE_BUSINESS_DAYS = 2;
 // Add more names here and redeploy to grant the permission to others.
 const DUE_DATE_EDITORS = ['Jake Banks'];
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
-// PINs live in this project's own Script Properties, independent of
-// sws-job-map's. Real values are never committed — see setPins() below.
+// ── Users & roles ────────────────────────────────────────────────────────────
+// Each user is { id, name, department, pin } stored as one JSON array in the
+// USERS Script Property. `id` is the durable identity a session token binds
+// to — name and PIN are both editable from the in-app User Management
+// screen, so auth and attribution can't depend on either staying fixed.
+// Real names/PINs are never committed — see migrateLegacyPins() and
+// defaultUsers() below.
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000; // sessions last 30 days
 const MAX_PIN_FAILS = 10;                   // then logins lock for 10 minutes
 
-// Placeholder only. To go live: paste the real PIN → name map here, run
-// setPins() once from the Apps Script editor, then undo the edit so real
-// PINs never land in git (same workflow as sws-job-map).
-const DEFAULT_PINS = {
-  '0000': 'Replace Me',
-};
+const DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
-function setPins() {
-  PropertiesService.getScriptProperties()
-    .setProperty('PINS', JSON.stringify(DEFAULT_PINS));
+// Departments a Production Manager can't see in the user list at all.
+const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer'];
+// Departments a Production Manager can see but can't add/edit/delete —
+// separate from PM_HIDDEN_DEPARTMENTS because a PM *can* see fellow PMs,
+// just not manage them.
+const PM_BLOCKED_EDIT_DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer'];
+
+function canAccessUserManagement(department) {
+  return department === 'Admin' || department === 'Production Manager';
 }
 
-function addPin(pin, user) {
-  const pins = getPins();
-  pins[String(pin)] = user;
-  PropertiesService.getScriptProperties().setProperty('PINS', JSON.stringify(pins));
+// Whether a user in `actorDepartment` may add/edit/delete a user in
+// `targetDepartment`. Admins can manage everyone; Production Managers can
+// manage everyone except Admin/Production Manager/Viewer accounts; everyone
+// else has no user-management access at all.
+function canManageDepartment(actorDepartment, targetDepartment) {
+  if (actorDepartment === 'Admin') return true;
+  if (actorDepartment === 'Production Manager') return PM_BLOCKED_EDIT_DEPARTMENTS.indexOf(targetDepartment) === -1;
+  return false;
 }
 
-function getPins() {
+function isLastAdmin(users, userId) {
+  const admins = users.filter(u => u.department === 'Admin');
+  return admins.length === 1 && admins[0].id === userId;
+}
+
+function visibleUsersFor(actor) {
+  const users = getUsers();
+  if (actor.department === 'Admin') return users;
+  return users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
+}
+
+// Placeholder only, mirroring the old DEFAULT_PINS pattern — real users
+// come from migrateLegacyPins() (see getUsers()) or get added through the
+// in-app User Management screen. Never paste real PINs here.
+function defaultUsers() {
+  return [{ id: Utilities.getUuid(), name: 'Replace Me', department: 'Admin', pin: '0000' }];
+}
+
+// One-time upgrade path from the old flat PINS { pin: name } map: Jake
+// Banks becomes the sole Admin, everyone else comes in as a Viewer,
+// preserving whatever PINs are already live. Runs automatically the first
+// time getUsers() finds no USERS property yet, so no manual step is needed.
+function migrateLegacyPins() {
+  const raw = PropertiesService.getScriptProperties().getProperty('PINS');
+  if (!raw) return null;
+  let legacy;
+  try { legacy = JSON.parse(raw); } catch (err) { return null; }
+  return Object.keys(legacy).map(pin => ({
+    id: Utilities.getUuid(),
+    name: legacy[pin],
+    department: legacy[pin] === 'Jake Banks' ? 'Admin' : 'Viewer',
+    pin: String(pin),
+  }));
+}
+
+function getUsers() {
   const props = PropertiesService.getScriptProperties();
-  let pins = props.getProperty('PINS');
-  if (!pins) {
-    pins = JSON.stringify(DEFAULT_PINS);
-    props.setProperty('PINS', pins);
+  const raw = props.getProperty('USERS');
+  if (raw) return JSON.parse(raw);
+  const users = migrateLegacyPins() || defaultUsers();
+  props.setProperty('USERS', JSON.stringify(users));
+  return users;
+}
+
+function saveUsers(users) {
+  PropertiesService.getScriptProperties().setProperty('USERS', JSON.stringify(users));
+}
+
+function validPin(pin) {
+  return /^\d{4}$/.test(String(pin || ''));
+}
+
+function addUser(actor, data) {
+  if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  const name = String(data.name || '').trim();
+  const department = String(data.department || '');
+  const pin = String(data.pin || '');
+  if (!name) return { success: false, error: 'Name is required' };
+  if (DEPARTMENTS.indexOf(department) === -1) return { success: false, error: 'Invalid department' };
+  if (!canManageDepartment(actor.department, department)) return { success: false, error: 'forbidden' };
+  if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    if (users.some(u => u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
+    const newUser = { id: Utilities.getUuid(), name, department, pin };
+    users.push(newUser);
+    saveUsers(users);
+    return { success: true, user: newUser };
+  } finally {
+    lock.releaseLock();
   }
-  return JSON.parse(pins);
+}
+
+function updateUser(actor, data) {
+  if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    const idx = users.findIndex(u => u.id === data.id);
+    if (idx === -1) return { success: false, error: 'User not found' };
+    const target = users[idx];
+    if (!canManageDepartment(actor.department, target.department)) return { success: false, error: 'forbidden' };
+
+    const next = { ...target };
+    if (data.name !== undefined) {
+      const name = String(data.name).trim();
+      if (!name) return { success: false, error: 'Name is required' };
+      next.name = name;
+    }
+    if (data.department !== undefined) {
+      if (DEPARTMENTS.indexOf(data.department) === -1) return { success: false, error: 'Invalid department' };
+      if (!canManageDepartment(actor.department, data.department)) return { success: false, error: 'forbidden' };
+      if (target.department === 'Admin' && data.department !== 'Admin' && isLastAdmin(users, target.id)) {
+        return { success: false, error: "Can't remove the only Admin" };
+      }
+      next.department = data.department;
+    }
+    if (data.pin !== undefined) {
+      const pin = String(data.pin);
+      if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
+      if (users.some(u => u.id !== target.id && u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
+      next.pin = pin;
+    }
+    users[idx] = next;
+    saveUsers(users);
+    return { success: true, user: next };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteUser(actor, data) {
+  if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    const idx = users.findIndex(u => u.id === data.id);
+    if (idx === -1) return { success: false, error: 'User not found' };
+    const target = users[idx];
+    if (!canManageDepartment(actor.department, target.department)) return { success: false, error: 'forbidden' };
+    if (isLastAdmin(users, target.id)) return { success: false, error: "Can't delete the only Admin" };
+    users.splice(idx, 1);
+    saveUsers(users);
+    return { success: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getAuthSecret() {
@@ -68,13 +201,16 @@ function signPayload(payload) {
   return Utilities.base64EncodeWebSafe(sig);
 }
 
-function makeToken(user) {
+function makeToken(userId) {
   const payload = Utilities.base64EncodeWebSafe(
-    JSON.stringify({ u: user, e: Date.now() + TOKEN_TTL_MS }));
+    JSON.stringify({ uid: userId, e: Date.now() + TOKEN_TTL_MS }));
   return payload + '.' + signPayload(payload);
 }
 
-// Returns the user name for a valid unexpired token, else null
+// Returns the user id for a valid unexpired token, else null. The token only
+// carries an id, never a role — resolveActor() below looks up the current
+// name/department fresh on every request, so a permission change or rename
+// takes effect immediately without waiting for re-login.
 function verifyToken(token) {
   if (!token) return null;
   const parts = String(token).split('.');
@@ -84,20 +220,36 @@ function verifyToken(token) {
   try {
     data = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
   } catch (err) { return null; }
-  if (!data || !data.u || !data.e || data.e < Date.now()) return null;
-  return data.u;
+  if (!data || !data.uid || !data.e || data.e < Date.now()) return null;
+  return data.uid;
+}
+
+// Resolves a token to the current { id, name, department, pin } record, or
+// null if the token is invalid/expired/unsigned or the account behind it has
+// since been deleted.
+function resolveActor(token) {
+  const uid = verifyToken(token);
+  if (!uid) return null;
+  return getUsers().find(u => u.id === uid) || null;
 }
 
 function checkPin(pin) {
   const cache = CacheService.getScriptCache();
   const fails = +(cache.get('pin_fails') || 0);
   if (fails >= MAX_PIN_FAILS) return { ok: false, locked: true };
-  const user = getPins()[String(pin)];
+  const user = getUsers().find(u => u.pin === String(pin));
   if (!user) {
     cache.put('pin_fails', String(fails + 1), 600);
     return { ok: false };
   }
-  return { ok: true, user: user, token: makeToken(user), isDueDateEditor: DUE_DATE_EDITORS.indexOf(user) !== -1 };
+  return {
+    ok: true,
+    user: user.name,
+    department: user.department,
+    token: makeToken(user.id),
+    isDueDateEditor: DUE_DATE_EDITORS.indexOf(user.name) !== -1,
+    canManageUsers: canAccessUserManagement(user.department),
+  };
 }
 
 function json(obj) {
@@ -250,8 +402,14 @@ function doGet(e) {
   const action = e.parameter.action;
 
   if (action === 'getProductionJobs') {
-    if (!verifyToken(e.parameter.token)) return json(UNAUTHORIZED);
+    if (!resolveActor(e.parameter.token)) return json(UNAUTHORIZED);
     return json(getProductionJobs(e));
+  }
+  if (action === 'getUsers') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canAccessUserManagement(actor.department)) return json({ error: 'forbidden' });
+    return json({ users: visibleUsersFor(actor) });
   }
 
   // The app itself is hosted on GitHub Pages, not here
@@ -266,8 +424,9 @@ function doPost(e) {
     return json(checkPin(data.pin));
   }
 
-  const user = verifyToken(data.token);
-  if (!user) return json(UNAUTHORIZED);
+  const actor = resolveActor(data.token);
+  if (!actor) return json(UNAUTHORIZED);
+  const user = actor.name;
 
   if (data.action === 'toggleComplete') {
     return json(setTracking(data.jobKey, { completed: !!data.completed }, user));
@@ -282,6 +441,9 @@ function doPost(e) {
     if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
     return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
   }
+  if (data.action === 'addUser') return json(addUser(actor, data));
+  if (data.action === 'updateUser') return json(updateUser(actor, data));
+  if (data.action === 'deleteUser') return json(deleteUser(actor, data));
   return json({ error: 'unknown action' });
 }
 
