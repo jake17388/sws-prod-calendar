@@ -35,9 +35,6 @@ export const toggleComplete = (jobKey, completed) =>
 export const updateNotes = (jobKey, notes) =>
   scriptPost({ action: 'updateNotes', jobKey, notes });
 
-export const updateChecklist = (jobKey, checklist) =>
-  scriptPost({ action: 'updateChecklist', jobKey, checklist });
-
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>
   scriptPost({ action: 'updateDueDate', jobKey, dueDate });
@@ -57,3 +54,7 @@ export const deleteUser = id =>
 /** @param {{name?: string, pin?: string}} patch — updates the signed-in user's own name/PIN */
 export const updateSelf = patch =>
   scriptPost({ action: 'updateSelf', ...patch });
+
+/** @param {string} jobKey @param {string[]} departments @param {Record<string, {id: string, text: string, done: boolean}[]>} departmentChecklists */
+export const updateJobDepartments = (jobKey, departments, departmentChecklists) =>
+  scriptPost({ action: 'updateJobDepartments', jobKey, departments, departmentChecklists });

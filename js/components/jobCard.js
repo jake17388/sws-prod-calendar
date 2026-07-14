@@ -2,9 +2,8 @@ import { toggleComplete } from '../api.js';
 import { fmtMD } from '../dates.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
-import { progressBarHtml } from './progressBar.js';
 import { openJobDetail } from './jobDetail.js';
-import { canEditJobs } from '../auth.js';
+import { canEditJobs, canSeeDepartmentBadges } from '../auth.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -15,6 +14,16 @@ function flagBadges(job) {
   if (job.multiDay) badges.push('<span class="job-card-badge">multi-day</span>');
   if (job.multiJobEvent) badges.push('<span class="job-card-badge flag">multiple job #s</span>');
   return badges.join('');
+}
+
+// Top-right corner badge showing which department(s) have the job, or
+// "Ship-In" for jobs made elsewhere and just shipped in. Only shown to
+// roles that need the overview — production-department accounts only ever
+// see their own jobs anyway, so the badge would just repeat what they know.
+function departmentBadgeHtml(job) {
+  if (!canSeeDepartmentBadges() || !job.departments || !job.departments.length) return '';
+  const isShipInOnly = job.departments.length === 1 && job.departments[0] === 'Ship-In';
+  return `<span class="job-card-dept-badge ${isShipInOnly ? 'ship-in' : ''}">${escapeHtml(job.departments.join(', '))}</span>`;
 }
 
 function handleCheckboxToggle(job) {
@@ -29,8 +38,8 @@ function handleCheckboxToggle(job) {
     });
 }
 
-/** Full card used in schedule/week day lists. @param {object} job @param {boolean} showCrew @returns {HTMLElement} */
-export function renderJobCard(job, showCrew = true) {
+/** Full card used in schedule/week day lists. @param {object} job @param {boolean} showCrew @param {(jobKey: string) => void} onOpen @returns {HTMLElement} */
+export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
@@ -43,8 +52,8 @@ export function renderJobCard(job, showCrew = true) {
         <span>due ${fmtMD(job.dueDate)}</span>
         ${flagBadges(job)}
       </div>
-      ${progressBarHtml(job.progressPct)}
     </div>
+    ${departmentBadgeHtml(job)}
   `;
   if (canEditJobs()) {
     el.querySelector('.job-card-checkbox').addEventListener('click', e => {
@@ -52,7 +61,7 @@ export function renderJobCard(job, showCrew = true) {
       handleCheckboxToggle(job, e.currentTarget);
     });
   }
-  el.addEventListener('click', () => openJobDetail(job.jobKey));
+  el.addEventListener('click', () => onOpen(job.jobKey));
   return el;
 }
 

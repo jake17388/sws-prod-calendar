@@ -1,17 +1,20 @@
 import { fetchProductionJobs, updateSelf } from './api.js';
-import { initAuth, currentUser, currentPin, canManageUsers, updateAuthProfile, signOut } from './auth.js';
+import { initAuth, currentUser, currentPin, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
+import { closeDepartmentAssign } from './components/departmentAssign.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
+import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign.js';
 import { addDays } from './dates.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
   week: { render: renderWeek, label: weekRangeLabel, step: (d, dir) => addDays(d, dir * 7) },
   schedule: { render: renderSchedule, label: () => 'Schedule', step: (d, dir) => addDays(d, dir * 30) },
+  assign: { render: renderJobsToAssign, label: jobsToAssignRangeLabel, step: (d, dir) => addDays(d, dir * 30) },
 };
 
 let activeView = 'week';
@@ -122,6 +125,7 @@ function saveMyAccount() {
 function boot() {
   document.getElementById('user-badge').textContent = currentUser() || '';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
+  document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
   applyZoom();
 
   document.querySelectorAll('.view-switcher button').forEach(btn => {
@@ -143,6 +147,10 @@ function boot() {
   document.getElementById('job-detail-close').addEventListener('click', closeJobDetail);
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
+  });
+  document.getElementById('dept-assign-close').addEventListener('click', closeDepartmentAssign);
+  document.getElementById('dept-assign-overlay').addEventListener('click', e => {
+    if (e.target.id === 'dept-assign-overlay') closeDepartmentAssign();
   });
 
   document.getElementById('settings-btn').addEventListener('click', openSettings);

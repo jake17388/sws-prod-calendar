@@ -1,18 +1,9 @@
-import { toggleComplete, updateNotes, updateChecklist, updateDueDate } from '../api.js';
+import { toggleComplete, updateNotes, updateDueDate } from '../api.js';
 import { findJob, patchJob } from '../state.js';
-import { progressBarHtml } from './progressBar.js';
 import { fmtMD } from '../dates.js';
 import { canEditDueDates, canEditJobs } from '../auth.js';
 
 let notesSaveTimer = null;
-
-// Matches the server-side calc in Code.js so the bar shown here never
-// disagrees with what a refetch would compute.
-function computeProgress(checklist) {
-  if (!checklist.length) return null;
-  const done = checklist.filter(i => i.done).length;
-  return Math.round((done / checklist.length) * 100);
-}
 
 const abbreviateName = name => {
   if (!name) return '';
@@ -83,58 +74,6 @@ function renderDueDateEditor(job) {
   };
 }
 
-function saveChecklist(jobKey, checklist) {
-  const progressPct = computeProgress(checklist);
-  patchJob(jobKey, { checklist, progressPct });
-  updateChecklist(jobKey, checklist).catch(() => {});
-  document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(progressPct);
-}
-
-function updateChecklistItem(job, itemId, patch) {
-  const next = job.checklist.map(i => (i.id === itemId ? { ...i, ...patch } : i));
-  job.checklist = next;
-  saveChecklist(job.jobKey, next);
-  renderChecklist(job);
-}
-
-function renderPlainRow(row, job, item, canEdit) {
-  row.innerHTML = `
-    <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canEdit ? '' : 'disabled'}></button>
-    <input type="text" value="${item.text.replace(/"/g, '&quot;')}" ${canEdit ? '' : 'readonly'} />
-    ${canEdit ? '<button class="checklist-remove" aria-label="Remove item">&times;</button>' : ''}
-  `;
-  if (!canEdit) return;
-  row.querySelector('.checklist-check').addEventListener('click', () => {
-    updateChecklistItem(job, item.id, { done: !item.done });
-  });
-}
-
-function renderChecklist(job) {
-  const canEdit = canEditJobs();
-  const list = document.getElementById('checklist-items');
-  list.innerHTML = '';
-  job.checklist.forEach(item => {
-    const row = document.createElement('div');
-    row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
-    renderPlainRow(row, job, item, canEdit);
-
-    if (canEdit) {
-      row.querySelector('input[type="text"]').addEventListener('change', e => {
-        const next = job.checklist.map(i => (i.id === item.id ? { ...i, text: e.target.value } : i));
-        job.checklist = next;
-        saveChecklist(job.jobKey, next);
-      });
-      row.querySelector('.checklist-remove').addEventListener('click', () => {
-        const next = job.checklist.filter(i => i.id !== item.id);
-        job.checklist = next;
-        saveChecklist(job.jobKey, next);
-        renderChecklist(job);
-      });
-    }
-    list.appendChild(row);
-  });
-}
-
 /** @param {string} jobKey */
 export function openJobDetail(jobKey) {
   const job = findJob(jobKey);
@@ -182,28 +121,7 @@ export function openJobDetail(jobKey) {
     }, 600);
   } : null;
 
-  document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
-  renderChecklist(job);
-
-  document.querySelector('.checklist-add').hidden = !canEdit;
-  if (canEdit) {
-    const addInput = document.getElementById('checklist-add-input');
-    addInput.value = '';
-    document.getElementById('checklist-add-btn').onclick = () => addChecklistItem(job, addInput);
-    addInput.onkeydown = e => { if (e.key === 'Enter') addChecklistItem(job, addInput); };
-  }
-
   document.getElementById('job-detail-overlay').classList.add('open');
-}
-
-function addChecklistItem(job, input) {
-  const text = input.value.trim();
-  if (!text) return;
-  const next = [...job.checklist, { id: `${Date.now()}`, text, done: false }];
-  job.checklist = next;
-  input.value = '';
-  saveChecklist(job.jobKey, next);
-  renderChecklist(job);
 }
 
 export function closeJobDetail() {

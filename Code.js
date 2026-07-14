@@ -31,6 +31,16 @@ const MAX_PIN_FAILS = 10;                   // then logins lock for 10 minutes
 
 const DEPARTMENTS = ['Admin', 'Production Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
+// Job-assignable tags — distinct from the user DEPARTMENTS list above.
+// Ship-In isn't a role anyone logs in as; it's a job-only tag meaning "made
+// elsewhere, just shipped in to us" rather than produced in one of our shops.
+const JOB_DEPARTMENTS = ['Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
+const JOB_TAGS = JOB_DEPARTMENTS.concat(['Ship-In']);
+
+function canAssignDepartments(department) {
+  return department === 'Admin' || department === 'Production Manager';
+}
+
 // Departments a Production Manager can't see in the user list at all.
 const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer'];
 // Departments a Production Manager can see but can't add/edit/delete —
@@ -291,21 +301,14 @@ function json(obj) {
 
 const UNAUTHORIZED = { error: 'unauthorized' };
 
-// Percentage of a job's checklist that's marked done, or null when the
-// checklist is empty.
-function computeProgressPct(checklist) {
-  if (!checklist.length) return null;
-  const done = checklist.filter(i => i.done).length;
-  return Math.round((done / checklist.length) * 100);
-}
-
 // ── Routing ──────────────────────────────────────────────────────────────────
 function doGet(e) {
   const action = e.parameter.action;
 
   if (action === 'getProductionJobs') {
-    if (!resolveActor(e.parameter.token)) return json(UNAUTHORIZED);
-    return json(getProductionJobs(e));
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json(getProductionJobs(e, actor));
   }
   if (action === 'getUsers') {
     const actor = resolveActor(e.parameter.token);
@@ -331,7 +334,7 @@ function doPost(e) {
   const user = actor.name;
 
   // Viewers are read-only against job state — they can look but not touch.
-  const JOB_EDIT_ACTIONS = ['toggleComplete', 'updateNotes', 'updateChecklist'];
+  const JOB_EDIT_ACTIONS = ['toggleComplete', 'updateNotes'];
   if (JOB_EDIT_ACTIONS.indexOf(data.action) !== -1 && actor.department === 'Viewer') {
     return json({ error: 'forbidden' });
   }
@@ -342,18 +345,41 @@ function doPost(e) {
   if (data.action === 'updateNotes') {
     return json(setTracking(data.jobKey, { notes: String(data.notes || '') }, user));
   }
-  if (data.action === 'updateChecklist') {
-    return json(setTracking(data.jobKey, { checklist: data.checklist || [] }, user));
-  }
   if (data.action === 'updateDueDate') {
     if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
     return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
   }
+  if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
   if (data.action === 'addUser') return json(addUser(actor, data));
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
   if (data.action === 'updateSelf') return json(updateSelf(actor, data));
   return json({ error: 'unknown action' });
+}
+
+// Only Admins and Production Managers can assign departments to a job. Any
+// department not in JOB_TAGS is silently dropped rather than erroring, so a
+// stale/typo'd tag from the client can't corrupt stored state. Checklist
+// items are scoped per department — only departments actually being kept
+// get their checklist carried over.
+function updateJobDepartments(actor, data) {
+  if (!canAssignDepartments(actor.department)) return { success: false, error: 'forbidden' };
+  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+
+  const departments = Array.isArray(data.departments)
+    ? data.departments.filter(d => JOB_TAGS.indexOf(d) !== -1)
+    : [];
+
+  const departmentChecklists = {};
+  const rawChecklists = (data.departmentChecklists && typeof data.departmentChecklists === 'object') ? data.departmentChecklists : {};
+  departments.forEach(dept => {
+    const items = Array.isArray(rawChecklists[dept]) ? rawChecklists[dept] : [];
+    departmentChecklists[dept] = items
+      .map(i => ({ id: String((i && i.id) || Utilities.getUuid()), text: String((i && i.text) || '').trim(), done: !!(i && i.done) }))
+      .filter(i => i.text);
+  });
+
+  return setTracking(data.jobKey, { departments, departmentChecklists }, actor.name);
 }
 
 // ── Calendar jobs ────────────────────────────────────────────────────────────
@@ -373,7 +399,7 @@ function getCalendarJobs(start, end) {
   return groupIntoJobs(events);
 }
 
-function getProductionJobs(e) {
+function getProductionJobs(e, actor) {
   const params = (e && e.parameter) || {};
   const defaults = defaultCalendarWindow();
   let start, end;
@@ -390,14 +416,13 @@ function getProductionJobs(e) {
     end = defaults.end;
   }
 
-  const jobs = getCalendarJobs(start, end);
+  let jobs = getCalendarJobs(start, end);
   const tracking = getAllTracking();
 
   jobs.forEach(job => {
     const t = tracking[job.jobKey] || {};
     job.completed = !!t.completed;
     job.notes = t.notes || '';
-    job.checklist = t.checklist || [];
     job.completedAt = t.completedAt || '';
     job.completedBy = t.completedBy || '';
     // A manually-set due date wins over the calculated one, for one-off
@@ -405,8 +430,16 @@ function getProductionJobs(e) {
     job.autoDueDate = job.dueDate;
     job.dueOverride = t.dueOverride || '';
     if (job.dueOverride) job.dueDate = job.dueOverride;
-    job.progressPct = computeProgressPct(job.checklist);
+    job.departments = t.departments || [];
+    job.departmentChecklists = t.departmentChecklists || {};
   });
+
+  // Production-department users (Manufacturing, Graphics, etc.) only see
+  // jobs assigned to their own department — everyone else (Admin, Production
+  // Manager, Viewer) sees the full list, including unassigned jobs.
+  if (actor && JOB_DEPARTMENTS.indexOf(actor.department) !== -1) {
+    jobs = jobs.filter(job => job.departments.indexOf(actor.department) !== -1);
+  }
 
   return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end) };
 }
@@ -552,7 +585,7 @@ function getTrackingSheet() {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
     const sheet = ss.getActiveSheet();
-    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override']);
+    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json']);
     // Plain-text format on the date-shaped columns so Sheets doesn't
     // auto-coerce "2026-08-15" into an actual Date cell.
     sheet.getRange('G:I').setNumberFormat('@');
@@ -565,14 +598,19 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy, dueOverride] = data[i];
+    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson] = data[i];
     if (!jobKey) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
+    let departments = [];
+    try { departments = departmentsJson ? JSON.parse(departmentsJson) : []; } catch (err) { departments = []; }
+    let departmentChecklists = {};
+    try { departmentChecklists = departmentChecklistsJson ? JSON.parse(departmentChecklistsJson) : {}; } catch (err) { departmentChecklists = {}; }
     tracking[String(jobKey)] = {
       completed: !!completed, notes: notes || '', checklist,
       completedAt: completedAt || '', completedBy: completedBy || '',
       dueOverride: normalizeDateCell(dueOverride),
+      departments, departmentChecklists,
     };
   }
   return tracking;
@@ -590,7 +628,7 @@ function setTracking(jobKey, patch, user) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '', dueOverride: '' }
+      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {} }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: data[rowIndex - 1][2] || '',
@@ -598,6 +636,8 @@ function setTracking(jobKey, patch, user) {
           completedAt: data[rowIndex - 1][6] || '',
           completedBy: data[rowIndex - 1][7] || '',
           dueOverride: normalizeDateCell(data[rowIndex - 1][8]),
+          departments: (() => { try { return JSON.parse(data[rowIndex - 1][9] || '[]'); } catch (e) { return []; } })(),
+          departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
         };
     const next = { ...current, ...patch };
     // completedAt/completedBy only change on an actual complete/un-complete
@@ -607,13 +647,13 @@ function setTracking(jobKey, patch, user) {
       next.completedAt = patch.completed ? new Date().toISOString() : '';
       next.completedBy = patch.completed ? user : '';
     }
-    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy, next.dueOverride];
+    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists)];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {
       sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
     }
-    return { success: true, ...next, progressPct: computeProgressPct(next.checklist) };
+    return { success: true, ...next };
   } catch (err) {
     return { success: false, error: err.message };
   } finally {

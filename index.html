@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="styles/job-card.css" />
 <link rel="stylesheet" href="styles/job-detail.css" />
 <link rel="stylesheet" href="styles/user-mgmt.css" />
+<link rel="stylesheet" href="styles/dept-assign.css" />
 </head>
 <body>
 
@@ -81,6 +82,7 @@
         <button data-view="month">Month</button>
         <button data-view="week">Week</button>
         <button data-view="schedule">Schedule</button>
+        <button data-view="assign" id="view-btn-assign" hidden>Jobs to Assign</button>
       </div>
     </div>
   </header>
@@ -148,16 +150,6 @@
         <div id="notes-save-hint" class="notes-save-hint"></div>
       </div>
 
-      <div class="job-detail-section">
-        <h3>Checklist</h3>
-        <div class="progress-slot"></div>
-        <div id="checklist-items" class="checklist"></div>
-        <div class="checklist-add">
-          <input type="text" id="checklist-add-input" placeholder="Add item…" />
-          <button id="checklist-add-btn">Add</button>
-        </div>
-      </div>
-
       <div id="due-date-editor" class="job-detail-section" hidden>
         <button class="settings-action" id="due-date-edit-btn">Edit due date</button>
         <div id="due-date-edit-form" class="due-date-edit-form" hidden>
@@ -192,6 +184,18 @@
         <span>Name</span><span>Department</span><span>PIN</span><span></span>
       </div>
       <div id="user-mgmt-list" class="user-mgmt-list"></div>
+    </div>
+  </section>
+</div>
+
+<div id="dept-assign-overlay">
+  <section class="job-detail-panel" aria-label="Assign departments">
+    <div class="job-detail-header">
+      <div><h2 id="dept-assign-title"></h2></div>
+      <button id="dept-assign-close" class="job-detail-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="job-detail-body">
+      <div id="dept-assign-list" class="dept-assign-list"></div>
     </div>
   </section>
 </div>

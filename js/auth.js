@@ -22,6 +22,12 @@ export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
 export const canManageUsers = () => !!(auth && auth.canManageUsers);
 // Viewers can look but not touch — everyone else can edit job state.
 export const canEditJobs = () => !auth || auth.department !== 'Viewer';
+// Only Admin/Production Manager can assign departments to a job.
+export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Production Manager');
+// Department badges are for people who need the overview — production
+// department accounts already only see their own jobs, so the badge would
+// be redundant for them.
+export const canSeeDepartmentBadges = () => !!auth && (auth.department === 'Admin' || auth.department === 'Production Manager' || auth.department === 'Viewer');
 
 /** Merges a patch (e.g. after a "My Account" save) into the cached session and persists it. */
 export function updateAuthProfile(patch) {
