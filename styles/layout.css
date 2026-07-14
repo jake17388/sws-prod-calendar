@@ -441,6 +441,12 @@ main.view-area {
   #last-updated { display: none; }
   .header-user-cluster { gap: 5px; }
   .dept-badge, #user-badge { font-size: 10px; padding: 2px 7px; }
+  .dept-badge {
+    white-space: normal;
+    max-width: 62px;
+    text-align: center;
+    line-height: 1.2;
+  }
   .settings-btn { padding: 2px 8px; font-size: 16px; }
 
   .nav-row { padding: 6px 10px; gap: 6px; }
