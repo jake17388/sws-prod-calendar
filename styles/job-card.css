@@ -68,14 +68,14 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  padding-right: 72px;
+  padding-right: 118px;
 }
 
 .job-card-dept-badge {
   position: absolute;
   top: var(--space-2);
   right: var(--space-2);
-  max-width: 64px;
+  max-width: 110px;
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--color-accent);

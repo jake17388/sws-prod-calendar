@@ -23,7 +23,8 @@ function flagBadges(job) {
 function departmentBadgeHtml(job) {
   if (!canSeeDepartmentBadges() || !job.departments || !job.departments.length) return '';
   const isShipInOnly = job.departments.length === 1 && job.departments[0] === 'Ship-In';
-  return `<span class="job-card-dept-badge ${isShipInOnly ? 'ship-in' : ''}">${escapeHtml(job.departments.join(', '))}</span>`;
+  const label = job.departments.join(', ');
+  return `<span class="job-card-dept-badge ${isShipInOnly ? 'ship-in' : ''}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
 function handleCheckboxToggle(job) {
