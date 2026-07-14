@@ -4,6 +4,7 @@ import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { progressBarHtml } from './progressBar.js';
 import { openJobDetail } from './jobDetail.js';
+import { canEditJobs } from '../auth.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -34,7 +35,7 @@ export function renderJobCard(job, showCrew = true) {
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
   el.innerHTML = `
-    <button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>
+    <button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete" ${canEditJobs() ? '' : 'disabled'}></button>
     <div class="job-card-body">
       <div class="job-card-title">${job.jobNum ? `${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">
@@ -45,10 +46,12 @@ export function renderJobCard(job, showCrew = true) {
       ${progressBarHtml(job.progressPct)}
     </div>
   `;
-  el.querySelector('.job-card-checkbox').addEventListener('click', e => {
-    e.stopPropagation();
-    handleCheckboxToggle(job, e.currentTarget);
-  });
+  if (canEditJobs()) {
+    el.querySelector('.job-card-checkbox').addEventListener('click', e => {
+      e.stopPropagation();
+      handleCheckboxToggle(job, e.currentTarget);
+    });
+  }
   el.addEventListener('click', () => openJobDetail(job.jobKey));
   return el;
 }
@@ -60,16 +63,18 @@ export function renderJobChip(job) {
   el.className = `job-chip ${state} ${job.completed ? 'completed' : ''}`.trim();
   el.title = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
   el.innerHTML = `
-    <span class="job-chip-check"></span>
+    <span class="job-chip-check ${canEditJobs() ? '' : 'readonly'}"></span>
     <span class="job-chip-text">
       <span class="job-chip-num">${escapeHtml(job.jobNum || job.title)}</span>
       <span class="job-chip-title">${job.jobNum ? ' ' + escapeHtml(job.title) : ''}</span>
     </span>
   `;
-  el.querySelector('.job-chip-check').addEventListener('click', e => {
-    e.stopPropagation();
-    handleCheckboxToggle(job);
-  });
+  if (canEditJobs()) {
+    el.querySelector('.job-chip-check').addEventListener('click', e => {
+      e.stopPropagation();
+      handleCheckboxToggle(job);
+    });
+  }
   el.addEventListener('click', () => openJobDetail(job.jobKey));
   return el;
 }

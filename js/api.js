@@ -53,3 +53,7 @@ export const updateUser = (id, patch) =>
 
 export const deleteUser = id =>
   scriptPost({ action: 'deleteUser', id });
+
+/** @param {{name?: string, pin?: string}} patch — updates the signed-in user's own name/PIN */
+export const updateSelf = patch =>
+  scriptPost({ action: 'updateSelf', ...patch });

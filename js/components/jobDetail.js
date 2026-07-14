@@ -2,7 +2,7 @@ import { toggleComplete, updateNotes, updateChecklist, updateDueDate } from '../
 import { findJob, patchJob } from '../state.js';
 import { progressBarHtml } from './progressBar.js';
 import { fmtMD } from '../dates.js';
-import { canEditDueDates } from '../auth.js';
+import { canEditDueDates, canEditJobs } from '../auth.js';
 
 let notesSaveTimer = null;
 
@@ -97,36 +97,40 @@ function updateChecklistItem(job, itemId, patch) {
   renderChecklist(job);
 }
 
-function renderPlainRow(row, job, item) {
+function renderPlainRow(row, job, item, canEdit) {
   row.innerHTML = `
-    <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done"></button>
-    <input type="text" value="${item.text.replace(/"/g, '&quot;')}" />
-    <button class="checklist-remove" aria-label="Remove item">&times;</button>
+    <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canEdit ? '' : 'disabled'}></button>
+    <input type="text" value="${item.text.replace(/"/g, '&quot;')}" ${canEdit ? '' : 'readonly'} />
+    ${canEdit ? '<button class="checklist-remove" aria-label="Remove item">&times;</button>' : ''}
   `;
+  if (!canEdit) return;
   row.querySelector('.checklist-check').addEventListener('click', () => {
     updateChecklistItem(job, item.id, { done: !item.done });
   });
 }
 
 function renderChecklist(job) {
+  const canEdit = canEditJobs();
   const list = document.getElementById('checklist-items');
   list.innerHTML = '';
   job.checklist.forEach(item => {
     const row = document.createElement('div');
     row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
-    renderPlainRow(row, job, item);
+    renderPlainRow(row, job, item, canEdit);
 
-    row.querySelector('input[type="text"]').addEventListener('change', e => {
-      const next = job.checklist.map(i => (i.id === item.id ? { ...i, text: e.target.value } : i));
-      job.checklist = next;
-      saveChecklist(job.jobKey, next);
-    });
-    row.querySelector('.checklist-remove').addEventListener('click', () => {
-      const next = job.checklist.filter(i => i.id !== item.id);
-      job.checklist = next;
-      saveChecklist(job.jobKey, next);
-      renderChecklist(job);
-    });
+    if (canEdit) {
+      row.querySelector('input[type="text"]').addEventListener('change', e => {
+        const next = job.checklist.map(i => (i.id === item.id ? { ...i, text: e.target.value } : i));
+        job.checklist = next;
+        saveChecklist(job.jobKey, next);
+      });
+      row.querySelector('.checklist-remove').addEventListener('click', () => {
+        const next = job.checklist.filter(i => i.id !== item.id);
+        job.checklist = next;
+        saveChecklist(job.jobKey, next);
+        renderChecklist(job);
+      });
+    }
     list.appendChild(row);
   });
 }
@@ -140,10 +144,13 @@ export function openJobDetail(jobKey) {
   updateMetaText(job);
   renderDueDateEditor(job);
 
+  const canEdit = canEditJobs();
+
   const completeBtn = document.getElementById('job-detail-complete');
   completeBtn.checked = job.completed;
+  completeBtn.disabled = !canEdit;
   renderCompletedInfo(job);
-  completeBtn.onchange = () => {
+  completeBtn.onchange = canEdit ? () => {
     const nextCompleted = completeBtn.checked;
     patchJob(job.jobKey, { completed: nextCompleted });
     toggleComplete(job.jobKey, nextCompleted)
@@ -158,12 +165,13 @@ export function openJobDetail(jobKey) {
         patchJob(job.jobKey, { completed: !nextCompleted });
         renderCompletedInfo(job);
       });
-  };
+  } : null;
 
   const notesEl = document.getElementById('job-detail-notes');
   const notesHint = document.getElementById('notes-save-hint');
   notesEl.value = job.notes || '';
-  notesEl.oninput = () => {
+  notesEl.readOnly = !canEdit;
+  notesEl.oninput = canEdit ? () => {
     notesHint.textContent = 'Saving…';
     clearTimeout(notesSaveTimer);
     notesSaveTimer = setTimeout(() => {
@@ -172,15 +180,18 @@ export function openJobDetail(jobKey) {
         .then(() => { notesHint.textContent = 'Saved'; setTimeout(() => (notesHint.textContent = ''), 1500); })
         .catch(() => { notesHint.textContent = 'Failed to save — try again'; });
     }, 600);
-  };
+  } : null;
 
   document.querySelector('.job-detail-panel .progress-slot').innerHTML = progressBarHtml(job.progressPct);
   renderChecklist(job);
 
-  const addInput = document.getElementById('checklist-add-input');
-  addInput.value = '';
-  document.getElementById('checklist-add-btn').onclick = () => addChecklistItem(job, addInput);
-  addInput.onkeydown = e => { if (e.key === 'Enter') addChecklistItem(job, addInput); };
+  document.querySelector('.checklist-add').hidden = !canEdit;
+  if (canEdit) {
+    const addInput = document.getElementById('checklist-add-input');
+    addInput.value = '';
+    document.getElementById('checklist-add-btn').onclick = () => addChecklistItem(job, addInput);
+    addInput.onkeydown = e => { if (e.key === 'Enter') addChecklistItem(job, addInput); };
+  }
 
   document.getElementById('job-detail-overlay').classList.add('open');
 }

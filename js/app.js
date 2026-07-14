@@ -1,5 +1,5 @@
-import { fetchProductionJobs } from './api.js';
-import { initAuth, currentUser, canManageUsers, signOut } from './auth.js';
+import { fetchProductionJobs, updateSelf } from './api.js';
+import { initAuth, currentUser, currentPin, canManageUsers, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
@@ -92,10 +92,31 @@ function applyZoom() {
 function openSettings() {
   document.getElementById('settings-backdrop').classList.add('show');
   document.getElementById('settings-panel').classList.add('show');
+  document.getElementById('my-account-name').value = currentUser() || '';
+  document.getElementById('my-account-pin').value = currentPin() || '';
+  document.getElementById('my-account-hint').textContent = '';
 }
 function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('show');
   document.getElementById('settings-panel').classList.remove('show');
+}
+
+function saveMyAccount() {
+  const hint = document.getElementById('my-account-hint');
+  const name = document.getElementById('my-account-name').value.trim();
+  const pin = document.getElementById('my-account-pin').value.trim();
+  if (!name) { hint.textContent = 'Name is required'; return; }
+  if (!/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
+  hint.textContent = 'Saving…';
+  updateSelf({ name, pin })
+    .then(res => {
+      if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
+      updateAuthProfile({ user: res.user.name, pin: res.user.pin });
+      document.getElementById('user-badge').textContent = res.user.name;
+      hint.textContent = 'Saved';
+      setTimeout(() => { hint.textContent = ''; }, 1500);
+    })
+    .catch(() => { hint.textContent = 'Network error — try again'; });
 }
 
 function boot() {
@@ -130,6 +151,7 @@ function boot() {
   document.getElementById('settings-signout-btn').addEventListener('click', () => { closeSettings(); signOut(); });
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
+  document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
   initUserManagement();
   document.getElementById('zoom-in-btn').addEventListener('click', () => {
     zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);

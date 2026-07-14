@@ -16,9 +16,19 @@ function readAuth() {
 
 export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
+export const currentPin = () => auth ? auth.pin : null;
 export const currentDepartment = () => auth ? auth.department : null;
 export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
 export const canManageUsers = () => !!(auth && auth.canManageUsers);
+// Viewers can look but not touch — everyone else can edit job state.
+export const canEditJobs = () => !auth || auth.department !== 'Viewer';
+
+/** Merges a patch (e.g. after a "My Account" save) into the cached session and persists it. */
+export function updateAuthProfile(patch) {
+  if (!auth) return;
+  auth = { ...auth, ...patch };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+}
 
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
@@ -85,7 +95,7 @@ function submitPin(onLogin) {
         renderDots();
         return;
       }
-      auth = { token: res.token, user: res.user, department: res.department, isDueDateEditor: !!res.isDueDateEditor, canManageUsers: !!res.canManageUsers };
+      auth = { token: res.token, user: res.user, department: res.department, isDueDateEditor: !!res.isDueDateEditor, canManageUsers: !!res.canManageUsers, pin: pinEntry };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

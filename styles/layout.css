@@ -304,6 +304,25 @@ main.view-area {
 .settings-action.danger { color: var(--color-danger); border-color: #f5d0d0; }
 .settings-action.primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 
+.my-account-row { border-bottom: none; padding-bottom: 0; font-weight: 600; color: var(--color-text); }
+.my-account-fields {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.my-account-fields input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-sm);
+}
+#my-account-pin { flex: 0 0 5em; }
+
 /* ── PIN screen — matches sws-job-map's design exactly ───────────────────── */
 #pin-screen {
   position: fixed;

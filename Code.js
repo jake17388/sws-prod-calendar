@@ -186,6 +186,38 @@ function deleteUser(actor, data) {
   }
 }
 
+// Lets any signed-in user change their own name/PIN, independent of
+// canAccessUserManagement — this is how a Viewer (or a Production Manager,
+// who can't edit their own PM-department account through the department
+// permission rules above) updates their own credentials. Deliberately
+// ignores any `department` field so nobody can promote themselves.
+function updateSelf(actor, data) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    const idx = users.findIndex(u => u.id === actor.id);
+    if (idx === -1) return { success: false, error: 'User not found' };
+    const next = { ...users[idx] };
+    if (data.name !== undefined) {
+      const name = String(data.name).trim();
+      if (!name) return { success: false, error: 'Name is required' };
+      next.name = name;
+    }
+    if (data.pin !== undefined) {
+      const pin = String(data.pin);
+      if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
+      if (users.some(u => u.id !== next.id && u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
+      next.pin = pin;
+    }
+    users[idx] = next;
+    saveUsers(users);
+    return { success: true, user: next };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function getAuthSecret() {
   const props = PropertiesService.getScriptProperties();
   let secret = props.getProperty('AUTH_SECRET');
@@ -298,6 +330,12 @@ function doPost(e) {
   if (!actor) return json(UNAUTHORIZED);
   const user = actor.name;
 
+  // Viewers are read-only against job state — they can look but not touch.
+  const JOB_EDIT_ACTIONS = ['toggleComplete', 'updateNotes', 'updateChecklist'];
+  if (JOB_EDIT_ACTIONS.indexOf(data.action) !== -1 && actor.department === 'Viewer') {
+    return json({ error: 'forbidden' });
+  }
+
   if (data.action === 'toggleComplete') {
     return json(setTracking(data.jobKey, { completed: !!data.completed }, user));
   }
@@ -314,6 +352,7 @@ function doPost(e) {
   if (data.action === 'addUser') return json(addUser(actor, data));
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
+  if (data.action === 'updateSelf') return json(updateSelf(actor, data));
   return json({ error: 'unknown action' });
 }
 

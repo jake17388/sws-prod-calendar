@@ -144,6 +144,7 @@
   background: var(--color-success);
   border-color: var(--color-success);
 }
+.checklist-check:disabled { opacity: 0.7; }
 .checklist-check.checked::after {
   content: '';
   width: 4px;
