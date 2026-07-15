@@ -1,5 +1,5 @@
-import { updateJobDepartments } from '../api.js';
-import { findJob, patchJob } from '../state.js';
+import { updateJobDepartments, toggleDepartmentTaskDone } from '../api.js';
+import { patchJob } from '../state.js';
 import { JOB_TAGS } from '../config.js';
 
 function escapeHtml(str) {
@@ -9,13 +9,13 @@ function escapeHtml(str) {
 }
 
 // Persists the job's full departments/departmentChecklists state after any
-// change — mirrors how the old flat checklist saved itself on every edit.
+// change — used by the Admin/Manager editor, which owns the whole thing.
 function persist(job) {
   updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists).catch(() => {});
   patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists });
 }
 
-function renderDeptChecklist(container, job, dept) {
+function renderEditableChecklist(container, job, dept) {
   container.innerHTML = '';
   const items = job.departmentChecklists[dept] || [];
 
@@ -30,7 +30,7 @@ function renderDeptChecklist(container, job, dept) {
     row.querySelector('.checklist-check').addEventListener('click', () => {
       item.done = !item.done;
       persist(job);
-      renderDeptChecklist(container, job, dept);
+      renderEditableChecklist(container, job, dept);
     });
     row.querySelector('input[type="text"]').addEventListener('change', e => {
       item.text = e.target.value.trim();
@@ -39,7 +39,7 @@ function renderDeptChecklist(container, job, dept) {
     row.querySelector('.checklist-remove').addEventListener('click', () => {
       job.departmentChecklists[dept] = items.filter(i => i.id !== item.id);
       persist(job);
-      renderDeptChecklist(container, job, dept);
+      renderEditableChecklist(container, job, dept);
     });
     container.appendChild(row);
   });
@@ -54,16 +54,22 @@ function renderDeptChecklist(container, job, dept) {
     job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false }];
     addInput.value = '';
     persist(job);
-    renderDeptChecklist(container, job, dept);
+    renderEditableChecklist(container, job, dept);
   };
   addRow.querySelector('button').addEventListener('click', doAdd);
   addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
   container.appendChild(addRow);
 }
 
-function renderDepartmentList(job) {
-  const list = document.getElementById('dept-assign-list');
-  list.innerHTML = '';
+/**
+ * Full editor for Admin/Manager: checkbox per department, and for any
+ * checked department an inline add/edit/remove checklist. Works whether the
+ * job already has departments assigned or none yet — this is what both a
+ * normal job click and a "Jobs to Assign" click land on for these roles.
+ * @param {HTMLElement} container @param {object} job
+ */
+export function renderDepartmentEditor(container, job) {
+  container.innerHTML = '';
 
   JOB_TAGS.forEach(dept => {
     const checked = job.departments.includes(dept);
@@ -77,14 +83,14 @@ function renderDepartmentList(job) {
       <div class="dept-assign-checklist" ${checked ? '' : 'hidden'}></div>
     `;
     const checklistEl = wrap.querySelector('.dept-assign-checklist');
-    if (checked) renderDeptChecklist(checklistEl, job, dept);
+    if (checked) renderEditableChecklist(checklistEl, job, dept);
 
     wrap.querySelector('input[type="checkbox"]').addEventListener('change', e => {
       if (e.target.checked) {
         job.departments = [...job.departments, dept];
         if (!job.departmentChecklists[dept]) job.departmentChecklists[dept] = [];
         checklistEl.hidden = false;
-        renderDeptChecklist(checklistEl, job, dept);
+        renderEditableChecklist(checklistEl, job, dept);
       } else {
         job.departments = job.departments.filter(d => d !== dept);
         checklistEl.hidden = true;
@@ -93,22 +99,67 @@ function renderDepartmentList(job) {
       persist(job);
     });
 
-    list.appendChild(wrap);
+    container.appendChild(wrap);
   });
 }
 
-/** @param {string} jobKey */
-export function openDepartmentAssign(jobKey) {
-  const job = findJob(jobKey);
-  if (!job) return;
-  if (!job.departments) job.departments = [];
-  if (!job.departmentChecklists) job.departmentChecklists = {};
+/**
+ * Toggle-only view for a production-department account: just their own
+ * department's checklist, no add/edit/remove, no other departments shown.
+ * @param {HTMLElement} container @param {object} job @param {string} department
+ */
+export function renderOwnDepartmentTasks(container, job, department) {
+  container.innerHTML = '';
+  const items = job.departmentChecklists[department] || [];
 
-  document.getElementById('dept-assign-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
-  renderDepartmentList(job);
-  document.getElementById('dept-assign-overlay').classList.add('open');
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'dept-tasks-empty';
+    empty.textContent = 'No tasks yet.';
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
+    row.innerHTML = `
+      <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done"></button>
+      <span>${escapeHtml(item.text)}</span>
+    `;
+    row.querySelector('.checklist-check').addEventListener('click', () => {
+      const nextDone = !item.done;
+      toggleDepartmentTaskDone(job.jobKey, department, item.id, nextDone).then(res => {
+        if (!res.success) return;
+        item.done = nextDone;
+        job.departmentChecklists = res.departmentChecklists;
+        patchJob(job.jobKey, { departmentChecklists: res.departmentChecklists });
+        renderOwnDepartmentTasks(container, job, department);
+      });
+    });
+    container.appendChild(row);
+  });
 }
 
-export function closeDepartmentAssign() {
-  document.getElementById('dept-assign-overlay').classList.remove('open');
+/**
+ * Read-only breakdown of every assigned department's checklist — for
+ * Viewers, who can see progress at a glance but never touch anything.
+ * @param {HTMLElement} container @param {object} job
+ */
+export function renderDepartmentsReadOnly(container, job) {
+  container.innerHTML = '';
+
+  job.departments.forEach(dept => {
+    const section = document.createElement('div');
+    section.className = 'dept-assign-item';
+    const items = job.departmentChecklists[dept] || [];
+    const itemsHtml = items.length
+      ? items.map(i => `<div class="checklist-item ${i.done ? 'done' : ''}"><span class="checklist-check ${i.done ? 'checked' : ''}"></span><span>${escapeHtml(i.text)}</span></div>`).join('')
+      : '<div class="dept-tasks-empty">No tasks yet.</div>';
+    section.innerHTML = `
+      <div class="dept-assign-checkbox-row"><span>${escapeHtml(dept)}</span></div>
+      <div class="dept-assign-checklist">${itemsHtml}</div>
+    `;
+    container.appendChild(section);
+  });
 }

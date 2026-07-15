@@ -1,7 +1,9 @@
 import { toggleComplete, updateNotes, updateDueDate } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD } from '../dates.js';
-import { canEditDueDates, canEditJobs } from '../auth.js';
+import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
+import { JOB_DEPARTMENTS } from '../config.js';
+import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 
 let notesSaveTimer = null;
 
@@ -74,6 +76,40 @@ function renderDueDateEditor(job) {
   };
 }
 
+// Departments a job has been assigned to, shown/editable differently per
+// role: Admin/Manager get the full assign-and-edit UI (whether or not the
+// job has any departments yet); a production-department account sees only
+// its own department's tasks and can toggle them done, nothing else;
+// Viewers get a read-only breakdown. Hidden entirely when there's nothing
+// relevant for the current role to see.
+function renderDepartmentSection(job) {
+  const wrap = document.getElementById('job-detail-departments');
+  const list = document.getElementById('job-detail-dept-list');
+  if (!job.departments) job.departments = [];
+  if (!job.departmentChecklists) job.departmentChecklists = {};
+
+  if (canAssignDepartments()) {
+    wrap.hidden = false;
+    renderDepartmentEditor(list, job);
+    return;
+  }
+
+  const dept = currentDepartment();
+  if (JOB_DEPARTMENTS.indexOf(dept) !== -1) {
+    if (job.departments.indexOf(dept) === -1) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    renderOwnDepartmentTasks(list, job, dept);
+    return;
+  }
+
+  if (job.departments.length) {
+    wrap.hidden = false;
+    renderDepartmentsReadOnly(list, job);
+  } else {
+    wrap.hidden = true;
+  }
+}
+
 /** @param {string} jobKey */
 export function openJobDetail(jobKey) {
   const job = findJob(jobKey);
@@ -82,14 +118,17 @@ export function openJobDetail(jobKey) {
   document.getElementById('job-detail-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
   updateMetaText(job);
   renderDueDateEditor(job);
+  renderDepartmentSection(job);
 
   const canEdit = canEditJobs();
+  const canComplete = canMarkJobComplete();
 
+  document.getElementById('job-detail-complete-row').hidden = !canComplete;
   const completeBtn = document.getElementById('job-detail-complete');
   completeBtn.checked = job.completed;
-  completeBtn.disabled = !canEdit;
+  completeBtn.disabled = !canComplete;
   renderCompletedInfo(job);
-  completeBtn.onchange = canEdit ? () => {
+  completeBtn.onchange = canComplete ? () => {
     const nextCompleted = completeBtn.checked;
     patchJob(job.jobKey, { completed: nextCompleted });
     toggleComplete(job.jobKey, nextCompleted)

@@ -20,9 +20,12 @@ export const currentPin = () => auth ? auth.pin : null;
 export const currentDepartment = () => auth ? auth.department : null;
 export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
 export const canManageUsers = () => !!(auth && auth.canManageUsers);
-// Viewers can look but not touch — everyone else can edit job state.
+// Viewers can look but not touch — everyone else can edit job state (notes,
+// due dates). Marking the whole job complete and department task
+// checklists have their own narrower gates below.
 export const canEditJobs = () => !auth || auth.department !== 'Viewer';
-// Only Admin/Manager can assign departments to a job.
+// Only Admin/Manager can mark an entire job complete or assign departments.
+export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 // Department badges are for people who need the overview — production
 // department accounts already only see their own jobs, so the badge would

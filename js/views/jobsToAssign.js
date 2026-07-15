@@ -1,6 +1,5 @@
 import { parseISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { renderJobCard } from '../components/jobCard.js';
-import { openDepartmentAssign } from '../components/departmentAssign.js';
 
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
 export function renderJobsToAssign(container, refDate, jobs) {
@@ -34,7 +33,7 @@ export function renderJobsToAssign(container, refDate, jobs) {
 
     const jobsWrap = document.createElement('div');
     jobsWrap.className = 'schedule-day-jobs';
-    grouped[iso].forEach(job => jobsWrap.appendChild(renderJobCard(job, true, openDepartmentAssign)));
+    grouped[iso].forEach(job => jobsWrap.appendChild(renderJobCard(job)));
     group.appendChild(jobsWrap);
 
     list.appendChild(group);

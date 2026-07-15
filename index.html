@@ -17,13 +17,13 @@
 <!-- ?v= on every local script/stylesheet below busts the CDN/browser cache
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
-<link rel="stylesheet" href="styles/tokens.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/calendar.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/job-card.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.14.3" />
-<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/tokens.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/calendar.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/job-card.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.14.4" />
+<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.14.4" />
 </head>
 <body>
 
@@ -144,7 +144,7 @@
       <button id="job-detail-close" class="job-detail-close" aria-label="Close">&times;</button>
     </div>
     <div class="job-detail-body">
-      <label class="job-detail-complete-toggle">
+      <label class="job-detail-complete-toggle" id="job-detail-complete-row">
         <input type="checkbox" id="job-detail-complete" />
         Mark job complete
       </label>
@@ -154,6 +154,11 @@
         <h3>Notes</h3>
         <textarea id="job-detail-notes" class="notes-textarea" placeholder="Add production notes…"></textarea>
         <div id="notes-save-hint" class="notes-save-hint"></div>
+      </div>
+
+      <div id="job-detail-departments" class="job-detail-section" hidden>
+        <h3>Departments</h3>
+        <div id="job-detail-dept-list" class="dept-assign-list"></div>
       </div>
 
       <div id="due-date-editor" class="job-detail-section" hidden>
@@ -194,18 +199,6 @@
   </section>
 </div>
 
-<div id="dept-assign-overlay">
-  <section class="job-detail-panel" aria-label="Assign departments">
-    <div class="job-detail-header">
-      <div><h2 id="dept-assign-title"></h2></div>
-      <button id="dept-assign-close" class="job-detail-close" aria-label="Close">&times;</button>
-    </div>
-    <div class="job-detail-body">
-      <div id="dept-assign-list" class="dept-assign-list"></div>
-    </div>
-  </section>
-</div>
-
-<script type="module" src="js/app.js?v=2026.07.14.3"></script>
+<script type="module" src="js/app.js?v=2026.07.14.4"></script>
 </body>
 </html>

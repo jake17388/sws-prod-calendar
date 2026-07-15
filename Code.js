@@ -41,6 +41,13 @@ function canAssignDepartments(department) {
   return department === 'Admin' || department === 'Manager';
 }
 
+// Only Admin/Manager can mark an entire job complete. Production-department
+// accounts complete their own tasks (see toggleDepartmentTaskDone), not the
+// whole job; Viewers never complete anything.
+function canMarkJobComplete(department) {
+  return department === 'Admin' || department === 'Manager';
+}
+
 // Departments a Manager can't see in the user list at all.
 const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer'];
 // Departments a Manager can see but can't add/edit/delete — separate from
@@ -350,12 +357,12 @@ function doPost(e) {
   const user = actor.name;
 
   // Viewers are read-only against job state — they can look but not touch.
-  const JOB_EDIT_ACTIONS = ['toggleComplete', 'updateNotes'];
-  if (JOB_EDIT_ACTIONS.indexOf(data.action) !== -1 && actor.department === 'Viewer') {
+  if (data.action === 'updateNotes' && actor.department === 'Viewer') {
     return json({ error: 'forbidden' });
   }
 
   if (data.action === 'toggleComplete') {
+    if (!canMarkJobComplete(actor.department)) return json({ error: 'forbidden' });
     return json(setTracking(data.jobKey, { completed: !!data.completed }, user));
   }
   if (data.action === 'updateNotes') {
@@ -366,6 +373,7 @@ function doPost(e) {
     return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
   }
   if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
+  if (data.action === 'toggleDepartmentTaskDone') return json(toggleDepartmentTaskDone(actor, data));
   if (data.action === 'addUser') return json(addUser(actor, data));
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
@@ -396,6 +404,31 @@ function updateJobDepartments(actor, data) {
   });
 
   return setTracking(data.jobKey, { departments, departmentChecklists }, actor.name);
+}
+
+// A production-department account (Manufacturing, Graphics, etc.) can only
+// toggle the done state of an existing task in its OWN department's
+// checklist — never another department's, never add/remove/retext items,
+// and never touch which departments are assigned. That's deliberately
+// narrower than updateJobDepartments (Admin/Manager) so a lower-privilege
+// client can't smuggle in unrelated changes through this endpoint.
+function toggleDepartmentTaskDone(actor, data) {
+  const department = String(data.department || '');
+  if (JOB_DEPARTMENTS.indexOf(department) === -1 || actor.department !== department) {
+    return { success: false, error: 'forbidden' };
+  }
+  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+
+  const tracking = getAllTracking();
+  const current = tracking[String(data.jobKey)] || { departments: [], departmentChecklists: {} };
+  if (current.departments.indexOf(department) === -1) return { success: false, error: 'Job not assigned to your department' };
+
+  const itemId = String(data.itemId || '');
+  const items = current.departmentChecklists[department] || [];
+  const updatedItems = items.map(i => (i.id === itemId ? { ...i, done: !!data.done } : i));
+  const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
+
+  return setTracking(data.jobKey, { departmentChecklists }, actor.name);
 }
 
 // ── Calendar jobs ────────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, c
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
-import { closeDepartmentAssign } from './components/departmentAssign.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
@@ -153,10 +152,6 @@ function boot() {
   document.getElementById('job-detail-close').addEventListener('click', closeJobDetail);
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
-  });
-  document.getElementById('dept-assign-close').addEventListener('click', closeDepartmentAssign);
-  document.getElementById('dept-assign-overlay').addEventListener('click', e => {
-    if (e.target.id === 'dept-assign-overlay') closeDepartmentAssign();
   });
 
   document.getElementById('settings-btn').addEventListener('click', openSettings);
