@@ -19,14 +19,20 @@ function stampHtml(item) {
 // state after any change — used by the Admin/Manager editor, which owns the
 // whole thing. Reconciles with the server's response afterward since it's
 // the source of truth for who/when completed each task.
-function persist(job) {
-  updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments)
+// `rerender`, when given, repaints the caller's view from the reconciled
+// `job` — needed on a conflict (someone else's edit landed first, so the
+// server's version wins) since it differs from what's already painted.
+function persist(job, rerender) {
+  const expectedUpdatedAt = job.updatedAt;
+  updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments, expectedUpdatedAt)
     .then(res => {
-      if (!res.success) return;
+      if (!res.success && res.error !== 'conflict') return;
       job.departments = res.departments;
       job.departmentChecklists = res.departmentChecklists;
       job.currentDepartments = res.currentDepartments;
-      patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments });
+      job.updatedAt = res.updatedAt;
+      patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, updatedAt: res.updatedAt });
+      if (res.error === 'conflict' && rerender) rerender();
     })
     .catch(() => {});
   patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists, currentDepartments: job.currentDepartments });
@@ -51,16 +57,16 @@ function renderEditableChecklist(container, job, dept) {
       item.done = !item.done;
       item.doneBy = item.done ? currentUser() : '';
       item.doneAt = item.done ? new Date().toISOString() : '';
-      persist(job);
+      persist(job, () => renderEditableChecklist(container, job, dept));
       renderEditableChecklist(container, job, dept);
     });
     row.querySelector('input[type="text"]').addEventListener('change', e => {
       item.text = e.target.value.trim();
-      persist(job);
+      persist(job, () => renderEditableChecklist(container, job, dept));
     });
     row.querySelector('.checklist-remove').addEventListener('click', () => {
       job.departmentChecklists[dept] = items.filter(i => i.id !== item.id);
-      persist(job);
+      persist(job, () => renderEditableChecklist(container, job, dept));
       renderEditableChecklist(container, job, dept);
     });
     container.appendChild(row);
@@ -75,7 +81,7 @@ function renderEditableChecklist(container, job, dept) {
     if (!text) return;
     job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false, doneBy: '', doneAt: '' }];
     addInput.value = '';
-    persist(job);
+    persist(job, () => renderEditableChecklist(container, job, dept));
     renderEditableChecklist(container, job, dept);
   };
   addRow.querySelector('button').addEventListener('click', doAdd);
@@ -170,14 +176,14 @@ export function renderDepartmentEditor(container, job) {
           checklistEl.hidden = true;
           checklistEl.innerHTML = '';
         }
-        persist(job);
+        persist(job, () => renderDepartmentEditor(container, job));
       });
 
       currentRow.querySelector('.dept-current-checkbox').addEventListener('change', e => {
         job.currentDepartments = e.target.checked
           ? [...job.currentDepartments, dept]
           : job.currentDepartments.filter(d => d !== dept);
-        persist(job);
+        persist(job, () => renderDepartmentEditor(container, job));
       });
     }
 

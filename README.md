@@ -80,6 +80,26 @@ Viewer), and everything after that goes through the app.
 
 ---
 
+## Multi-user sync
+
+- **Live updates** — the client polls a cheap `getTrackingVersion` endpoint
+  (one Script Property read, no Sheet/Calendar access) every 10s while the
+  tab is visible. When the counter has moved since the last full fetch, it
+  re-fetches the job list. The counter itself bumps once inside
+  `setTracking()` on every successful write, under the same `LockService`
+  lock that serializes the write.
+- **Optimistic concurrency** — every job carries an `updatedAt` stamp. Edits
+  that replace a whole object built from a client-side snapshot (notes text,
+  the full department checklist) send back the `updatedAt` they read; if it's
+  since moved, the server rejects with `{ error: 'conflict' }` and returns
+  its current state, which the client adopts instead of silently overwriting
+  someone else's change. Single-field toggles (`toggleComplete`,
+  `toggleDepartmentTaskDone`) skip this — they're applied to a fresh
+  server-side read under the lock, so they can't clobber unrelated concurrent
+  edits by construction.
+
+---
+
 ## One-time setup (GitHub Actions secrets)
 
 Settings → Secrets and variables → Actions:

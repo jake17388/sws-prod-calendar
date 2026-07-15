@@ -27,13 +27,18 @@ function checkAuthError(data) {
   return data;
 }
 
-export const fetchProductionJobs = () => scriptGet('getProductionJobs').then(d => d.jobs || []);
+export const fetchProductionJobs = () =>
+  scriptGet('getProductionJobs').then(d => ({ jobs: d.jobs || [], version: d.version || 0 }));
+
+/** Cheap poll target — one Script Property read, no Calendar/Sheet access. */
+export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d => d.version || 0);
 
 export const toggleComplete = (jobKey, completed) =>
   scriptPost({ action: 'toggleComplete', jobKey, completed });
 
-export const updateNotes = (jobKey, notes) =>
-  scriptPost({ action: 'updateNotes', jobKey, notes });
+/** @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
+export const updateNotes = (jobKey, notes, expectedUpdatedAt) =>
+  scriptPost({ action: 'updateNotes', jobKey, notes, expectedUpdatedAt });
 
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>
@@ -55,9 +60,9 @@ export const deleteUser = id =>
 export const updateSelf = patch =>
   scriptPost({ action: 'updateSelf', ...patch });
 
-/** @param {string} jobKey @param {string[]} departments @param {Record<string, {id: string, text: string, done: boolean}[]>} departmentChecklists @param {string[]} currentDepartments */
-export const updateJobDepartments = (jobKey, departments, departmentChecklists, currentDepartments) =>
-  scriptPost({ action: 'updateJobDepartments', jobKey, departments, departmentChecklists, currentDepartments });
+/** @param {string} jobKey @param {string[]} departments @param {Record<string, {id: string, text: string, done: boolean}[]>} departmentChecklists @param {string[]} currentDepartments @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
+export const updateJobDepartments = (jobKey, departments, departmentChecklists, currentDepartments, expectedUpdatedAt) =>
+  scriptPost({ action: 'updateJobDepartments', jobKey, departments, departmentChecklists, currentDepartments, expectedUpdatedAt });
 
 /** @param {string} jobKey @param {string} department @param {string} itemId @param {boolean} done */
 export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>

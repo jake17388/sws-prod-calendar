@@ -324,6 +324,21 @@ function json(obj) {
 
 const UNAUTHORIZED = { error: 'unauthorized' };
 
+// A single incrementing counter, bumped on every successful tracking write
+// (see setTracking()). Lets clients poll a one-Property read to know
+// whether anything changed, instead of re-fetching the full job list (which
+// re-hits CalendarApp + the tracking Sheet) on every poll tick.
+function getTrackingVersion() {
+  const v = PropertiesService.getScriptProperties().getProperty('TRACKING_VERSION');
+  return v ? +v : 0;
+}
+function bumpTrackingVersion() {
+  const props = PropertiesService.getScriptProperties();
+  const next = (+(props.getProperty('TRACKING_VERSION') || 0)) + 1;
+  props.setProperty('TRACKING_VERSION', String(next));
+  return next;
+}
+
 // ── Routing ──────────────────────────────────────────────────────────────────
 function doGet(e) {
   const action = e.parameter.action;
@@ -338,6 +353,11 @@ function doGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     if (!canAccessUserManagement(actor.department)) return json({ error: 'forbidden' });
     return json({ users: visibleUsersFor(actor) });
+  }
+  if (action === 'getTrackingVersion') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json({ version: getTrackingVersion() });
   }
 
   // The app itself is hosted on GitHub Pages, not here
@@ -366,7 +386,7 @@ function doPost(e) {
     return json(setTracking(data.jobKey, { completed: !!data.completed }, user));
   }
   if (data.action === 'updateNotes') {
-    return json(setTracking(data.jobKey, { notes: String(data.notes || '') }, user));
+    return json(setTracking(data.jobKey, { notes: String(data.notes || '') }, user, data.expectedUpdatedAt));
   }
   if (data.action === 'updateDueDate') {
     if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
@@ -437,7 +457,7 @@ function updateJobDepartments(actor, data) {
       .filter(i => i.text);
   });
 
-  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments }, actor.name);
+  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments }, actor.name, data.expectedUpdatedAt);
 }
 
 // A production-department account (Manufacturing, Graphics, etc.) can only
@@ -522,6 +542,10 @@ function getProductionJobs(e, actor) {
     job.departments = t.departments || [];
     job.departmentChecklists = t.departmentChecklists || {};
     job.currentDepartments = t.currentDepartments || [];
+    // The token a client echoes back on its next write (see setTracking's
+    // expectedUpdatedAt check) so a save built from this snapshot gets
+    // rejected if someone else's write landed first.
+    job.updatedAt = t.updatedAt || '';
   });
 
   // Production-department users (Manufacturing, Graphics, etc.) only see a
@@ -531,7 +555,7 @@ function getProductionJobs(e, actor) {
     jobs = jobs.filter(job => job.currentDepartments.indexOf(actor.department) !== -1);
   }
 
-  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end) };
+  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: getTrackingVersion() };
 }
 
 // Parses raw calendar events into {title, addr, crew, jobNums[], eventDate}
@@ -688,7 +712,7 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, , , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson] = data[i];
+    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson] = data[i];
     if (!jobKey) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
@@ -700,6 +724,7 @@ function getAllTracking() {
     try { currentDepartments = currentDepartmentsJson ? JSON.parse(currentDepartmentsJson) : []; } catch (err) { currentDepartments = []; }
     tracking[String(jobKey)] = {
       completed: !!completed, notes: notes || '', checklist,
+      updatedAt: updatedAt || '',
       completedAt: completedAt || '', completedBy: completedBy || '',
       dueOverride: normalizeDateCell(dueOverride),
       departments, departmentChecklists, currentDepartments,
@@ -708,7 +733,16 @@ function getAllTracking() {
   return tracking;
 }
 
-function setTracking(jobKey, patch, user) {
+// `expectedUpdatedAt`, when passed, is the updatedAt the caller last read
+// this job at. Callers that submit a full-replace patch (notes text, the
+// whole departmentChecklists object) get rejected with a 'conflict' if
+// someone else's write landed first — otherwise their patch, built from a
+// stale local copy, would silently drop the other person's change even
+// though this write is itself safely serialized by the lock below. Callers
+// that only flip a single field (toggleComplete, toggleDepartmentTaskDone)
+// don't need this — `current` below is always re-read fresh under the lock,
+// so a single-field patch can never clobber unrelated concurrent changes.
+function setTracking(jobKey, patch, user, expectedUpdatedAt) {
   if (!jobKey) return { success: false, error: 'jobKey required' };
   const lock = LockService.getScriptLock();
   try {
@@ -720,11 +754,12 @@ function setTracking(jobKey, patch, user) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: '', checklist: [], completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [] }
+      ? { completed: false, notes: '', checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [] }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: data[rowIndex - 1][2] || '',
           checklist: (() => { try { return JSON.parse(data[rowIndex - 1][3] || '[]'); } catch (e) { return []; } })(),
+          updatedAt: data[rowIndex - 1][4] || '',
           completedAt: data[rowIndex - 1][6] || '',
           completedBy: data[rowIndex - 1][7] || '',
           dueOverride: normalizeDateCell(data[rowIndex - 1][8]),
@@ -732,6 +767,11 @@ function setTracking(jobKey, patch, user) {
           departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
           currentDepartments: (() => { try { return JSON.parse(data[rowIndex - 1][11] || '[]'); } catch (e) { return []; } })(),
         };
+
+    if (expectedUpdatedAt && rowIndex !== -1 && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
+      return { success: false, error: 'conflict', ...current };
+    }
+
     const next = { ...current, ...patch };
     // completedAt/completedBy only change on an actual complete/un-complete
     // toggle (patch.completed present) — editing notes or the checklist
@@ -740,12 +780,14 @@ function setTracking(jobKey, patch, user) {
       next.completedAt = patch.completed ? new Date().toISOString() : '';
       next.completedBy = patch.completed ? user : '';
     }
-    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), new Date().toISOString(), user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments)];
+    next.updatedAt = new Date().toISOString();
+    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), next.updatedAt, user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments)];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {
       sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
     }
+    bumpTrackingVersion();
     return { success: true, ...next };
   } catch (err) {
     return { success: false, error: err.message };

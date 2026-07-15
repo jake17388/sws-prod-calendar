@@ -150,9 +150,24 @@ export function openJobDetail(jobKey) {
     notesHint.textContent = 'Saving…';
     clearTimeout(notesSaveTimer);
     notesSaveTimer = setTimeout(() => {
+      const expectedUpdatedAt = job.updatedAt;
       patchJob(job.jobKey, { notes: notesEl.value });
-      updateNotes(job.jobKey, notesEl.value)
-        .then(() => { notesHint.textContent = 'Saved'; setTimeout(() => (notesHint.textContent = ''), 1500); })
+      updateNotes(job.jobKey, notesEl.value, expectedUpdatedAt)
+        .then(res => {
+          if (res.error === 'conflict') {
+            job.notes = res.notes;
+            job.updatedAt = res.updatedAt;
+            patchJob(job.jobKey, { notes: res.notes, updatedAt: res.updatedAt });
+            notesEl.value = res.notes;
+            notesHint.textContent = 'Someone else edited this — showing their version, please redo your change';
+            return;
+          }
+          if (!res.success) { notesHint.textContent = 'Failed to save — try again'; return; }
+          job.updatedAt = res.updatedAt;
+          patchJob(job.jobKey, { updatedAt: res.updatedAt });
+          notesHint.textContent = 'Saved';
+          setTimeout(() => (notesHint.textContent = ''), 1500);
+        })
         .catch(() => { notesHint.textContent = 'Failed to save — try again'; });
     }, 600);
   } : null;

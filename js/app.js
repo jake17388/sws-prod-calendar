@@ -1,4 +1,4 @@
-import { fetchProductionJobs, updateSelf } from './api.js';
+import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
 import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
@@ -39,15 +39,40 @@ function switchView(view) {
   renderActiveView();
 }
 
+// The tracking version this page last synced to — see fetchTrackingVersion()
+// in api.js. Polling compares a fresh version read against this and only
+// pulls the full job list (which re-hits CalendarApp + the tracking Sheet)
+// when it's actually stale, so idle tabs cost one cheap Property read per
+// poll tick instead of a full refetch.
+let lastKnownVersion = 0;
+
 function refreshJobs() {
   return fetchProductionJobs()
-    .then(jobs => {
+    .then(({ jobs, version }) => {
       setJobs(jobs);
+      lastKnownVersion = version;
       document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
       document.getElementById('last-updated').textContent =
         `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
     })
     .catch(() => {});
+}
+
+const POLL_INTERVAL_MS = 10000;
+let pollTimer = null;
+
+function checkForTrackingUpdate() {
+  fetchTrackingVersion()
+    .then(version => { if (version !== lastKnownVersion) refreshJobs(); })
+    .catch(() => {});
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(checkForTrackingUpdate, POLL_INTERVAL_MS);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
 // The version this page load booted with — captured from version.json on
@@ -176,7 +201,7 @@ function boot() {
   });
 
   subscribe(renderActiveView);
-  refreshJobs();
+  refreshJobs().then(() => { if (document.visibilityState === 'visible') startPolling(); });
   checkForUpdate();
 }
 
@@ -191,7 +216,13 @@ document.getElementById('update-reload-btn').addEventListener('click', () => {
 // re-runs boot()'s one-time version check. Re-check whenever it regains
 // focus/visibility so the update banner reliably shows up.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') checkForUpdate();
+  if (document.visibilityState === 'visible') {
+    checkForUpdate();
+    checkForTrackingUpdate();
+    startPolling();
+  } else {
+    stopPolling();
+  }
 });
 
 // See sw.js — forces every fetch to the network so a deploy is never left
