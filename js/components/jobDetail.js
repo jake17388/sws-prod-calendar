@@ -76,17 +76,21 @@ function renderDueDateEditor(job) {
   };
 }
 
-// Departments a job has been assigned to, shown/editable differently per
-// role: Admin/Manager get the full assign-and-edit UI (whether or not the
-// job has any departments yet); a production-department account sees only
-// its own department's tasks and can toggle them done, nothing else;
-// Viewers get a read-only breakdown. Hidden entirely when there's nothing
-// relevant for the current role to see.
+// Departments a job needs, shown/editable differently per role: Admin/
+// Manager get the full assign-and-edit UI (whether or not the job has any
+// departments yet, and whether or not they're marked current); a
+// production-department account sees its own tasks and can toggle them done
+// only while its department is actually *current* on this job (matches the
+// calendar filter — if it's not their turn, they wouldn't have reached this
+// job in the first place); Viewers get a read-only breakdown of everything
+// assigned, with current departments marked. Hidden entirely when there's
+// nothing relevant for the current role to see.
 function renderDepartmentSection(job) {
   const wrap = document.getElementById('job-detail-departments');
   const list = document.getElementById('job-detail-dept-list');
   if (!job.departments) job.departments = [];
   if (!job.departmentChecklists) job.departmentChecklists = {};
+  if (!job.currentDepartments) job.currentDepartments = [];
 
   if (canAssignDepartments()) {
     wrap.hidden = false;
@@ -96,7 +100,7 @@ function renderDepartmentSection(job) {
 
   const dept = currentDepartment();
   if (JOB_DEPARTMENTS.indexOf(dept) !== -1) {
-    if (job.departments.indexOf(dept) === -1) { wrap.hidden = true; return; }
+    if (job.currentDepartments.indexOf(dept) === -1) { wrap.hidden = true; return; }
     wrap.hidden = false;
     renderOwnDepartmentTasks(list, job, dept);
     return;

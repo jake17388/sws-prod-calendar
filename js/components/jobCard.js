@@ -8,14 +8,15 @@ function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
 }
 
-// Top-right corner badge showing which department(s) have the job, or
-// "Ship-In" for jobs made elsewhere and just shipped in. Only shown to
-// roles that need the overview — production-department accounts only ever
-// see their own jobs anyway, so the badge would just repeat what they know.
+// Top-right corner badge showing which department(s) CURRENTLY have the
+// job (not the full set it'll eventually need) — or "Ship-In" for jobs made
+// elsewhere and just shipped in. Only shown to roles that need the
+// overview — production-department accounts only ever see their own jobs
+// anyway, so the badge would just repeat what they know.
 function departmentBadgeHtml(job) {
-  if (!canSeeDepartmentBadges() || !job.departments || !job.departments.length) return '';
-  const isShipInOnly = job.departments.length === 1 && job.departments[0] === 'Ship-In';
-  const label = job.departments.join(', ');
+  if (!canSeeDepartmentBadges() || !job.currentDepartments || !job.currentDepartments.length) return '';
+  const isShipInOnly = job.currentDepartments.length === 1 && job.currentDepartments[0] === 'Ship-In';
+  const label = job.currentDepartments.join(', ');
   return `<span class="job-card-dept-badge ${isShipInOnly ? 'ship-in' : ''}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 

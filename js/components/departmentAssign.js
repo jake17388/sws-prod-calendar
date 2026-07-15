@@ -8,11 +8,12 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Persists the job's full departments/departmentChecklists state after any
-// change — used by the Admin/Manager editor, which owns the whole thing.
+// Persists the job's full departments/departmentChecklists/currentDepartments
+// state after any change — used by the Admin/Manager editor, which owns the
+// whole thing.
 function persist(job) {
-  updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists).catch(() => {});
-  patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists });
+  updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments).catch(() => {});
+  patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists, currentDepartments: job.currentDepartments });
 }
 
 function renderEditableChecklist(container, job, dept) {
@@ -62,40 +63,61 @@ function renderEditableChecklist(container, job, dept) {
 }
 
 /**
- * Full editor for Admin/Manager: checkbox per department, and for any
- * checked department an inline add/edit/remove checklist. Works whether the
- * job already has departments assigned or none yet — this is what both a
- * normal job click and a "Jobs to Assign" click land on for these roles.
+ * Full editor for Admin/Manager: checkbox per department for "this job needs
+ * them", and — for any checked department — a second "currently has it"
+ * checkbox plus an inline add/edit/remove checklist. Multiple departments
+ * can be current at once (parallel work), and there's no enforced order;
+ * Managers move a job from one department to another just by flipping these
+ * checkboxes as work progresses. Works whether the job already has
+ * departments assigned or none yet — this is what both a normal job click
+ * and a "Jobs to Assign" click land on for these roles.
  * @param {HTMLElement} container @param {object} job
  */
 export function renderDepartmentEditor(container, job) {
   container.innerHTML = '';
 
   JOB_TAGS.forEach(dept => {
-    const checked = job.departments.includes(dept);
+    const needed = job.departments.includes(dept);
+    const isCurrent = job.currentDepartments.includes(dept);
     const wrap = document.createElement('div');
     wrap.className = 'dept-assign-item';
     wrap.innerHTML = `
       <label class="dept-assign-checkbox-row">
-        <input type="checkbox" ${checked ? 'checked' : ''} />
+        <input type="checkbox" class="dept-needed-checkbox" ${needed ? 'checked' : ''} />
         <span>${escapeHtml(dept)}</span>
       </label>
-      <div class="dept-assign-checklist" ${checked ? '' : 'hidden'}></div>
+      <label class="dept-current-row" ${needed ? '' : 'hidden'}>
+        <input type="checkbox" class="dept-current-checkbox" ${isCurrent ? 'checked' : ''} />
+        <span>Currently has it</span>
+      </label>
+      <div class="dept-assign-checklist" ${needed ? '' : 'hidden'}></div>
     `;
+    const currentRow = wrap.querySelector('.dept-current-row');
     const checklistEl = wrap.querySelector('.dept-assign-checklist');
-    if (checked) renderEditableChecklist(checklistEl, job, dept);
+    if (needed) renderEditableChecklist(checklistEl, job, dept);
 
-    wrap.querySelector('input[type="checkbox"]').addEventListener('change', e => {
+    wrap.querySelector('.dept-needed-checkbox').addEventListener('change', e => {
       if (e.target.checked) {
         job.departments = [...job.departments, dept];
         if (!job.departmentChecklists[dept]) job.departmentChecklists[dept] = [];
+        currentRow.hidden = false;
         checklistEl.hidden = false;
         renderEditableChecklist(checklistEl, job, dept);
       } else {
         job.departments = job.departments.filter(d => d !== dept);
+        job.currentDepartments = job.currentDepartments.filter(d => d !== dept);
+        currentRow.hidden = true;
+        currentRow.querySelector('.dept-current-checkbox').checked = false;
         checklistEl.hidden = true;
         checklistEl.innerHTML = '';
       }
+      persist(job);
+    });
+
+    currentRow.querySelector('.dept-current-checkbox').addEventListener('change', e => {
+      job.currentDepartments = e.target.checked
+        ? [...job.currentDepartments, dept]
+        : job.currentDepartments.filter(d => d !== dept);
       persist(job);
     });
 
@@ -144,12 +166,15 @@ export function renderOwnDepartmentTasks(container, job, department) {
 /**
  * Read-only breakdown of every assigned department's checklist — for
  * Viewers, who can see progress at a glance but never touch anything.
+ * Departments currently holding the job are marked so it's clear where it
+ * actually sits right now, not just which departments it'll eventually need.
  * @param {HTMLElement} container @param {object} job
  */
 export function renderDepartmentsReadOnly(container, job) {
   container.innerHTML = '';
 
   job.departments.forEach(dept => {
+    const isCurrent = job.currentDepartments.includes(dept);
     const section = document.createElement('div');
     section.className = 'dept-assign-item';
     const items = job.departmentChecklists[dept] || [];
@@ -157,7 +182,7 @@ export function renderDepartmentsReadOnly(container, job) {
       ? items.map(i => `<div class="checklist-item ${i.done ? 'done' : ''}"><span class="checklist-check ${i.done ? 'checked' : ''}"></span><span>${escapeHtml(i.text)}</span></div>`).join('')
       : '<div class="dept-tasks-empty">No tasks yet.</div>';
     section.innerHTML = `
-      <div class="dept-assign-checkbox-row"><span>${escapeHtml(dept)}</span></div>
+      <div class="dept-assign-checkbox-row"><span>${escapeHtml(dept)}</span>${isCurrent ? '<span class="dept-current-tag">Current</span>' : ''}</div>
       <div class="dept-assign-checklist">${itemsHtml}</div>
     `;
     container.appendChild(section);

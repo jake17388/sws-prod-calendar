@@ -55,9 +55,9 @@ export const deleteUser = id =>
 export const updateSelf = patch =>
   scriptPost({ action: 'updateSelf', ...patch });
 
-/** @param {string} jobKey @param {string[]} departments @param {Record<string, {id: string, text: string, done: boolean}[]>} departmentChecklists */
-export const updateJobDepartments = (jobKey, departments, departmentChecklists) =>
-  scriptPost({ action: 'updateJobDepartments', jobKey, departments, departmentChecklists });
+/** @param {string} jobKey @param {string[]} departments @param {Record<string, {id: string, text: string, done: boolean}[]>} departmentChecklists @param {string[]} currentDepartments */
+export const updateJobDepartments = (jobKey, departments, departmentChecklists, currentDepartments) =>
+  scriptPost({ action: 'updateJobDepartments', jobKey, departments, departmentChecklists, currentDepartments });
 
 /** @param {string} jobKey @param {string} department @param {string} itemId @param {boolean} done */
 export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>
