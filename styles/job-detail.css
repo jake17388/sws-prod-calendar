@@ -75,6 +75,10 @@
   font-weight: 600;
   font-size: var(--text-sm);
 }
+/* `display: flex` above beats the browser's default [hidden] rule (author
+   CSS always wins over the user-agent stylesheet), so setting the hidden
+   property from JS silently did nothing without this override. */
+.job-detail-complete-toggle[hidden] { display: none; }
 
 .completed-info {
   font-size: var(--text-xs);
