@@ -151,13 +151,21 @@ export function renderOwnDepartmentTasks(container, job, department) {
     `;
     row.querySelector('.checklist-check').addEventListener('click', () => {
       const nextDone = !item.done;
-      toggleDepartmentTaskDone(job.jobKey, department, item.id, nextDone).then(res => {
-        if (!res.success) return;
-        item.done = nextDone;
-        job.departmentChecklists = res.departmentChecklists;
-        patchJob(job.jobKey, { departmentChecklists: res.departmentChecklists });
-        renderOwnDepartmentTasks(container, job, department);
-      });
+      item.done = nextDone;
+      patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
+      renderOwnDepartmentTasks(container, job, department);
+      toggleDepartmentTaskDone(job.jobKey, department, item.id, nextDone)
+        .then(res => {
+          if (res.success) return;
+          item.done = !nextDone;
+          patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
+          renderOwnDepartmentTasks(container, job, department);
+        })
+        .catch(() => {
+          item.done = !nextDone;
+          patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
+          renderOwnDepartmentTasks(container, job, department);
+        });
     });
     container.appendChild(row);
   });

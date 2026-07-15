@@ -194,4 +194,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') checkForUpdate();
 });
 
+// See sw.js — forces every fetch to the network so a deploy is never left
+// partially stale by the browser/CDN cache.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
 initAuth(boot);
