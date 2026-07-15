@@ -137,6 +137,7 @@ header.app-header {
   transition: background var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo);
 }
 .hdr-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--color-header-text); }
+.hdr-btn.active, .hdr-btn.active:hover { background: var(--color-brand-gold); color: var(--color-brand-navy); border-color: var(--color-brand-gold); }
 .settings-btn { font-size: 19px; line-height: 1; padding: 3px 11px; }
 
 .nav-row {

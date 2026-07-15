@@ -28,6 +28,7 @@ function renderActiveView() {
   document.querySelectorAll('.view-switcher button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === activeView);
   });
+  document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
   if (activeView === 'schedule') {
     const anchor = container.querySelector('[data-scroll-anchor="true"]');
     if (anchor) anchor.scrollIntoView({ block: 'start' });
