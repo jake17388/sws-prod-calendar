@@ -49,6 +49,12 @@ Bump the version string in `version.json` on every deploy — the app fetches
 it at boot and again on every tab-focus, and shows the "update available"
 banner when it doesn't match what the page loaded with.
 
+Every deploy that touches `js/` or `styles/` must also bump the matching
+`?v=` query string on that file's `<script>`/`<link>` tag in `index.html`.
+GitHub Pages' CDN caches those files for a while, so without a new query
+string the "Update now" button can reload the page and still get stale JS
+or CSS — the version bump forces a real fetch instead of a cached hit.
+
 ### Users & roles
 
 Users live entirely in Script Properties as one `USERS` JSON array of

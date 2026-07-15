@@ -14,13 +14,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#1b448b" />
 
-<link rel="stylesheet" href="styles/tokens.css" />
-<link rel="stylesheet" href="styles/layout.css" />
-<link rel="stylesheet" href="styles/calendar.css" />
-<link rel="stylesheet" href="styles/job-card.css" />
-<link rel="stylesheet" href="styles/job-detail.css" />
-<link rel="stylesheet" href="styles/user-mgmt.css" />
-<link rel="stylesheet" href="styles/dept-assign.css" />
+<!-- ?v= on every local script/stylesheet below busts the CDN/browser cache
+     on each deploy — keep it in sync with version.json's version on every
+     push (see README "Config" section). -->
+<link rel="stylesheet" href="styles/tokens.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/calendar.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/job-card.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.14.3" />
+<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.14.3" />
 </head>
 <body>
 
@@ -203,6 +206,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/app.js?v=2026.07.14.3"></script>
 </body>
 </html>
