@@ -113,11 +113,20 @@
 
 .checklist-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
 }
-.checklist-item input[type="text"] {
+
+.checklist-item-main {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 1px;
+}
+.checklist-item-main input[type="text"] {
+  width: 100%;
   background: transparent;
   border: none;
   border-bottom: 1px solid transparent;
@@ -125,13 +134,24 @@
   font-size: var(--text-sm);
   padding: var(--space-1) 0;
 }
-.checklist-item input[type="text"]:focus {
+.checklist-item-main input[type="text"]:focus {
   outline: none;
   border-bottom-color: var(--color-accent);
 }
-.checklist-item.done input[type="text"] {
+.checklist-item-text {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  padding: var(--space-1) 0;
+}
+.checklist-item.done .checklist-item-main input[type="text"],
+.checklist-item.done .checklist-item-text {
   color: var(--color-text-faint);
   text-decoration: line-through;
+}
+.checklist-item-stamp {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  text-decoration: none;
 }
 
 .checklist-check {
@@ -143,6 +163,7 @@
   display: grid;
   place-items: center;
   background: transparent;
+  margin-top: 1px;
 }
 .checklist-check.checked {
   background: var(--color-success);

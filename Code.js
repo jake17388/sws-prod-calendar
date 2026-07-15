@@ -381,6 +381,17 @@ function doPost(e) {
   return json({ error: 'unknown action' });
 }
 
+// Stamps who/when completed a checklist item, based on whether `done` just
+// transitioned from the previously-stored version — a text edit or an
+// unrelated resync of an already-done item shouldn't overwrite who actually
+// completed it. Un-checking clears the stamp, mirroring how the job-level
+// completedAt/completedBy reset on un-complete.
+function stampChecklistItem(nextItem, prevItem, actorName) {
+  if (!nextItem.done) return { ...nextItem, doneBy: '', doneAt: '' };
+  if (prevItem && prevItem.done) return { ...nextItem, doneBy: prevItem.doneBy || actorName, doneAt: prevItem.doneAt || new Date().toISOString() };
+  return { ...nextItem, doneBy: actorName, doneAt: new Date().toISOString() };
+}
+
 // Only Admins and Managers can assign departments to a job. Any
 // department not in JOB_TAGS is silently dropped rather than erroring, so a
 // stale/typo'd tag from the client can't corrupt stored state. Checklist
@@ -394,9 +405,14 @@ function doPost(e) {
 // job at all. Multiple departments can be current at once (parallel work),
 // and there's deliberately no enforced order — Managers move it around
 // however the actual workflow requires.
+// Locked once the whole job is marked complete — reopen it (uncheck "Mark
+// job complete") to edit departments again.
 function updateJobDepartments(actor, data) {
   if (!canAssignDepartments(actor.department)) return { success: false, error: 'forbidden' };
   if (!data.jobKey) return { success: false, error: 'jobKey required' };
+
+  const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {} };
+  if (existing.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
 
   const departments = Array.isArray(data.departments)
     ? data.departments.filter(d => JOB_TAGS.indexOf(d) !== -1)
@@ -409,8 +425,15 @@ function updateJobDepartments(actor, data) {
   const rawChecklists = (data.departmentChecklists && typeof data.departmentChecklists === 'object') ? data.departmentChecklists : {};
   departments.forEach(dept => {
     const items = Array.isArray(rawChecklists[dept]) ? rawChecklists[dept] : [];
+    const oldItems = existing.departmentChecklists[dept] || [];
     departmentChecklists[dept] = items
-      .map(i => ({ id: String((i && i.id) || Utilities.getUuid()), text: String((i && i.text) || '').trim(), done: !!(i && i.done) }))
+      .map(i => {
+        const id = String((i && i.id) || Utilities.getUuid());
+        const text = String((i && i.text) || '').trim();
+        const done = !!(i && i.done);
+        const oldItem = oldItems.find(o => o.id === id);
+        return stampChecklistItem({ id, text, done }, oldItem, actor.name);
+      })
       .filter(i => i.text);
   });
 
@@ -425,7 +448,8 @@ function updateJobDepartments(actor, data) {
 // lower-privilege client can't smuggle in unrelated changes through this
 // endpoint. Requires the department to be *current*, not just assigned —
 // matches the calendar filter, so a department whose turn has passed can't
-// keep editing a job it can no longer even see.
+// keep editing a job it can no longer even see. Also locked once the whole
+// job is marked complete.
 function toggleDepartmentTaskDone(actor, data) {
   const department = String(data.department || '');
   if (JOB_DEPARTMENTS.indexOf(department) === -1 || actor.department !== department) {
@@ -434,12 +458,14 @@ function toggleDepartmentTaskDone(actor, data) {
   if (!data.jobKey) return { success: false, error: 'jobKey required' };
 
   const tracking = getAllTracking();
-  const current = tracking[String(data.jobKey)] || { departments: [], departmentChecklists: {}, currentDepartments: [] };
+  const current = tracking[String(data.jobKey)] || { completed: false, departments: [], departmentChecklists: {}, currentDepartments: [] };
+  if (current.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
   if (current.currentDepartments.indexOf(department) === -1) return { success: false, error: 'Not currently your department\'s job' };
 
   const itemId = String(data.itemId || '');
   const items = current.departmentChecklists[department] || [];
-  const updatedItems = items.map(i => (i.id === itemId ? { ...i, done: !!data.done } : i));
+  const prevItem = items.find(i => i.id === itemId);
+  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: !!data.done }, prevItem, actor.name) : i));
   const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
 
   return setTracking(data.jobKey, { departmentChecklists }, actor.name);

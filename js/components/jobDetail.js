@@ -1,27 +1,15 @@
 import { toggleComplete, updateNotes, updateDueDate } from '../api.js';
 import { findJob, patchJob } from '../state.js';
-import { fmtMD } from '../dates.js';
+import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 
 let notesSaveTimer = null;
 
-const abbreviateName = name => {
-  if (!name) return '';
-  const parts = name.trim().split(/\s+/);
-  return parts.length > 1 ? `${parts[0]} ${parts[1][0]}` : name;
-};
-
-const formatCompletedStamp = iso => {
-  const d = new Date(iso);
-  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
-};
-
 function renderCompletedInfo(job) {
   document.getElementById('completed-info').textContent =
-    job.completed && job.completedBy ? `Completed by: ${abbreviateName(job.completedBy)} on ${formatCompletedStamp(job.completedAt)}` : '';
+    job.completed && job.completedBy ? `Completed by: ${abbreviateName(job.completedBy)} on ${formatTimestamp(job.completedAt)}` : '';
 }
 
 function updateMetaText(job) {
@@ -134,18 +122,23 @@ export function openJobDetail(jobKey) {
   renderCompletedInfo(job);
   completeBtn.onchange = canComplete ? () => {
     const nextCompleted = completeBtn.checked;
+    job.completed = nextCompleted;
     patchJob(job.jobKey, { completed: nextCompleted });
+    renderDepartmentSection(job); // lock/unlock department editing immediately, without reopening the panel
     toggleComplete(job.jobKey, nextCompleted)
       .then(res => {
         if (!res.success) throw new Error(res.error || 'failed');
         const patch = { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy };
+        Object.assign(job, patch);
         patchJob(job.jobKey, patch);
-        renderCompletedInfo({ ...job, ...patch });
+        renderCompletedInfo(job);
       })
       .catch(() => {
         completeBtn.checked = !nextCompleted;
+        job.completed = !nextCompleted;
         patchJob(job.jobKey, { completed: !nextCompleted });
         renderCompletedInfo(job);
+        renderDepartmentSection(job);
       });
   } : null;
 

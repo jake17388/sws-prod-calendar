@@ -23,6 +23,7 @@
   height: 18px;
   accent-color: var(--color-accent);
 }
+.dept-assign-checkbox-row input[type="checkbox"]:disabled { opacity: 0.6; }
 
 .dept-current-row {
   display: flex;

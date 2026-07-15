@@ -55,3 +55,17 @@ export function groupByDueDate(jobs) {
   });
   return map;
 }
+
+/** @param {string} name @returns {string} "First L" — used for compact "completed by" attribution */
+export const abbreviateName = name => {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts[1][0]}` : name;
+};
+
+/** @param {string} iso full ISO timestamp @returns {string} "M/D h:mm AM/PM" */
+export const formatTimestamp = iso => {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+};
