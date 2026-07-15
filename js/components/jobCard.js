@@ -2,7 +2,7 @@ import { toggleComplete } from '../api.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
-import { canEditJobs, canSeeDepartmentBadges } from '../auth.js';
+import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -37,8 +37,9 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
+  const canComplete = canMarkJobComplete();
   el.innerHTML = `
-    <button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete" ${canEditJobs() ? '' : 'disabled'}></button>
+    ${canComplete ? `<button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>` : ''}
     <div class="job-card-body">
       <div class="job-card-title">${job.jobNum ? `${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">
@@ -47,7 +48,7 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
     </div>
     ${departmentBadgeHtml(job)}
   `;
-  if (canEditJobs()) {
+  if (canComplete) {
     el.querySelector('.job-card-checkbox').addEventListener('click', e => {
       e.stopPropagation();
       handleCheckboxToggle(job, e.currentTarget);
@@ -63,14 +64,15 @@ export function renderJobChip(job) {
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-chip ${state} ${job.completed ? 'completed' : ''}`.trim();
   el.title = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
+  const canComplete = canMarkJobComplete();
   el.innerHTML = `
-    <span class="job-chip-check ${canEditJobs() ? '' : 'readonly'}"></span>
+    ${canComplete ? '<span class="job-chip-check"></span>' : ''}
     <span class="job-chip-text">
       <span class="job-chip-num">${escapeHtml(job.jobNum || job.title)}</span>
       <span class="job-chip-title">${job.jobNum ? ' ' + escapeHtml(job.title) : ''}</span>
     </span>
   `;
-  if (canEditJobs()) {
+  if (canComplete) {
     el.querySelector('.job-chip-check').addEventListener('click', e => {
       e.stopPropagation();
       handleCheckboxToggle(job);
