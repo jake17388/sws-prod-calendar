@@ -1,5 +1,4 @@
 import { toggleComplete } from '../api.js';
-import { fmtMD } from '../dates.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
@@ -7,13 +6,6 @@ import { canEditJobs, canSeeDepartmentBadges } from '../auth.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
-}
-
-function flagBadges(job) {
-  const badges = [];
-  if (job.multiDay) badges.push('<span class="job-card-badge">multi-day</span>');
-  if (job.multiJobEvent) badges.push('<span class="job-card-badge flag">multiple job #s</span>');
-  return badges.join('');
 }
 
 // Top-right corner badge showing which department(s) have the job, or
@@ -50,8 +42,6 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
       <div class="job-card-title">${job.jobNum ? `${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">
         ${showCrew ? `<span class="job-card-crew">${crewLabel(job)}</span>` : ''}
-        <span>due ${fmtMD(job.dueDate)}</span>
-        ${flagBadges(job)}
       </div>
     </div>
     ${departmentBadgeHtml(job)}

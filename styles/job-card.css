@@ -101,19 +101,6 @@
   margin-top: 2px;
 }
 
-.job-card-badge {
-  display: inline-block;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--color-accent-dim);
-  color: #ffffff;
-  font-weight: 600;
-}
-.job-card-badge.flag {
-  background: var(--color-brand-gold);
-  color: var(--color-brand-navy);
-}
-
 .job-card-crew {
   color: var(--color-text-faint);
 }
@@ -145,7 +132,6 @@
   color: var(--color-completed-text);
   text-decoration: line-through;
 }
-.job-chip .job-card-badge { background: rgba(255, 255, 255, 0.3); color: inherit; }
 .job-chip-check {
   flex-shrink: 0;
   width: 10px;
