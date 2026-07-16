@@ -3,6 +3,7 @@ import { patchJob } from '../state.js';
 import { currentUser } from '../auth.js';
 import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
+import { beginRequest, isLatestRequest } from '../requestSequence.js';
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -15,6 +16,10 @@ function stampHtml(item) {
   return `<span class="checklist-item-stamp">Completed by: ${escapeHtml(abbreviateName(item.doneBy))} on ${escapeHtml(formatTimestamp(item.doneAt))}</span>`;
 }
 
+// One entry per job, tracking whether a save is currently in flight and
+// whether another change landed locally while it was — see persist() below.
+const saveQueues = new Map();
+
 // Persists the job's full departments/departmentChecklists/currentDepartments
 // state after any change — used by the Admin/Manager editor, which owns the
 // whole thing. Reconciles with the server's response afterward since it's
@@ -22,21 +27,52 @@ function stampHtml(item) {
 // `rerender`, when given, repaints the caller's view from the reconciled
 // `job` — needed on a conflict (someone else's edit landed first, so the
 // server's version wins) since it differs from what's already painted.
+//
+// Every call sends the job's `updatedAt` as an optimistic-concurrency
+// token, and the server rejects a stale one with a 'conflict'. Two of our
+// own saves in flight at once (e.g. two checklist clicks a beat apart)
+// would race: whichever request the server processes second always finds
+// `updatedAt` has already moved from the first, gets rejected, and its
+// response then overwrites the just-applied first change with the
+// server's older copy — the checkbox visibly "un-clicks" itself. Queuing
+// to at most one in-flight save per job, and re-sending the latest local
+// state the moment the current one finishes, means every request we send
+// carries an `updatedAt` we know is current, so we never conflict with
+// ourselves — only a genuine edit from someone else can still do that.
 function persist(job, rerender) {
+  patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists, currentDepartments: job.currentDepartments });
+
+  let queue = saveQueues.get(job.jobKey);
+  if (!queue) { queue = { saving: false, dirty: false, rerender: null }; saveQueues.set(job.jobKey, queue); }
+  queue.rerender = rerender; // always the latest caller's — used if a queued resend ends in a real conflict
+  if (queue.saving) { queue.dirty = true; return; }
+  sendPersist(job, queue);
+}
+
+function sendPersist(job, queue) {
+  queue.saving = true;
+  queue.dirty = false;
   const expectedUpdatedAt = job.updatedAt;
   updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments, expectedUpdatedAt)
     .then(res => {
       if (!res.success && res.error !== 'conflict') return;
+      job.updatedAt = res.updatedAt;
+      // A newer local edit landed while this request was in flight — its
+      // state already supersedes this response, so don't let this response
+      // stomp it. It'll be sent (with the now-current updatedAt) below.
+      if (queue.dirty) return;
       job.departments = res.departments;
       job.departmentChecklists = res.departmentChecklists;
       job.currentDepartments = res.currentDepartments;
       job.departmentNotes = res.departmentNotes;
-      job.updatedAt = res.updatedAt;
       patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
-      if (res.error === 'conflict' && rerender) rerender();
+      if (res.error === 'conflict' && queue.rerender) queue.rerender();
     })
-    .catch(() => {});
-  patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists, currentDepartments: job.currentDepartments });
+    .catch(() => {})
+    .finally(() => {
+      queue.saving = false;
+      if (queue.dirty) sendPersist(job, queue);
+    });
 }
 
 function renderEditableChecklist(container, job, dept) {
@@ -314,6 +350,12 @@ export function renderOwnDepartmentTasks(container, job, department) {
         const nextDone = !item.done;
         const prevDoneBy = item.doneBy;
         const prevDoneAt = item.doneAt;
+        // Rapid clicks fire overlapping requests whose responses can
+        // resolve out of order — only the most recently fired toggle for
+        // this exact item is allowed to apply its result, so a slow stale
+        // response can't flip the checkbox back on its own.
+        const requestKey = `dept-task:${job.jobKey}:${department}:${item.id}`;
+        const token = beginRequest(requestKey);
         item.done = nextDone;
         item.doneBy = nextDone ? currentUser() : '';
         item.doneAt = nextDone ? new Date().toISOString() : '';
@@ -321,6 +363,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
         renderOwnDepartmentTasks(container, job, department);
         toggleDepartmentTaskDone(job.jobKey, department, item.id, nextDone)
           .then(res => {
+            if (!isLatestRequest(requestKey, token)) return;
             if (res.success) { job.departmentChecklists = res.departmentChecklists; return; }
             item.done = !nextDone;
             item.doneBy = prevDoneBy;
@@ -329,6 +372,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
             renderOwnDepartmentTasks(container, job, department);
           })
           .catch(() => {
+            if (!isLatestRequest(requestKey, token)) return;
             item.done = !nextDone;
             item.doneBy = prevDoneBy;
             item.doneAt = prevDoneAt;

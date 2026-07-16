@@ -5,6 +5,7 @@ import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments,
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { showToast } from '../toast.js';
+import { beginRequest, isLatestRequest } from '../requestSequence.js';
 
 let notesSaveTimer = null;
 
@@ -126,13 +127,20 @@ export function openJobDetail(jobKey) {
   completeBtn.checked = job.completed;
   completeBtn.disabled = !canComplete;
   renderCompletedInfo(job);
+  const completeRequestKey = `job-complete:${job.jobKey}`;
   completeBtn.onchange = canComplete ? () => {
     const nextCompleted = completeBtn.checked;
+    const prevCompleted = job.completed;
+    // Same out-of-order-response guard as jobCard.js — rapid toggling here
+    // fires overlapping requests, and only the latest one's response should
+    // ever be allowed to update the checkbox.
+    const token = beginRequest(completeRequestKey);
     job.completed = nextCompleted;
     patchJob(job.jobKey, { completed: nextCompleted });
     renderDepartmentSection(job); // lock/unlock department editing immediately, without reopening the panel
     toggleComplete(job.jobKey, nextCompleted)
       .then(res => {
+        if (!isLatestRequest(completeRequestKey, token)) return;
         if (!res.success) throw new Error(res.error || 'failed');
         const patch = { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy };
         Object.assign(job, patch);
@@ -140,9 +148,10 @@ export function openJobDetail(jobKey) {
         renderCompletedInfo(job);
       })
       .catch(() => {
-        completeBtn.checked = !nextCompleted;
-        job.completed = !nextCompleted;
-        patchJob(job.jobKey, { completed: !nextCompleted });
+        if (!isLatestRequest(completeRequestKey, token)) return;
+        completeBtn.checked = prevCompleted;
+        job.completed = prevCompleted;
+        patchJob(job.jobKey, { completed: prevCompleted });
         renderCompletedInfo(job);
         renderDepartmentSection(job);
       });

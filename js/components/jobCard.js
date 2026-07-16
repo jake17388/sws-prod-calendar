@@ -3,6 +3,7 @@ import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
 import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
+import { beginRequest, isLatestRequest } from '../requestSequence.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -22,13 +23,22 @@ function departmentBadgeHtml(job) {
 
 function handleCheckboxToggle(job) {
   const nextCompleted = !job.completed;
+  const prevCompleted = job.completed;
+  // Rapid clicks fire overlapping requests whose responses can resolve out
+  // of order — only the response matching the most recently fired toggle
+  // for this job is allowed to touch state, so a slow stale response can't
+  // silently flip the checkbox back.
+  const requestKey = `job-complete:${job.jobKey}`;
+  const token = beginRequest(requestKey);
   patchJob(job.jobKey, { completed: nextCompleted });
   toggleComplete(job.jobKey, nextCompleted)
     .then(res => {
+      if (!isLatestRequest(requestKey, token)) return;
       if (res.success) patchJob(job.jobKey, { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy });
     })
     .catch(() => {
-      patchJob(job.jobKey, { completed: job.completed }); // revert on failure
+      if (!isLatestRequest(requestKey, token)) return;
+      patchJob(job.jobKey, { completed: prevCompleted }); // revert on failure
     });
 }
 
