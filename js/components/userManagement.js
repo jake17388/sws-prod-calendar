@@ -1,6 +1,7 @@
 import { fetchUsers, addUser as addUserApi, updateUser as updateUserApi, deleteUser as deleteUserApi } from '../api.js';
 import { DEPARTMENTS, PM_BLOCKED_DEPARTMENTS } from '../config.js';
 import { currentDepartment } from '../auth.js';
+import { showToast } from '../toast.js';
 
 let users = [];
 
@@ -91,9 +92,10 @@ function renderEditableRow(user, actorDept) {
   row.querySelector('.user-row-delete').addEventListener('click', () => {
     if (!confirm(`Remove ${user.name}? This can't be undone.`)) return;
     deleteUserApi(user.id).then(res => {
-      if (!res.success) { showRowHint(row, res.error || 'Failed to delete', true); return; }
+      if (!res.success) { showRowHint(row, res.error || 'Failed to delete', true); showToast(res.error || 'Failed to delete user', 'error'); return; }
       users = users.filter(u => u.id !== user.id);
       renderList();
+      showToast(`${user.name} removed`);
     });
   });
 
@@ -135,10 +137,11 @@ function handleAddUser() {
   if (!/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
   hint.textContent = 'Adding…';
   addUserApi(name, department, pin).then(res => {
-    if (!res.success) { hint.textContent = res.error || 'Failed to add user'; return; }
+    if (!res.success) { hint.textContent = res.error || 'Failed to add user'; showToast(res.error || 'Failed to add user', 'error'); return; }
     users.push(res.user);
     resetAddForm();
     renderList();
+    showToast(`${res.user.name} added`);
   });
 }
 

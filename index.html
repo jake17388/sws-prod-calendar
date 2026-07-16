@@ -17,13 +17,15 @@
 <!-- ?v= on every local script/stylesheet below busts the CDN/browser cache
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
-<link rel="stylesheet" href="styles/tokens.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/calendar.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/job-card.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.14.9" />
-<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.16.1" />
+<link rel="stylesheet" href="styles/tokens.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/job-card.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.2" />
+<link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
 </head>
 <body>
 
@@ -98,8 +100,12 @@
     <button id="update-reload-btn">Update now</button>
   </div>
 
+  <div id="stats-bar"></div>
+
   <main class="view-area" id="view-area"></main>
 </div>
+
+<div id="toast-stack" aria-live="polite"></div>
 
 <div class="settings-backdrop" id="settings-backdrop"></div>
 <div class="settings-panel" id="settings-panel">
@@ -199,6 +205,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.16.1"></script>
+<script type="module" src="js/app.js?v=2026.07.16.2"></script>
 </body>
 </html>

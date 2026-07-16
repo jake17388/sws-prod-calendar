@@ -24,7 +24,7 @@ export function renderWeek(container, refDate, jobs) {
     jobsWrap.className = 'week-day-jobs';
     const dayJobs = jobsByDate[iso] || [];
     if (!dayJobs.length) {
-      jobsWrap.innerHTML = '';
+      jobsWrap.innerHTML = '<div class="week-day-empty">—</div>';
     } else {
       dayJobs.forEach(job => jobsWrap.appendChild(renderJobCard(job, false)));
     }

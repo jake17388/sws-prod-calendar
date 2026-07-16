@@ -13,7 +13,11 @@ export function renderJobsToAssign(container, refDate, jobs) {
   if (!dueDates.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No jobs need a department assigned.';
+    empty.innerHTML = `
+      <div class="empty-state-icon">✓</div>
+      <div class="empty-state-title">All caught up</div>
+      <div class="empty-state-subtitle">Every open job already has a department assigned.</div>
+    `;
     container.appendChild(empty);
     return;
   }

@@ -12,7 +12,11 @@ export function renderSchedule(container, refDate, jobs) {
   if (!dueDates.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
-    empty.textContent = 'No production jobs in range.';
+    empty.innerHTML = `
+      <div class="empty-state-icon">📋</div>
+      <div class="empty-state-title">No production jobs in range</div>
+      <div class="empty-state-subtitle">Jobs will appear here once they're pulled in from the install calendars.</div>
+    `;
     container.appendChild(empty);
     return;
   }

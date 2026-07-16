@@ -2,7 +2,8 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(8, 10, 16, 0.55);
+  backdrop-filter: blur(2px);
   z-index: 20;
   align-items: stretch;
   justify-content: flex-end;
@@ -10,9 +11,10 @@
 #job-detail-overlay.open { display: flex; }
 
 .job-detail-panel {
-  width: min(420px, 100%);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-panel);
+  width: min(440px, 100%);
+  background: var(--surface-overlay);
+  border-left: 1px solid var(--border-default);
+  box-shadow: var(--shadow-4);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -22,29 +24,41 @@
 #job-detail-overlay.open .job-detail-panel { transform: translateX(0); }
 
 .job-detail-header {
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-5) var(--space-5);
+  border-bottom: 1px solid var(--border-default);
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
+  background: var(--surface-card);
 }
 .job-detail-header h2 {
   font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-primary);
   margin: 0 0 var(--space-1);
+  line-height: var(--line-tight);
 }
 .job-detail-header .job-detail-meta {
   font-size: var(--text-sm);
-  color: var(--color-text-dim);
+  color: var(--ink-secondary);
 }
 .job-detail-close {
   margin-left: auto;
-  background: none;
-  border: none;
-  color: var(--color-text-faint);
-  font-size: var(--text-xl);
+  background: var(--surface-canvas);
+  border: 1px solid var(--border-default);
+  color: var(--ink-secondary);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: var(--text-lg);
   line-height: 1;
-  padding: var(--space-1);
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo);
 }
+.job-detail-close:hover { background: var(--surface-card-hover); color: var(--ink-primary); }
 
 .job-detail-body {
   flex: 1;
@@ -56,24 +70,35 @@
 }
 
 .job-detail-section h3 {
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-faint);
+  letter-spacing: var(--tracking-wider);
+  color: var(--ink-tertiary);
   margin: 0 0 var(--space-2);
 }
-
 
 .job-detail-complete-toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  font-weight: 600;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
+  color: var(--ink-primary);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
+}
+.job-detail-complete-toggle:has(input:checked) {
+  background: var(--status-success-bg);
+  border-color: var(--status-success-border);
+}
+.job-detail-complete-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--status-success-solid);
 }
 /* `display: flex` above beats the browser's default [hidden] rule (author
    CSS always wins over the user-agent stylesheet), so setting the hidden
@@ -82,25 +107,29 @@
 
 .completed-info {
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  margin-top: calc(-1 * var(--space-2));
+  color: var(--ink-tertiary);
+  margin-top: calc(-1 * var(--space-3));
 }
 
 .notes-textarea {
   width: 100%;
-  min-height: 90px;
+  min-height: 96px;
   resize: vertical;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  color: var(--ink-primary);
+  padding: var(--space-3);
   font-family: inherit;
   font-size: var(--text-sm);
+  line-height: var(--line-normal);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
+.notes-textarea:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
+.notes-textarea:read-only { color: var(--ink-secondary); }
 .notes-save-hint {
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  color: var(--ink-tertiary);
   margin-top: var(--space-1);
   min-height: 1.2em;
 }
@@ -130,44 +159,46 @@
   background: transparent;
   border: none;
   border-bottom: 1px solid transparent;
-  color: var(--color-text);
+  color: var(--ink-primary);
   font-size: var(--text-sm);
   padding: var(--space-1) 0;
 }
 .checklist-item-main input[type="text"]:focus {
   outline: none;
-  border-bottom-color: var(--color-accent);
+  border-bottom-color: var(--accent-solid);
 }
 .checklist-item-text {
   font-size: var(--text-sm);
-  color: var(--color-text);
+  color: var(--ink-primary);
   padding: var(--space-1) 0;
 }
 .checklist-item.done .checklist-item-main input[type="text"],
 .checklist-item.done .checklist-item-text {
-  color: var(--color-text-faint);
+  color: var(--ink-tertiary);
   text-decoration: line-through;
 }
 .checklist-item-stamp {
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
+  font-size: var(--text-2xs);
+  color: var(--ink-disabled);
   text-decoration: none;
 }
 
 .checklist-check {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 2px solid var(--color-text-faint);
+  width: 19px;
+  height: 19px;
+  border-radius: var(--radius-2xs);
+  border: 2px solid var(--ink-disabled);
   flex-shrink: 0;
   display: grid;
   place-items: center;
   background: transparent;
   margin-top: 1px;
+  transition: background var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo);
 }
+.checklist-check:hover:not(:disabled) { border-color: var(--accent-solid); }
 .checklist-check.checked {
-  background: var(--color-success);
-  border-color: var(--color-success);
+  background: var(--status-success-solid);
+  border-color: var(--status-success-solid);
 }
 .checklist-check:disabled { opacity: 0.7; }
 .checklist-check.checked::after {
@@ -182,12 +213,14 @@
 .checklist-remove {
   background: none;
   border: none;
-  color: var(--color-text-faint);
+  color: var(--ink-disabled);
   font-size: var(--text-lg);
   line-height: 1;
   padding: 0 var(--space-1);
+  border-radius: var(--radius-2xs);
+  transition: color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
 }
-.checklist-remove:hover { color: var(--color-danger); }
+.checklist-remove:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
 
 .checklist-add {
   display: flex;
@@ -196,34 +229,39 @@
 }
 .checklist-add input {
   flex: 1;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  color: var(--ink-primary);
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
+.checklist-add input:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
 .checklist-add button {
-  background: var(--color-accent);
+  background: var(--accent-solid);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-2sm);
   padding: 0 var(--space-4);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
+  transition: background var(--duration-fast) var(--ease-out-expo);
 }
+.checklist-add button:hover { background: var(--accent-solid-hover); }
 
 .due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .due-date-edit-form[hidden] { display: none; }
 .due-date-edit-form input[type="date"] {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  color: var(--ink-primary);
   padding: var(--space-2) var(--space-3);
   font-family: inherit;
   font-size: var(--text-sm);
 }
+.due-date-edit-form input[type="date"]:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
 .due-date-edit-actions { display: flex; gap: var(--space-2); }
 .due-date-edit-actions .settings-action { margin-top: 0; width: auto; flex: 1; }
 
@@ -235,8 +273,9 @@
   .job-detail-panel {
     width: 100%;
     height: auto;
-    max-height: 80vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 85vh;
+    border-radius: var(--radius-2lg) var(--radius-2lg) 0 0;
+    border-left: none;
     transform: translateY(110%);
     padding-bottom: env(safe-area-inset-bottom);
   }

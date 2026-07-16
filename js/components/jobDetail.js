@@ -4,6 +4,7 @@ import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
+import { showToast } from '../toast.js';
 
 let notesSaveTimer = null;
 
@@ -56,11 +57,15 @@ function renderDueDateEditor(job) {
   document.getElementById('due-date-save-btn').onclick = () => {
     if (!input.value) { hint.textContent = 'Pick a date first'; return; }
     hint.textContent = 'Saving…';
-    applyOverride(input.value).catch(() => { hint.textContent = 'Failed to save — try again'; });
+    applyOverride(input.value)
+      .then(() => showToast('Due date updated'))
+      .catch(() => { hint.textContent = 'Failed to save — try again'; showToast('Failed to save due date', 'error'); });
   };
   document.getElementById('due-date-reset-btn').onclick = () => {
     hint.textContent = 'Resetting…';
-    applyOverride('').catch(() => { hint.textContent = 'Failed to reset — try again'; });
+    applyOverride('')
+      .then(() => showToast('Due date reset to automatic'))
+      .catch(() => { hint.textContent = 'Failed to reset — try again'; showToast('Failed to reset due date', 'error'); });
   };
 }
 
@@ -161,15 +166,16 @@ export function openJobDetail(jobKey) {
             patchJob(job.jobKey, { notes: res.notes, updatedAt: res.updatedAt });
             notesEl.value = res.notes;
             notesHint.textContent = 'Someone else edited this — showing their version, please redo your change';
+            showToast('Someone else edited these notes first', 'error');
             return;
           }
-          if (!res.success) { notesHint.textContent = 'Failed to save — try again'; return; }
+          if (!res.success) { notesHint.textContent = 'Failed to save — try again'; showToast('Failed to save notes', 'error'); return; }
           job.updatedAt = res.updatedAt;
           patchJob(job.jobKey, { updatedAt: res.updatedAt });
           notesHint.textContent = 'Saved';
           setTimeout(() => (notesHint.textContent = ''), 1500);
         })
-        .catch(() => { notesHint.textContent = 'Failed to save — try again'; });
+        .catch(() => { notesHint.textContent = 'Failed to save — try again'; showToast('Failed to save notes', 'error'); });
     }, 600);
   } : null;
 

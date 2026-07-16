@@ -3,11 +3,13 @@ import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, c
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
+import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
 import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign.js';
 import { addDays } from './dates.js';
+import { showToast } from './toast.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -142,6 +144,7 @@ function saveMyAccount() {
       updateAuthProfile({ user: res.user.name, pin: res.user.pin });
       document.getElementById('user-badge').textContent = res.user.name;
       hint.textContent = 'Saved';
+      showToast('Account details saved');
       setTimeout(() => { hint.textContent = ''; }, 1500);
     })
     .catch(() => { hint.textContent = 'Network error — try again'; });
@@ -201,6 +204,7 @@ function boot() {
   });
 
   subscribe(renderActiveView);
+  subscribe(renderStatsBar);
   refreshJobs().then(() => { if (document.visibilityState === 'visible') startPolling(); });
   checkForUpdate();
 }

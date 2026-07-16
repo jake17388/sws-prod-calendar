@@ -55,6 +55,92 @@
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.45);
+
+  /* ══════════════════════════════════════════════════════════════════════
+     v2 design system — additive only. Nothing above this line changes
+     value, so header.app-header and #pin-screen (which read the tokens
+     above directly) render pixel-identical. Everything below is new
+     surface for the rest of the app's enterprise redesign. ══════════════ */
+
+  --surface-canvas: #0f1218;
+  --surface-card: #171b23;
+  --surface-card-hover: #1d222c;
+  --surface-overlay: #1b1f28;
+  --surface-sunken: #11141a;
+
+  --border-hairline: rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --ink-primary: #eef0f4;
+  --ink-secondary: #9aa1b0;
+  --ink-tertiary: #666d7d;
+  --ink-disabled: #454a57;
+  --ink-inverse: #0d0f14;
+
+  --accent-solid: var(--color-accent);
+  --accent-solid-hover: color-mix(in srgb, var(--color-accent) 82%, white);
+  --accent-subtle-bg: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --accent-subtle-text: color-mix(in srgb, var(--color-accent) 88%, white);
+  --accent-ring: color-mix(in srgb, var(--color-accent) 45%, transparent);
+
+  --status-critical-solid: #ef4444;
+  --status-critical-bg: rgba(239, 68, 68, 0.14);
+  --status-critical-text: #f38b8b;
+  --status-critical-border: rgba(239, 68, 68, 0.32);
+
+  --status-warning-solid: #f5a31c;
+  --status-warning-bg: rgba(245, 163, 28, 0.15);
+  --status-warning-text: #f0b954;
+  --status-warning-border: rgba(245, 163, 28, 0.34);
+
+  --status-success-solid: #22c55e;
+  --status-success-bg: rgba(34, 197, 94, 0.14);
+  --status-success-text: #5fd489;
+  --status-success-border: rgba(34, 197, 94, 0.3);
+
+  --status-neutral-solid: var(--color-accent);
+  --status-neutral-bg: rgba(107, 143, 217, 0.14);
+  --status-neutral-text: #a8bdec;
+  --status-neutral-border: rgba(107, 143, 217, 0.3);
+
+  --radius-2xs: 4px;
+  --radius-2sm: 8px;
+  --radius-md: 10px;
+  --radius-2lg: 20px;
+  --radius-full: 999px;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-2: 0 2px 10px rgba(0, 0, 0, 0.34);
+  --shadow-3: 0 10px 28px rgba(0, 0, 0, 0.4);
+  --shadow-4: 0 20px 56px rgba(0, 0, 0, 0.5);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+
+  --text-2xs: 0.6875rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.01em;
+  --tracking-wide: 0.03em;
+  --tracking-wider: 0.08em;
+
+  --line-tight: 1.15;
+  --line-normal: 1.45;
+  --line-relaxed: 1.65;
+
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  --z-sticky: 100;
+  --z-dropdown: 200;
+  --z-backdrop: 700;
+  --z-panel: 710;
+  --z-toast: 900;
 }
 
 @media (prefers-color-scheme: light) {
@@ -72,5 +158,51 @@
     --color-completed-text: #a7acb8;
     --shadow-card: 0 1px 2px rgba(20, 22, 30, 0.08);
     --shadow-panel: 0 12px 40px rgba(20, 22, 30, 0.18);
+
+    /* v2 light overrides */
+    --surface-canvas: #f2f3f6;
+    --surface-card: #ffffff;
+    --surface-card-hover: #f8f9fb;
+    --surface-overlay: #ffffff;
+    --surface-sunken: #f0f1f4;
+
+    --border-hairline: rgba(20, 22, 30, 0.06);
+    --border-default: rgba(20, 22, 30, 0.11);
+    --border-strong: rgba(20, 22, 30, 0.2);
+
+    --ink-primary: #171a21;
+    --ink-secondary: #5b6273;
+    --ink-tertiary: #868da0;
+    --ink-disabled: #c1c5d0;
+    --ink-inverse: #ffffff;
+
+    --accent-subtle-bg: color-mix(in srgb, var(--color-accent) 9%, transparent);
+    --accent-subtle-text: var(--color-accent);
+    --accent-ring: color-mix(in srgb, var(--color-accent) 35%, transparent);
+
+    --status-critical-solid: #dc2626;
+    --status-critical-bg: #fdecec;
+    --status-critical-text: #b3261e;
+    --status-critical-border: #f3c6c4;
+
+    --status-warning-solid: #b8790a;
+    --status-warning-bg: #fff3df;
+    --status-warning-text: #8a5b06;
+    --status-warning-border: #f0d9ac;
+
+    --status-success-solid: #16a34a;
+    --status-success-bg: #e9f7ee;
+    --status-success-text: #147a3a;
+    --status-success-border: #bfe6cc;
+
+    --status-neutral-solid: var(--color-accent);
+    --status-neutral-bg: #ebf0fb;
+    --status-neutral-text: var(--color-accent);
+    --status-neutral-border: #cddaf5;
+
+    --shadow-1: 0 1px 2px rgba(20, 22, 30, 0.05);
+    --shadow-2: 0 2px 10px rgba(20, 22, 30, 0.07);
+    --shadow-3: 0 10px 28px rgba(20, 22, 30, 0.1);
+    --shadow-4: 0 20px 56px rgba(20, 22, 30, 0.16);
   }
 }
