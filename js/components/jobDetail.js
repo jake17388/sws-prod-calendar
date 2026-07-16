@@ -79,6 +79,7 @@ function renderDepartmentSection(job) {
   if (!job.departments) job.departments = [];
   if (!job.departmentChecklists) job.departmentChecklists = {};
   if (!job.currentDepartments) job.currentDepartments = [];
+  if (!job.departmentNotes) job.departmentNotes = {};
 
   if (canAssignDepartments()) {
     wrap.hidden = false;

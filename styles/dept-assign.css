@@ -64,3 +64,26 @@
   font-size: var(--text-sm);
   color: var(--color-text-faint);
 }
+
+.dept-assign-notes {
+  margin-top: var(--space-2);
+  padding-left: calc(18px + var(--space-2));
+}
+.dept-assign-notes[hidden] { display: none; }
+.dept-assign-notes:empty { margin-top: 0; }
+
+.dept-notes-textarea {
+  min-height: 50px;
+}
+
+.dept-notes-static {
+  font-size: var(--text-sm);
+  color: var(--color-text-dim);
+  white-space: pre-wrap;
+  padding: var(--space-1) 0;
+}
+
+.dept-own-notes {
+  padding-left: 0;
+  margin-top: var(--space-3);
+}

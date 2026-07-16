@@ -394,6 +394,7 @@ function doPost(e) {
   }
   if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
   if (data.action === 'toggleDepartmentTaskDone') return json(toggleDepartmentTaskDone(actor, data));
+  if (data.action === 'updateDepartmentNotes') return json(updateDepartmentNotes(actor, data));
   if (data.action === 'addUser') return json(addUser(actor, data));
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
@@ -431,7 +432,7 @@ function updateJobDepartments(actor, data) {
   if (!canAssignDepartments(actor.department)) return { success: false, error: 'forbidden' };
   if (!data.jobKey) return { success: false, error: 'jobKey required' };
 
-  const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {} };
+  const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {}, departmentNotes: {} };
   if (existing.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
 
   const departments = Array.isArray(data.departments)
@@ -457,7 +458,43 @@ function updateJobDepartments(actor, data) {
       .filter(i => i.text);
   });
 
-  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments }, actor.name, data.expectedUpdatedAt);
+  // Carries forward each kept department's notes (written through the
+  // separate updateDepartmentNotes action below) and drops any belonging to
+  // a department no longer assigned — same "only kept departments survive"
+  // rule as departmentChecklists above.
+  const departmentNotes = {};
+  const oldNotes = existing.departmentNotes || {};
+  departments.forEach(dept => {
+    if (oldNotes[dept] !== undefined) departmentNotes[dept] = oldNotes[dept];
+  });
+
+  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments, departmentNotes }, actor.name, data.expectedUpdatedAt);
+}
+
+// Free-text notes scoped to one department tag on one job. Admin/Manager can
+// leave a note on any JOB_TAGS entry (including Ship-In, which has no
+// logged-in role); a production-department account can only edit its own
+// department's note, and only while that department is current — the same
+// gate as toggleDepartmentTaskDone, since that's the only time it can see
+// the job at all.
+function updateDepartmentNotes(actor, data) {
+  const department = String(data.department || '');
+  if (JOB_TAGS.indexOf(department) === -1) return { success: false, error: 'forbidden' };
+
+  const isManager = canAssignDepartments(actor.department);
+  const isOwnDept = actor.department === department;
+  if (!isManager && !isOwnDept) return { success: false, error: 'forbidden' };
+  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+
+  const tracking = getAllTracking();
+  const current = tracking[String(data.jobKey)] || { completed: false, departments: [], currentDepartments: [], departmentNotes: {} };
+  if (current.completed) return { success: false, error: 'Job is complete — reopen it to edit notes' };
+  if (!isManager && current.currentDepartments.indexOf(department) === -1) {
+    return { success: false, error: "Not currently your department's job" };
+  }
+
+  const departmentNotes = { ...current.departmentNotes, [department]: String(data.notes || '') };
+  return setTracking(data.jobKey, { departmentNotes }, actor.name, data.expectedUpdatedAt);
 }
 
 // A production-department account (Manufacturing, Graphics, etc.) can only
@@ -542,6 +579,7 @@ function getProductionJobs(e, actor) {
     job.departments = t.departments || [];
     job.departmentChecklists = t.departmentChecklists || {};
     job.currentDepartments = t.currentDepartments || [];
+    job.departmentNotes = t.departmentNotes || {};
     // The token a client echoes back on its next write (see setTracking's
     // expectedUpdatedAt check) so a save built from this snapshot gets
     // rejected if someone else's write landed first.
@@ -699,7 +737,7 @@ function getTrackingSheet() {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
     const sheet = ss.getActiveSheet();
-    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json']);
+    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json', 'department_notes_json']);
     // Plain-text format on the date-shaped columns so Sheets doesn't
     // auto-coerce "2026-08-15" into an actual Date cell.
     sheet.getRange('G:I').setNumberFormat('@');
@@ -712,7 +750,7 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson] = data[i];
+    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson] = data[i];
     if (!jobKey) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
@@ -722,12 +760,14 @@ function getAllTracking() {
     try { departmentChecklists = departmentChecklistsJson ? JSON.parse(departmentChecklistsJson) : {}; } catch (err) { departmentChecklists = {}; }
     let currentDepartments = [];
     try { currentDepartments = currentDepartmentsJson ? JSON.parse(currentDepartmentsJson) : []; } catch (err) { currentDepartments = []; }
+    let departmentNotes = {};
+    try { departmentNotes = departmentNotesJson ? JSON.parse(departmentNotesJson) : {}; } catch (err) { departmentNotes = {}; }
     tracking[String(jobKey)] = {
       completed: !!completed, notes: notes || '', checklist,
       updatedAt: updatedAt || '',
       completedAt: completedAt || '', completedBy: completedBy || '',
       dueOverride: normalizeDateCell(dueOverride),
-      departments, departmentChecklists, currentDepartments,
+      departments, departmentChecklists, currentDepartments, departmentNotes,
     };
   }
   return tracking;
@@ -754,7 +794,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: '', checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [] }
+      ? { completed: false, notes: '', checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], departmentNotes: {} }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: data[rowIndex - 1][2] || '',
@@ -766,6 +806,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
           departments: (() => { try { return JSON.parse(data[rowIndex - 1][9] || '[]'); } catch (e) { return []; } })(),
           departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
           currentDepartments: (() => { try { return JSON.parse(data[rowIndex - 1][11] || '[]'); } catch (e) { return []; } })(),
+          departmentNotes: (() => { try { return JSON.parse(data[rowIndex - 1][12] || '{}'); } catch (e) { return {}; } })(),
         };
 
     if (expectedUpdatedAt && rowIndex !== -1 && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
@@ -781,7 +822,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       next.completedBy = patch.completed ? user : '';
     }
     next.updatedAt = new Date().toISOString();
-    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), next.updatedAt, user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments)];
+    const row = [jobKey, next.completed, next.notes, JSON.stringify(next.checklist), next.updatedAt, user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments), JSON.stringify(next.departmentNotes)];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {

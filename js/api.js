@@ -67,3 +67,7 @@ export const updateJobDepartments = (jobKey, departments, departmentChecklists, 
 /** @param {string} jobKey @param {string} department @param {string} itemId @param {boolean} done */
 export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>
   scriptPost({ action: 'toggleDepartmentTaskDone', jobKey, department, itemId, done });
+
+/** @param {string} jobKey @param {string} department @param {string} notes @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
+export const updateDepartmentNotes = (jobKey, department, notes, expectedUpdatedAt) =>
+  scriptPost({ action: 'updateDepartmentNotes', jobKey, department, notes, expectedUpdatedAt });
