@@ -29,7 +29,6 @@
 .stat-chip.critical .stat-chip-dot { background: var(--status-critical-solid); }
 .stat-chip.warning .stat-chip-dot { background: var(--status-warning-solid); }
 .stat-chip.success .stat-chip-dot { background: var(--status-success-solid); }
-.stat-chip.neutral .stat-chip-dot { background: var(--ink-tertiary); }
 
 .stat-chip-value {
   font-size: var(--text-base);
