@@ -10,6 +10,7 @@ import { renderSchedule } from './views/schedule.js';
 import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign.js';
 import { addDays } from './dates.js';
 import { showToast } from './toast.js';
+import { setHeaderDimmed } from './headerDim.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -122,6 +123,7 @@ function applyZoom() {
 function openSettings() {
   document.getElementById('settings-backdrop').classList.add('show');
   document.getElementById('settings-panel').classList.add('show');
+  setHeaderDimmed(true);
   document.getElementById('my-account-name').value = currentUser() || '';
   document.getElementById('my-account-pin').value = currentPin() || '';
   document.getElementById('my-account-hint').textContent = '';
@@ -129,6 +131,7 @@ function openSettings() {
 function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('show');
   document.getElementById('settings-panel').classList.remove('show');
+  setHeaderDimmed(false);
 }
 
 function saveMyAccount() {

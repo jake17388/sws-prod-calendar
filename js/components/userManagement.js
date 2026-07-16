@@ -2,6 +2,7 @@ import { fetchUsers, addUser as addUserApi, updateUser as updateUserApi, deleteU
 import { DEPARTMENTS, PM_BLOCKED_DEPARTMENTS } from '../config.js';
 import { currentDepartment } from '../auth.js';
 import { showToast } from '../toast.js';
+import { setHeaderDimmed } from '../headerDim.js';
 
 let users = [];
 
@@ -147,6 +148,7 @@ function handleAddUser() {
 
 export function openUserManagement() {
   document.getElementById('user-mgmt-overlay').classList.add('open');
+  setHeaderDimmed(true);
   document.getElementById('user-mgmt-list').innerHTML = '<div class="user-mgmt-empty">Loading…</div>';
   resetAddForm();
   fetchUsers()
@@ -156,6 +158,7 @@ export function openUserManagement() {
 
 export function closeUserManagement() {
   document.getElementById('user-mgmt-overlay').classList.remove('open');
+  setHeaderDimmed(false);
 }
 
 export function initUserManagement() {

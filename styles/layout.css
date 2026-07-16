@@ -498,17 +498,15 @@ main.view-area {
 }
 
 /* Dims the header along with the rest of the page while a panel/modal is
-   open. The overlays' own semi-transparent backdrop already covers the
-   header (it's a full-viewport fixed layer above everything), but a tint
-   that reads as an obvious dim against the light calendar body is nearly
-   invisible against the header's own dark navy gradient — so without this,
-   the header looked untouched while everything else visibly darkened.
-   `filter: brightness()` darkens proportionally regardless of how dark the
-   underlying color already is, so it stays visible here too. Driven purely
-   by the overlays' existing open/show classes — no JS wiring needed. */
-body:has(#job-detail-overlay.open) header.app-header,
-body:has(#user-mgmt-overlay.open) header.app-header,
-body:has(.settings-panel.show) header.app-header {
+   open (toggled from JS via headerDim.js). The overlays' own semi-
+   transparent backdrop already covers the header (it's a full-viewport
+   fixed layer above everything), but a tint that reads as an obvious dim
+   against the light calendar body is nearly invisible against the header's
+   own dark navy gradient — so without this, the header looked untouched
+   while everything else visibly darkened. `filter: brightness()` darkens
+   proportionally regardless of how dark the underlying color already is,
+   so it stays visible here too. */
+header.app-header.overlay-dimmed {
   filter: brightness(0.6);
   transition: filter var(--duration-normal) var(--ease-out-expo);
 }

@@ -6,6 +6,7 @@ import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
+import { setHeaderDimmed } from '../headerDim.js';
 
 let notesSaveTimer = null;
 
@@ -189,8 +190,10 @@ export function openJobDetail(jobKey) {
   } : null;
 
   document.getElementById('job-detail-overlay').classList.add('open');
+  setHeaderDimmed(true);
 }
 
 export function closeJobDetail() {
   document.getElementById('job-detail-overlay').classList.remove('open');
+  setHeaderDimmed(false);
 }
