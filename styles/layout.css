@@ -43,7 +43,11 @@ header.app-header {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 18px 9px;
+  /* env() resolves to 0 outside a standalone/home-screen PWA context, so
+     this is safe to apply unconditionally — it only adds real space when
+     iOS/iPadOS actually overlays a status bar (clock/battery) on top of
+     the page, which happens at every width, not just phone-sized ones. */
+  padding: calc(10px + env(safe-area-inset-top)) 18px 9px;
 }
 .brand {
   display: flex;
@@ -474,7 +478,6 @@ main.view-area {
 }
 
 @media (max-width: 640px) {
-  .brand-row { padding-top: calc(10px + env(safe-area-inset-top)); }
   .brand-name { font-size: 11px; }
   .brand-sub { display: none; }
   #last-updated { display: none; }
