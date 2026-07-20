@@ -510,3 +510,14 @@ header.app-header.overlay-dimmed {
   filter: brightness(0.6);
   transition: filter var(--duration-normal) var(--ease-out-expo);
 }
+
+/* Tablets (iPad, etc.) — see job-card.css for why this is gated on
+   pointer:coarse rather than a device check. Settings panel is already a
+   centered modal at this width (see the min-width:641px block above); only
+   its smallest tap targets need to grow. */
+@media (min-width: 641px) and (pointer: coarse) {
+  .settings-panel { width: min(420px, calc(100% - 24px)); }
+  .settings-close-btn { width: 36px; height: 36px; }
+  .zoom-btn { width: 36px; height: 36px; }
+  .settings-action { padding: var(--space-4); }
+}
