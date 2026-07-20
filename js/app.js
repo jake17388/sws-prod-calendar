@@ -11,6 +11,7 @@ import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign
 import { addDays } from './dates.js';
 import { showToast } from './toast.js';
 import { setHeaderDimmed } from './headerDim.js';
+import { loadCachedJobs, saveCachedJobs } from './jobsCache.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -53,6 +54,7 @@ function refreshJobs() {
   return fetchProductionJobs()
     .then(({ jobs, version }) => {
       setJobs(jobs);
+      saveCachedJobs(currentDepartment(), jobs);
       lastKnownVersion = version;
       document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
       document.getElementById('last-updated').textContent =
@@ -206,8 +208,24 @@ function boot() {
     applyZoom();
   });
 
+  // A brand-new session with no cached jobs yet (or one whose cache aged
+  // out) would otherwise show a blank view-area for however long the
+  // network round-trip takes — this replaces that with an explicit loading
+  // state, which the cache-seed or the real fetch below both immediately
+  // overwrite by rendering real content.
+  document.getElementById('view-area').innerHTML =
+    '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading jobs…</div></div>';
+
   subscribe(renderActiveView);
   subscribe(renderStatsBar);
+
+  // Paint last-known jobs instantly from a local cache while the real
+  // fetch is still in flight (it re-hits CalendarApp + the tracking Sheet,
+  // which can take a few seconds) — refreshJobs() below reconciles with
+  // fresh data as soon as it lands, same as a normal poll-triggered update.
+  const cachedJobs = loadCachedJobs(currentDepartment());
+  if (cachedJobs) setJobs(cachedJobs);
+
   refreshJobs().then(() => { if (document.visibilityState === 'visible') startPolling(); });
   checkForUpdate();
 }

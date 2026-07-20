@@ -537,12 +537,39 @@ function defaultCalendarWindow() {
   return { start, end };
 }
 
+// CalendarApp.getEvents() is by far the slowest part of a request — two
+// calendars over a ~104-day window can take several seconds, and every
+// client requests the same default window (see defaultCalendarWindow()),
+// so this is cached and shared across everyone hitting it rather than
+// re-querying Calendar on every login/poll-triggered refresh. Deliberately
+// doesn't cache getAllTracking() (completed/notes/checklists) alongside
+// this — that needs to stay live since it reflects other users' edits in
+// real time, and it's already cheap (one batched Sheets read, not a
+// Calendar scan).
+const CALENDAR_CACHE_TTL_SECONDS = 120;
+
 function getCalendarJobs(start, end) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'caljobs_' + formatDate(start) + '_' + formatDate(end);
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* fall through to a live fetch */ }
+  }
+
   const events = [
     ...fetchCalendarEvents(INSTALL_CAL_ID, start, end),
     ...fetchCalendarEvents(SUB_INSTALL_CAL_ID, start, end),
   ];
-  return groupIntoJobs(events);
+  const jobs = groupIntoJobs(events);
+
+  try {
+    cache.put(cacheKey, JSON.stringify(jobs), CALENDAR_CACHE_TTL_SECONDS);
+  } catch (err) {
+    // Payload over CacheService's 100KB-per-key limit — fine, this window
+    // just won't be cached; every request still gets fresh, correct data.
+  }
+
+  return jobs;
 }
 
 function getProductionJobs(e, actor) {

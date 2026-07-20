@@ -1,5 +1,6 @@
 import { AUTH_KEY } from './config.js';
 import { scriptPost } from './api.js';
+import { clearCachedJobs } from './jobsCache.js';
 
 let auth = readAuth(); // { token, user } — validated server-side on every call
 let pinEntry = '';
@@ -41,6 +42,7 @@ export function updateAuthProfile(patch) {
 
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
+  clearCachedJobs(); // shared devices shouldn't flash a previous account's data on the next login
   auth = null;
   pinEntry = '';
   document.getElementById('app').style.display = 'none';
