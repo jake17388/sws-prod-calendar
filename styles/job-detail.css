@@ -3,7 +3,7 @@
   position: fixed;
   inset: 0;
   background: rgba(8, 10, 16, 0.55);
-  z-index: 20;
+  z-index: var(--z-backdrop);
   align-items: stretch;
   justify-content: flex-end;
 }
