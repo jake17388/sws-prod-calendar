@@ -173,6 +173,28 @@
   .month-cell-more { font-size: 10px; padding: 2px 0; }
 }
 
+/* Tablets (iPad, etc.) — see job-card.css for why this is gated on
+   pointer:coarse rather than a device check. A 7-column week grid on a
+   touch device is cramped and hard to tap accurately even with the extra
+   width tablets have over phones, so it gets the same stacked vertical
+   day list as the phone tier instead of the desktop grid. */
+@media (min-width: 641px) and (pointer: coarse) {
+  .week-grid {
+    grid-template-columns: 1fr;
+    border-left: none;
+  }
+  .week-day-col {
+    border-bottom: 1px solid var(--border-default);
+  }
+  .week-day-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    text-align: left;
+    position: static;
+  }
+}
+
 /* ── Schedule / Jobs-to-assign view ────────────────────────────────────── */
 .schedule-list {
   max-width: 960px;
