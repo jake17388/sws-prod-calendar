@@ -1,4 +1,4 @@
-import { toggleComplete, updateNotes, updateDueDate } from '../api.js';
+import { toggleComplete, updateNotes, updateDueDate, fetchProofFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
@@ -9,6 +9,60 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 
 let notesSaveTimer = null;
+let currentProofObjectUrl = null;
+let proofRequestToken = 0;
+
+function base64ToPdfBlob(base64) {
+  const bytes = atob(base64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: 'application/pdf' });
+}
+
+function revokeCurrentProofUrl() {
+  if (currentProofObjectUrl) {
+    URL.revokeObjectURL(currentProofObjectUrl);
+    currentProofObjectUrl = null;
+  }
+}
+
+// Fetched live on open rather than kept with the job list — see
+// getDropboxProofFile in Code.js for why. jobKey is a job's job number, so
+// a job with no Dropbox folder match (or no PDF in its Proofs folder) just
+// reports { available: false } and this shows "No File Available".
+function renderProofSection(job) {
+  const frame = document.getElementById('job-detail-proof-frame');
+  const empty = document.getElementById('job-detail-proof-empty');
+  const openBtn = document.getElementById('job-detail-proof-open');
+
+  revokeCurrentProofUrl();
+  frame.hidden = true;
+  frame.src = '';
+  openBtn.hidden = true;
+  empty.hidden = false;
+  empty.textContent = 'Loading proof…';
+
+  const token = ++proofRequestToken;
+  fetchProofFile(job.jobNum)
+    .then(res => {
+      if (token !== proofRequestToken) return; // a newer job was opened before this resolved
+      if (!res || !res.available) {
+        empty.textContent = 'No File Available';
+        return;
+      }
+      const url = URL.createObjectURL(base64ToPdfBlob(res.base64));
+      currentProofObjectUrl = url;
+      frame.src = url;
+      frame.hidden = false;
+      empty.hidden = true;
+      openBtn.hidden = false;
+      openBtn.onclick = () => window.open(url, '_blank');
+    })
+    .catch(() => {
+      if (token !== proofRequestToken) return;
+      empty.textContent = 'No File Available';
+    });
+}
 
 function renderCompletedInfo(job) {
   document.getElementById('completed-info').textContent =
@@ -119,6 +173,7 @@ export function openJobDetail(jobKey) {
   updateMetaText(job);
   renderDueDateEditor(job);
   renderDepartmentSection(job);
+  renderProofSection(job);
 
   const canEdit = canEditJobs();
   const canComplete = canMarkJobComplete();
@@ -196,4 +251,6 @@ export function openJobDetail(jobKey) {
 export function closeJobDetail() {
   document.getElementById('job-detail-overlay').classList.remove('open');
   setHeaderDimmed(false);
+  proofRequestToken++; // invalidate any in-flight proof fetch
+  revokeCurrentProofUrl();
 }

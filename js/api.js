@@ -71,3 +71,18 @@ export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>
 /** @param {string} jobKey @param {string} department @param {string} notes @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
 export const updateDepartmentNotes = (jobKey, department, notes, expectedUpdatedAt) =>
   scriptPost({ action: 'updateDepartmentNotes', jobKey, department, notes, expectedUpdatedAt });
+
+/** @param {string} jobNum @returns {Promise<{available: boolean, name?: string, base64?: string}>} */
+export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum });
+
+export const fetchDropboxStatus = () => scriptGet('getDropboxStatus');
+
+/** @returns {Promise<{url?: string, error?: string}>} */
+export const fetchDropboxAuthUrl = () => scriptGet('getDropboxAuthUrl');
+
+export const setDropboxCredentials = (appKey, appSecret) =>
+  scriptPost({ action: 'setDropboxCredentials', appKey, appSecret });
+
+export const disconnectDropbox = () => scriptPost({ action: 'disconnectDropbox' });
+
+export const refreshDropboxProofsNow = () => scriptPost({ action: 'refreshDropboxProofsNow' });

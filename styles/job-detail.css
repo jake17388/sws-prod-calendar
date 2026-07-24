@@ -249,6 +249,35 @@
 }
 .checklist-add button:hover { background: var(--accent-solid-hover); }
 
+.proof-viewer {
+  position: relative;
+  width: 100%;
+  height: 360px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  overflow: hidden;
+}
+.proof-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.proof-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--space-4);
+}
+/* Author CSS beats the UA [hidden] rule (see .job-detail-complete-toggle
+   above) — same fix needed here since this element also sets display. */
+.proof-empty[hidden] { display: none; }
+
 .due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .due-date-edit-form[hidden] { display: none; }
 .due-date-edit-form input[type="date"] {

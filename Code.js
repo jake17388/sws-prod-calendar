@@ -14,6 +14,12 @@ function normalizeCrew(names) {
 
 const DUE_DATE_BUSINESS_DAYS = 2;
 
+// Where job folders live in the company Dropbox — see the Dropbox proofs
+// section below. Job folders (e.g. "251509_Laveen Traditional Academy -
+// EMC's") sit inside numbered range subfolders under this path.
+const DROPBOX_ORDERS_PATH = '/Summit West Signs Team Folder/01 Orders';
+const DROPBOX_PROOFS_REFRESH_HOURS = 1;
+
 // Names (must match a PIN's mapped name exactly) allowed to manually
 // override a job's calculated due date for one-off scheduling edge cases.
 // Add more names here and redeploy to grant the permission to others.
@@ -341,6 +347,12 @@ function bumpTrackingVersion() {
 
 // ── Routing ──────────────────────────────────────────────────────────────────
 function doGet(e) {
+  // Dropbox's OAuth redirect lands here with no `action` of ours — it's
+  // e.parameter.code/state instead. Must be checked before action routing.
+  if (e.parameter.code && e.parameter.state) {
+    return handleDropboxOAuthCallback(e, ScriptApp.getService().getUrl());
+  }
+
   const action = e.parameter.action;
 
   if (action === 'getProductionJobs') {
@@ -358,6 +370,23 @@ function doGet(e) {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
     return json({ version: getTrackingVersion() });
+  }
+  if (action === 'getProofFile') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json(getDropboxProofFile(String(e.parameter.jobNum || '')));
+  }
+  if (action === 'getDropboxStatus') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
+    return json({ connected: isDropboxConnected(), hasCredentials: !!dropboxCredentials().appKey });
+  }
+  if (action === 'getDropboxAuthUrl') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
+    const url = dropboxAuthUrl(ScriptApp.getService().getUrl());
+    if (!url) return json({ error: 'App key/secret not set yet' });
+    return json({ url });
   }
 
   // The app itself is hosted on GitHub Pages, not here
@@ -399,6 +428,26 @@ function doPost(e) {
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
   if (data.action === 'updateSelf') return json(updateSelf(actor, data));
+  if (data.action === 'setDropboxCredentials') {
+    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('DROPBOX_APP_KEY', String(data.appKey || '').trim());
+    props.setProperty('DROPBOX_APP_SECRET', String(data.appSecret || '').trim());
+    return json({ success: true });
+  }
+  if (data.action === 'disconnectDropbox') {
+    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
+    const props = PropertiesService.getScriptProperties();
+    props.deleteProperty('DROPBOX_REFRESH_TOKEN');
+    CacheService.getScriptCache().remove('dropbox_access_token');
+    return json({ success: true });
+  }
+  if (data.action === 'refreshDropboxProofsNow') {
+    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
+    if (!isDropboxConnected()) return json({ success: false, error: 'Dropbox not connected' });
+    refreshDropboxProofs();
+    return json({ success: true });
+  }
   return json({ error: 'unknown action' });
 }
 
@@ -752,8 +801,10 @@ function normalizeDateCell(val) {
 
 // ── Tracking (completed / notes / checklist) ────────────────────────────────
 // Lazily creates its own spreadsheet on first use and remembers the ID in
-// Script Properties, so there's no manual Sheet-ID setup step.
-function getTrackingSheet() {
+// Script Properties, so there's no manual Sheet-ID setup step. Shared with
+// the Dropbox proofs cache below (a second tab in the same spreadsheet)
+// rather than a separate file, so there's still only one Sheet-ID to manage.
+function getTrackingSpreadsheet() {
   const props = PropertiesService.getScriptProperties();
   let sheetId = props.getProperty('TRACKING_SHEET_ID');
   let ss = null;
@@ -769,7 +820,11 @@ function getTrackingSheet() {
     // auto-coerce "2026-08-15" into an actual Date cell.
     sheet.getRange('G:I').setNumberFormat('@');
   }
-  return ss.getActiveSheet();
+  return ss;
+}
+
+function getTrackingSheet() {
+  return getTrackingSpreadsheet().getSheets()[0];
 }
 
 function getAllTracking() {
@@ -862,5 +917,230 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ── Dropbox proofs ───────────────────────────────────────────────────────────
+// Matches each job's Dropbox folder by job number (under DROPBOX_ORDERS_PATH)
+// and caches the path to the newest PDF in its Proofs subfolder, so opening
+// a job in the app is instant — the folder search itself only runs on a
+// time-driven trigger (see ensureDropboxRefreshTrigger), never per-request.
+// The actual PDF bytes are fetched live, on demand, only when someone opens
+// a job's Proof section — that's a single small download, not worth caching
+// against the cache's freshness.
+//
+// Connected once from Settings (Admin only) via a standard OAuth2
+// authorization-code flow requesting offline access, so the refresh token
+// it returns keeps working indefinitely without the Admin re-approving.
+
+function dropboxCredentials() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    appKey: props.getProperty('DROPBOX_APP_KEY') || '',
+    appSecret: props.getProperty('DROPBOX_APP_SECRET') || '',
+    refreshToken: props.getProperty('DROPBOX_REFRESH_TOKEN') || '',
+  };
+}
+
+function isDropboxConnected() {
+  const c = dropboxCredentials();
+  return !!(c.appKey && c.appSecret && c.refreshToken);
+}
+
+// Dropbox access tokens last ~4 hours — cached under that so a proof-file
+// request doesn't pay for a token refresh round-trip every time.
+function getDropboxAccessToken() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('dropbox_access_token');
+  if (cached) return cached;
+
+  const { appKey, appSecret, refreshToken } = dropboxCredentials();
+  if (!appKey || !appSecret || !refreshToken) return null;
+
+  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/oauth2/token', {
+    method: 'post',
+    payload: { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: appKey, client_secret: appSecret },
+    muteHttpExceptions: true,
+  });
+  let body;
+  try { body = JSON.parse(resp.getContentText()); } catch (err) { return null; }
+  if (!body.access_token) return null;
+  cache.put('dropbox_access_token', body.access_token, 3300); // 55 min
+  return body.access_token;
+}
+
+function dropboxApiCall(accessToken, endpoint, payload) {
+  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/' + endpoint, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + accessToken },
+    payload: JSON.stringify(payload || {}),
+    muteHttpExceptions: true,
+  });
+  const code = resp.getResponseCode();
+  if (code < 200 || code >= 300) return null;
+  try { return JSON.parse(resp.getContentText()); } catch (err) { return null; }
+}
+
+// Finds jobNum's folder under DROPBOX_ORDERS_PATH, then the newest PDF in
+// its Proofs subfolder. Proof filenames follow "..._v{N}.pdf" — the highest
+// N wins; falls back to most recently modified when a name doesn't fit
+// that pattern.
+function findLatestProof(accessToken, jobNum) {
+  const search = dropboxApiCall(accessToken, 'files/search_v2', {
+    query: jobNum,
+    options: { path: DROPBOX_ORDERS_PATH, max_results: 20, filename_only: true },
+  });
+  if (!search || !search.matches) return null;
+
+  const folderMatch = search.matches
+    .map(m => m.metadata && m.metadata.metadata)
+    .find(m => m && m['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(m.name));
+  if (!folderMatch) return null;
+
+  const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: folderMatch.path_lower });
+  if (!listing || !listing.entries) return null;
+  const proofsFolder = listing.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
+  if (!proofsFolder) return null;
+
+  const proofsListing = dropboxApiCall(accessToken, 'files/list_folder', { path: proofsFolder.path_lower });
+  if (!proofsListing || !proofsListing.entries) return null;
+  const pdfs = proofsListing.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
+  if (!pdfs.length) return null;
+
+  const versioned = pdfs
+    .map(f => ({ file: f, version: (f.name.match(/_v(\d+)\.pdf$/i) || [])[1] }))
+    .filter(f => f.version);
+  const pool = versioned.length ? versioned : pdfs.map(f => ({ file: f, version: null }));
+  pool.sort((a, b) => (a.version && b.version)
+    ? (+b.version) - (+a.version)
+    : new Date(b.file.server_modified) - new Date(a.file.server_modified));
+
+  const winner = pool[0].file;
+  return { id: winner.id, name: winner.name, modified: winner.server_modified };
+}
+
+function getDropboxProofsSheet() {
+  const ss = getTrackingSpreadsheet();
+  let sheet = ss.getSheetByName('DropboxProofs');
+  if (!sheet) {
+    sheet = ss.insertSheet('DropboxProofs');
+    sheet.appendRow(['job_num', 'file_id', 'file_name', 'modified', 'checked_at']);
+  }
+  return sheet;
+}
+
+// Re-searches Dropbox for every job currently in the app's default calendar
+// window and refreshes its cached proof pointer. Runs on an hourly trigger
+// (see ensureDropboxRefreshTrigger) plus once right after connecting, and
+// can be kicked manually from Settings.
+function refreshDropboxProofs() {
+  const accessToken = getDropboxAccessToken();
+  if (!accessToken) return;
+
+  const { start, end } = defaultCalendarWindow();
+  const jobNums = getCalendarJobs(start, end).map(j => j.jobNum);
+  const sheet = getDropboxProofsSheet();
+  const data = sheet.getDataRange().getValues();
+  const rowByJobNum = {};
+  for (let i = 1; i < data.length; i++) rowByJobNum[String(data[i][0])] = i + 1;
+
+  const checkedAt = new Date().toISOString();
+  jobNums.forEach(jobNum => {
+    let proof = null;
+    try { proof = findLatestProof(accessToken, jobNum); } catch (err) { proof = null; }
+    const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt];
+    const rowIndex = rowByJobNum[jobNum];
+    if (rowIndex) {
+      sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
+    } else {
+      sheet.appendRow(row);
+    }
+  });
+}
+
+function getCachedProof(jobNum) {
+  const sheet = getDropboxProofsSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(jobNum) && data[i][1]) {
+      return { id: data[i][1], name: data[i][2] };
+    }
+  }
+  return null;
+}
+
+// Fetches the actual PDF bytes — only called when someone opens a job's
+// Proof section, never as part of the main job list (that's the one call in
+// this feature too slow to run for every job on every load).
+function getDropboxProofFile(jobNum) {
+  if (!jobNum || !isDropboxConnected()) return { available: false };
+  const proof = getCachedProof(jobNum);
+  if (!proof) return { available: false };
+
+  const accessToken = getDropboxAccessToken();
+  if (!accessToken) return { available: false };
+
+  const resp = UrlFetchApp.fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'post',
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Dropbox-API-Arg': JSON.stringify({ path: proof.id }),
+    },
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) return { available: false };
+
+  return { available: true, name: proof.name, base64: Utilities.base64Encode(resp.getBlob().getBytes()) };
+}
+
+function ensureDropboxRefreshTrigger() {
+  const already = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'refreshDropboxProofs');
+  if (already) return;
+  ScriptApp.newTrigger('refreshDropboxProofs').timeBased().everyHours(DROPBOX_PROOFS_REFRESH_HOURS).create();
+}
+
+// ── Dropbox OAuth connect (Settings → Admin only) ───────────────────────────
+function dropboxAuthUrl(scriptUrl) {
+  const { appKey } = dropboxCredentials();
+  if (!appKey) return null;
+  const state = Utilities.getUuid();
+  PropertiesService.getScriptProperties().setProperty('DROPBOX_OAUTH_STATE', state);
+  const params = {
+    client_id: appKey,
+    response_type: 'code',
+    token_access_type: 'offline',
+    redirect_uri: scriptUrl,
+    state,
+  };
+  const qs = Object.entries(params).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  return 'https://www.dropbox.com/oauth2/authorize?' + qs;
+}
+
+// Dropbox's redirect back to our /exec URL lands here with no token of ours
+// — `state` is our only CSRF defense, so it must match what dropboxAuthUrl
+// just stored before the code is trusted.
+function handleDropboxOAuthCallback(e, scriptUrl) {
+  const expectedState = PropertiesService.getScriptProperties().getProperty('DROPBOX_OAUTH_STATE');
+  if (!e.parameter.code || !expectedState || e.parameter.state !== expectedState) {
+    return HtmlService.createHtmlOutput('<p>Dropbox connection failed (invalid or expired request). Close this tab and try again from Settings.</p>');
+  }
+  const { appKey, appSecret } = dropboxCredentials();
+  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/oauth2/token', {
+    method: 'post',
+    payload: { code: e.parameter.code, grant_type: 'authorization_code', client_id: appKey, client_secret: appSecret, redirect_uri: scriptUrl },
+    muteHttpExceptions: true,
+  });
+  let body;
+  try { body = JSON.parse(resp.getContentText()); } catch (err) { body = {}; }
+  if (!body.refresh_token) {
+    return HtmlService.createHtmlOutput('<p>Dropbox connection failed: ' + (body.error_description || body.error || 'unknown error') + '. Close this tab and try again from Settings.</p>');
+  }
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('DROPBOX_REFRESH_TOKEN', body.refresh_token);
+  props.deleteProperty('DROPBOX_OAUTH_STATE');
+  CacheService.getScriptCache().remove('dropbox_access_token');
+  ensureDropboxRefreshTrigger();
+  try { refreshDropboxProofs(); } catch (err) { /* best-effort; the hourly trigger will catch up */ }
+  return HtmlService.createHtmlOutput('<p>Dropbox connected. You can close this tab and go back to the app.</p>');
 }
 

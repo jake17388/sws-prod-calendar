@@ -320,6 +320,9 @@ main.view-area {
   font-size: var(--text-sm);
   color: var(--ink-secondary);
 }
+/* Author CSS beats the UA [hidden] rule — dropbox-settings-row is toggled
+   with the `hidden` attribute from JS depending on Admin status. */
+.settings-row[hidden] { display: none; }
 .zoom-controls { display: flex; align-items: center; gap: var(--space-2); }
 .zoom-btn {
   width: 30px;
@@ -371,6 +374,9 @@ main.view-area {
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
+/* Author CSS beats the UA [hidden] rule — needed since dropbox-credentials-fields
+   reuses this class and gets toggled with the `hidden` attribute from JS. */
+.my-account-fields[hidden] { display: none; }
 .my-account-fields input {
   flex: 1;
   min-width: 0;

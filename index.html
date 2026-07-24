@@ -18,10 +18,10 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.16.2" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.16.9" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.24.1" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.16.8" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.16.8" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.24.1" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
@@ -137,6 +137,21 @@
   <div id="my-account-hint" class="notes-save-hint"></div>
   <button class="settings-action" id="settings-check-btn">Check for updates</button>
   <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
+
+  <div class="settings-row" id="dropbox-settings-row" hidden>
+    <span>Dropbox Integration</span>
+    <span id="dropbox-status-text"></span>
+  </div>
+  <div id="dropbox-credentials-fields" class="my-account-fields" hidden>
+    <input type="text" id="dropbox-app-key" placeholder="App key" />
+    <input type="text" id="dropbox-app-secret" placeholder="App secret" />
+  </div>
+  <button class="settings-action" id="dropbox-save-credentials-btn" hidden>Save Dropbox app key/secret</button>
+  <button class="settings-action primary" id="dropbox-connect-btn" hidden>Connect Dropbox</button>
+  <button class="settings-action" id="dropbox-refresh-btn" hidden>Refresh proofs now</button>
+  <button class="settings-action danger" id="dropbox-disconnect-btn" hidden>Disconnect Dropbox</button>
+  <div id="dropbox-hint" class="notes-save-hint"></div>
+
   <button class="settings-action danger" id="settings-signout-btn">Sign out</button>
 </div>
 
@@ -165,6 +180,15 @@
       <div id="job-detail-departments" class="job-detail-section" hidden>
         <h3>Departments</h3>
         <div id="job-detail-dept-list" class="dept-assign-list"></div>
+      </div>
+
+      <div class="job-detail-section">
+        <h3>Proof</h3>
+        <div class="proof-viewer">
+          <iframe id="job-detail-proof-frame" class="proof-frame" title="Proof PDF" hidden></iframe>
+          <div id="job-detail-proof-empty" class="proof-empty"></div>
+        </div>
+        <button class="settings-action" id="job-detail-proof-open" hidden>Open in new tab</button>
       </div>
 
       <div id="due-date-editor" class="job-detail-section" hidden>
@@ -205,6 +229,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.16.11"></script>
+<script type="module" src="js/app.js?v=2026.07.24.1"></script>
 </body>
 </html>

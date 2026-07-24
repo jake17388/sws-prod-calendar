@@ -3,6 +3,7 @@ import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, c
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
+import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
 import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
@@ -129,6 +130,7 @@ function openSettings() {
   document.getElementById('my-account-name').value = currentUser() || '';
   document.getElementById('my-account-pin').value = currentPin() || '';
   document.getElementById('my-account-hint').textContent = '';
+  refreshDropboxSettingsUI();
 }
 function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('show');
@@ -195,6 +197,7 @@ function boot() {
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
   initUserManagement();
+  initDropboxSettings();
   document.getElementById('zoom-in-btn').addEventListener('click', () => {
     zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);
     applyZoom();
