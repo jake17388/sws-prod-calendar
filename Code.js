@@ -986,20 +986,58 @@ function dropboxApiCall(accessToken, endpoint, payload) {
   try { return JSON.parse(resp.getContentText()); } catch (err) { return null; }
 }
 
-// Finds jobNum's folder under DROPBOX_ORDERS_PATH, then the newest PDF in
-// its Proofs subfolder. Proof filenames follow "..._v{N}.pdf" — the highest
-// N wins; falls back to most recently modified when a name doesn't fit
-// that pattern.
-function findLatestProof(accessToken, jobNum) {
-  const search = dropboxApiCall(accessToken, 'files/search_v2', {
-    query: jobNum,
-    options: { path: DROPBOX_ORDERS_PATH, max_results: 20, filename_only: true },
-  });
-  if (!search || !search.matches) return null;
+// files/search_v2 scoped to DROPBOX_ORDERS_PATH turned out to return zero
+// matches for job folders that plainly exist there (confirmed via the
+// Settings debug tool) — Dropbox's search index apparently isn't reliable
+// for this path/account, so folder lookup is done by direct traversal
+// instead: list the range folders directly under DROPBOX_ORDERS_PATH once
+// per refresh (e.g. "_260200 - 260299", every job number 100-wide bucket),
+// pick out the pair of numbers in each one's name, and check which
+// range(s) bracket the job number. Range-folder naming isn't fully
+// consistent (spacing/hyphen conventions vary, and old buckets are
+// sometimes duplicated or off by a digit), so this parses whatever two
+// 5-6 digit numbers appear in the name rather than assuming an exact
+// pattern, and checks every bracketing range if more than one matches.
+function listDropboxRangeFolders(accessToken) {
+  const folders = [];
+  let cursor = null;
+  do {
+    const resp = cursor
+      ? dropboxApiCall(accessToken, 'files/list_folder/continue', { cursor })
+      : dropboxApiCall(accessToken, 'files/list_folder', { path: DROPBOX_ORDERS_PATH });
+    if (!resp) break;
+    resp.entries.forEach(en => {
+      if (en['.tag'] !== 'folder') return;
+      const nums = en.name.match(/\d{5,6}/g);
+      if (!nums || nums.length < 2) return;
+      folders.push({ name: en.name, path_lower: en.path_lower, lo: Math.min(+nums[0], +nums[1]), hi: Math.max(+nums[0], +nums[1]) });
+    });
+    cursor = resp.has_more ? resp.cursor : null;
+  } while (cursor);
+  return folders;
+}
 
-  const folderMatch = search.matches
-    .map(m => m.metadata && m.metadata.metadata)
-    .find(m => m && m['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(m.name));
+// Finds jobNum's folder among the range folders bracketing it (there can be
+// more than one candidate — duplicated/overlapping ranges exist in the
+// archive — so every bracketing range is checked until one actually
+// contains the job's subfolder).
+function findJobFolder(accessToken, jobNum, rangeFolders) {
+  const n = +jobNum;
+  const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
+  for (let i = 0; i < candidates.length; i++) {
+    const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: candidates[i].path_lower });
+    if (!listing || !listing.entries) continue;
+    const match = listing.entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
+    if (match) return match;
+  }
+  return null;
+}
+
+// Finds the newest PDF in jobNum's Proofs subfolder. Proof filenames follow
+// "..._v{N}.pdf" — the highest N wins; falls back to most recently modified
+// when a name doesn't fit that pattern.
+function findLatestProof(accessToken, jobNum, rangeFolders) {
+  const folderMatch = findJobFolder(accessToken, jobNum, rangeFolders);
   if (!folderMatch) return null;
 
   const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: folderMatch.path_lower });
@@ -1025,64 +1063,53 @@ function findLatestProof(accessToken, jobNum) {
 }
 
 // Admin-only diagnostic for Settings — retraces findLatestProof's steps one
-// at a time and reports what happened at each, including raw Dropbox error
-// bodies (search_v2/list_folder swallow those in the normal path since a
-// "no match" and a real API error both just mean "skip this job" there).
-// Folder-naming conventions in the Dropbox archive aren't fully consistent
-// (see DROPBOX_ORDERS_PATH's comment), so this is the tool for figuring out
-// why a specific job isn't matching.
+// at a time and reports what happened at each, so a mismatch (wrong range
+// bucket, no Proofs subfolder, no PDFs) can be pinpointed instead of
+// guessed at.
 function debugFindLatestProof(jobNum) {
   if (!jobNum) return { error: 'jobNum required' };
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return { error: 'Could not get a Dropbox access token — check connection in Settings' };
 
-  const call = (endpoint, payload) => {
-    const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/' + endpoint, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + accessToken },
-      payload: JSON.stringify(payload || {}),
-      muteHttpExceptions: true,
-    });
-    const code = resp.getResponseCode();
-    let body = null;
-    try { body = JSON.parse(resp.getContentText()); } catch (err) { body = resp.getContentText(); }
-    return { code, body };
-  };
-
-  const search = call('files/search_v2', {
-    query: jobNum,
-    options: { path: DROPBOX_ORDERS_PATH, max_results: 20, filename_only: true },
-  });
-  if (search.code !== 200) return { step: 'search', ...search };
-
-  const matchNames = (search.body.matches || [])
-    .map(m => m.metadata && m.metadata.metadata)
-    .filter(Boolean)
-    .map(m => ({ name: m.name, tag: m['.tag'] }));
-  const folderMatch = (search.body.matches || [])
-    .map(m => m.metadata && m.metadata.metadata)
-    .find(m => m && m['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(m.name));
-  if (!folderMatch) return { step: 'search', searchMatches: matchNames, error: 'No folder in search results starts with "' + jobNum + '_" or "' + jobNum + ' "' };
-
-  const listing = call('files/list_folder', { path: folderMatch.path_lower });
-  if (listing.code !== 200) return { step: 'list_folder (job folder)', folderMatch: folderMatch.name, ...listing };
-
-  const proofsFolder = listing.body.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
-  if (!proofsFolder) {
-    return { step: 'list_folder (job folder)', folderMatch: folderMatch.name, entries: listing.body.entries.map(en => en.name), error: 'No "Proofs" subfolder found' };
+  const rangeFolders = listDropboxRangeFolders(accessToken);
+  const n = +jobNum;
+  const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
+  if (!candidates.length) {
+    return { step: 'range folders', totalRangeFolders: rangeFolders.length, error: 'No range folder under "01 Orders" brackets job number ' + jobNum };
   }
 
-  const proofsListing = call('files/list_folder', { path: proofsFolder.path_lower });
-  if (proofsListing.code !== 200) return { step: 'list_folder (Proofs)', folderMatch: folderMatch.name, ...proofsListing };
+  for (let i = 0; i < candidates.length; i++) {
+    const range = candidates[i];
+    const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: range.path_lower });
+    if (!listing || !listing.entries) {
+      return { step: 'list_folder (range folder)', rangeFolder: range.name, error: 'list_folder failed for ' + range.path_lower };
+    }
+    const folderMatch = listing.entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
+    if (!folderMatch) continue;
 
-  const pdfs = proofsListing.body.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
-  if (!pdfs.length) {
-    return { step: 'list_folder (Proofs)', folderMatch: folderMatch.name, entries: proofsListing.body.entries.map(en => en.name), error: 'No PDFs in Proofs folder' };
+    const jobListing = dropboxApiCall(accessToken, 'files/list_folder', { path: folderMatch.path_lower });
+    if (!jobListing || !jobListing.entries) {
+      return { step: 'list_folder (job folder)', rangeFolder: range.name, folderMatch: folderMatch.name, error: 'list_folder failed for job folder' };
+    }
+    const proofsFolder = jobListing.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
+    if (!proofsFolder) {
+      return { step: 'list_folder (job folder)', rangeFolder: range.name, folderMatch: folderMatch.name, entries: jobListing.entries.map(en => en.name), error: 'No "Proofs" subfolder found' };
+    }
+
+    const proofsListing = dropboxApiCall(accessToken, 'files/list_folder', { path: proofsFolder.path_lower });
+    if (!proofsListing || !proofsListing.entries) {
+      return { step: 'list_folder (Proofs)', rangeFolder: range.name, folderMatch: folderMatch.name, error: 'list_folder failed for Proofs subfolder' };
+    }
+    const pdfs = proofsListing.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
+    if (!pdfs.length) {
+      return { step: 'list_folder (Proofs)', rangeFolder: range.name, folderMatch: folderMatch.name, entries: proofsListing.entries.map(en => en.name), error: 'No PDFs in Proofs folder' };
+    }
+
+    const proof = findLatestProof(accessToken, jobNum, rangeFolders);
+    return { step: 'done', rangeFolder: range.name, folderMatch: folderMatch.name, pdfsFound: pdfs.map(f => f.name), winner: proof };
   }
 
-  const proof = findLatestProof(accessToken, jobNum);
-  return { step: 'done', folderMatch: folderMatch.name, pdfsFound: pdfs.map(f => f.name), winner: proof };
+  return { step: 'list_folder (range folder)', candidateRangeFolders: candidates.map(r => r.name), error: 'Job folder not found in any bracketing range folder' };
 }
 
 function getDropboxProofsSheet() {
@@ -1105,6 +1132,7 @@ function refreshDropboxProofs() {
 
   const { start, end } = defaultCalendarWindow();
   const jobNums = getCalendarJobs(start, end).map(j => j.jobNum);
+  const rangeFolders = listDropboxRangeFolders(accessToken);
   const sheet = getDropboxProofsSheet();
   const data = sheet.getDataRange().getValues();
   const rowByJobNum = {};
@@ -1113,7 +1141,7 @@ function refreshDropboxProofs() {
   const checkedAt = new Date().toISOString();
   jobNums.forEach(jobNum => {
     let proof = null;
-    try { proof = findLatestProof(accessToken, jobNum); } catch (err) { proof = null; }
+    try { proof = findLatestProof(accessToken, jobNum, rangeFolders); } catch (err) { proof = null; }
     const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt];
     const rowIndex = rowByJobNum[jobNum];
     if (rowIndex) {
