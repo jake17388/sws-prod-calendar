@@ -1105,6 +1105,13 @@ function debugFindLatestProof(jobNum) {
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return { error: 'Could not get a Dropbox access token — check connection in Settings' };
 
+  const acctResp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + accessToken },
+    muteHttpExceptions: true,
+  });
+  const accountDebug = { code: acctResp.getResponseCode(), body: acctResp.getContentText() };
+
   const pathRoot = getDropboxPathRootHeader(accessToken);
   const rootHeaders = { Authorization: 'Bearer ' + accessToken };
   if (pathRoot) rootHeaders['Dropbox-API-Path-Root'] = pathRoot;
@@ -1116,7 +1123,7 @@ function debugFindLatestProof(jobNum) {
     muteHttpExceptions: true,
   });
   if (rootResp.getResponseCode() !== 200) {
-    return { step: 'list_folder (01 Orders root)', usedPathRootHeader: !!pathRoot, code: rootResp.getResponseCode(), body: rootResp.getContentText() };
+    return { step: 'list_folder (01 Orders root)', usedPathRootHeader: !!pathRoot, accountDebug, code: rootResp.getResponseCode(), body: rootResp.getContentText() };
   }
 
   const rangeFolders = listDropboxRangeFolders(accessToken);
