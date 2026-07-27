@@ -388,6 +388,11 @@ function doGet(e) {
     if (!url) return json({ error: 'App key/secret not set yet' });
     return json({ url });
   }
+  if (action === 'debugDropboxProof') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
+    return json(debugFindLatestProof(String(e.parameter.jobNum || '')));
+  }
 
   // The app itself is hosted on GitHub Pages, not here
   return ContentService.createTextOutput(
@@ -1017,6 +1022,67 @@ function findLatestProof(accessToken, jobNum) {
 
   const winner = pool[0].file;
   return { id: winner.id, name: winner.name, modified: winner.server_modified };
+}
+
+// Admin-only diagnostic for Settings — retraces findLatestProof's steps one
+// at a time and reports what happened at each, including raw Dropbox error
+// bodies (search_v2/list_folder swallow those in the normal path since a
+// "no match" and a real API error both just mean "skip this job" there).
+// Folder-naming conventions in the Dropbox archive aren't fully consistent
+// (see DROPBOX_ORDERS_PATH's comment), so this is the tool for figuring out
+// why a specific job isn't matching.
+function debugFindLatestProof(jobNum) {
+  if (!jobNum) return { error: 'jobNum required' };
+  const accessToken = getDropboxAccessToken();
+  if (!accessToken) return { error: 'Could not get a Dropbox access token — check connection in Settings' };
+
+  const call = (endpoint, payload) => {
+    const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/' + endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + accessToken },
+      payload: JSON.stringify(payload || {}),
+      muteHttpExceptions: true,
+    });
+    const code = resp.getResponseCode();
+    let body = null;
+    try { body = JSON.parse(resp.getContentText()); } catch (err) { body = resp.getContentText(); }
+    return { code, body };
+  };
+
+  const search = call('files/search_v2', {
+    query: jobNum,
+    options: { path: DROPBOX_ORDERS_PATH, max_results: 20, filename_only: true },
+  });
+  if (search.code !== 200) return { step: 'search', ...search };
+
+  const matchNames = (search.body.matches || [])
+    .map(m => m.metadata && m.metadata.metadata)
+    .filter(Boolean)
+    .map(m => ({ name: m.name, tag: m['.tag'] }));
+  const folderMatch = (search.body.matches || [])
+    .map(m => m.metadata && m.metadata.metadata)
+    .find(m => m && m['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(m.name));
+  if (!folderMatch) return { step: 'search', searchMatches: matchNames, error: 'No folder in search results starts with "' + jobNum + '_" or "' + jobNum + ' "' };
+
+  const listing = call('files/list_folder', { path: folderMatch.path_lower });
+  if (listing.code !== 200) return { step: 'list_folder (job folder)', folderMatch: folderMatch.name, ...listing };
+
+  const proofsFolder = listing.body.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
+  if (!proofsFolder) {
+    return { step: 'list_folder (job folder)', folderMatch: folderMatch.name, entries: listing.body.entries.map(en => en.name), error: 'No "Proofs" subfolder found' };
+  }
+
+  const proofsListing = call('files/list_folder', { path: proofsFolder.path_lower });
+  if (proofsListing.code !== 200) return { step: 'list_folder (Proofs)', folderMatch: folderMatch.name, ...proofsListing };
+
+  const pdfs = proofsListing.body.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
+  if (!pdfs.length) {
+    return { step: 'list_folder (Proofs)', folderMatch: folderMatch.name, entries: proofsListing.body.entries.map(en => en.name), error: 'No PDFs in Proofs folder' };
+  }
+
+  const proof = findLatestProof(accessToken, jobNum);
+  return { step: 'done', folderMatch: folderMatch.name, pdfsFound: pdfs.map(f => f.name), winner: proof };
 }
 
 function getDropboxProofsSheet() {

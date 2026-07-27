@@ -392,6 +392,22 @@ main.view-area {
 .my-account-fields input:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
 #my-account-pin { flex: 0 0 5em; }
 
+.dropbox-debug-output {
+  margin-top: var(--space-2);
+  max-height: 240px;
+  overflow: auto;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  padding: var(--space-3);
+  font-family: monospace;
+  font-size: var(--text-2xs);
+  color: var(--ink-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.dropbox-debug-output[hidden] { display: none; }
+
 /* ── PIN screen — matches sws-job-map's design exactly ───────────────────── */
 #pin-screen {
   position: fixed;
