@@ -973,11 +973,45 @@ function getDropboxAccessToken() {
   return body.access_token;
 }
 
+// Dropbox Business accounts on the newer "Team Space" model keep shared
+// Team Folders in a namespace separate from the member's own personal one
+// — the web UI merges them into one "All files" view, but the API's
+// default root only sees the personal namespace, so a plain path like
+// "/Summit West Signs Team Folder/..." 404s there even though it's exactly
+// what's shown in the browser. Explicitly selecting the account's root
+// namespace via this header (cached — it never changes for a given
+// account) makes the same paths resolve the way the UI shows them. Fine to
+// pass this header even for personal/non-team accounts — Dropbox ignores
+// it when the account has no team.
+function getDropboxPathRootHeader(accessToken) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('dropbox_path_root_header');
+  if (cached) return cached === 'none' ? null : cached;
+
+  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + accessToken },
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) return null;
+  let account;
+  try { account = JSON.parse(resp.getContentText()); } catch (err) { return null; }
+  const namespaceId = account.root_info && account.root_info.root_namespace_id;
+  if (!namespaceId) { cache.put('dropbox_path_root_header', 'none', 3300); return null; }
+
+  const header = JSON.stringify({ '.tag': 'root', root: namespaceId });
+  cache.put('dropbox_path_root_header', header, 3300); // 55 min, matches the access token's cache lifetime
+  return header;
+}
+
 function dropboxApiCall(accessToken, endpoint, payload) {
+  const pathRoot = getDropboxPathRootHeader(accessToken);
+  const headers = { Authorization: 'Bearer ' + accessToken };
+  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
   const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/' + endpoint, {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + accessToken },
+    headers,
     payload: JSON.stringify(payload || {}),
     muteHttpExceptions: true,
   });
@@ -1071,11 +1105,25 @@ function debugFindLatestProof(jobNum) {
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return { error: 'Could not get a Dropbox access token — check connection in Settings' };
 
+  const pathRoot = getDropboxPathRootHeader(accessToken);
+  const rootHeaders = { Authorization: 'Bearer ' + accessToken };
+  if (pathRoot) rootHeaders['Dropbox-API-Path-Root'] = pathRoot;
+  const rootResp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/files/list_folder', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: rootHeaders,
+    payload: JSON.stringify({ path: DROPBOX_ORDERS_PATH }),
+    muteHttpExceptions: true,
+  });
+  if (rootResp.getResponseCode() !== 200) {
+    return { step: 'list_folder (01 Orders root)', usedPathRootHeader: !!pathRoot, code: rootResp.getResponseCode(), body: rootResp.getContentText() };
+  }
+
   const rangeFolders = listDropboxRangeFolders(accessToken);
   const n = +jobNum;
   const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
   if (!candidates.length) {
-    return { step: 'range folders', totalRangeFolders: rangeFolders.length, error: 'No range folder under "01 Orders" brackets job number ' + jobNum };
+    return { step: 'range folders', usedPathRootHeader: !!pathRoot, totalRangeFolders: rangeFolders.length, error: 'No range folder under "01 Orders" brackets job number ' + jobNum };
   }
 
   for (let i = 0; i < candidates.length; i++) {
@@ -1174,12 +1222,15 @@ function getDropboxProofFile(jobNum) {
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return { available: false };
 
+  const pathRoot = getDropboxPathRootHeader(accessToken);
+  const headers = {
+    Authorization: 'Bearer ' + accessToken,
+    'Dropbox-API-Arg': JSON.stringify({ path: proof.id }),
+  };
+  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
   const resp = UrlFetchApp.fetch('https://content.dropboxapi.com/2/files/download', {
     method: 'post',
-    headers: {
-      Authorization: 'Bearer ' + accessToken,
-      'Dropbox-API-Arg': JSON.stringify({ path: proof.id }),
-    },
+    headers,
     muteHttpExceptions: true,
   });
   if (resp.getResponseCode() !== 200) return { available: false };
