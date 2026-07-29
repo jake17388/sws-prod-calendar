@@ -7,34 +7,39 @@ import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsRead
 import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
+import { renderPdfPages } from '../pdfViewer.js';
 
 let notesSaveTimer = null;
-let currentProofObjectUrl = null;
+let currentProofBytes = null;
 let proofRequestToken = 0;
+let viewerRequestToken = 0;
 
-function base64ToPdfBlob(base64) {
-  const bytes = atob(base64);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new Blob([arr], { type: 'application/pdf' });
+function base64ToBytes(base64) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 }
 
-function revokeCurrentProofUrl() {
-  if (currentProofObjectUrl) {
-    URL.revokeObjectURL(currentProofObjectUrl);
-    currentProofObjectUrl = null;
-  }
-}
-
-function openProofViewer(job, url) {
+function openProofViewer(job, bytes) {
   document.getElementById('proof-viewer-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
-  document.getElementById('proof-viewer-frame').src = url;
+  const pages = document.getElementById('proof-viewer-pages');
+  pages.innerHTML = '';
+  const loading = document.getElementById('proof-viewer-loading');
+  loading.hidden = false;
+  loading.textContent = 'Loading…';
   document.getElementById('proof-viewer-overlay').classList.add('open');
+
+  const token = ++viewerRequestToken;
+  renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
+    .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
+    .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
 }
 
 export function closeProofViewer() {
+  viewerRequestToken++; // stop any in-flight page rendering
   document.getElementById('proof-viewer-overlay').classList.remove('open');
-  document.getElementById('proof-viewer-frame').src = '';
+  document.getElementById('proof-viewer-pages').innerHTML = '';
 }
 
 // Fetched live on open rather than kept with the job list — see
@@ -47,7 +52,7 @@ function renderProofSection(job) {
   const empty = document.getElementById('job-detail-proof-empty');
   const openBtn = document.getElementById('job-detail-proof-open');
 
-  revokeCurrentProofUrl();
+  currentProofBytes = null;
   openBtn.hidden = true;
   empty.hidden = false;
   empty.textContent = 'Loading proof…';
@@ -60,11 +65,10 @@ function renderProofSection(job) {
         empty.textContent = 'No File Available';
         return;
       }
-      const url = URL.createObjectURL(base64ToPdfBlob(res.base64));
-      currentProofObjectUrl = url;
+      currentProofBytes = base64ToBytes(res.base64);
       empty.hidden = true;
       openBtn.hidden = false;
-      openBtn.onclick = () => openProofViewer(job, url);
+      openBtn.onclick = () => openProofViewer(job, currentProofBytes);
     })
     .catch(() => {
       if (token !== proofRequestToken) return;
@@ -260,6 +264,6 @@ export function closeJobDetail() {
   document.getElementById('job-detail-overlay').classList.remove('open');
   setHeaderDimmed(false);
   proofRequestToken++; // invalidate any in-flight proof fetch
-  revokeCurrentProofUrl();
+  currentProofBytes = null;
   closeProofViewer();
 }

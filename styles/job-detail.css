@@ -286,11 +286,38 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.proof-viewer-frame {
+.proof-viewer-loading {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+}
+.proof-viewer-loading[hidden] { display: none; }
+
+/* Pages render as plain block content (one canvas per page) in a scrolling
+   column — deliberately not an iframe: mobile Safari's native PDF-in-iframe
+   viewer only ever shows page 1 and won't scroll, so pages are rasterized
+   with PDF.js instead (see js/pdfViewer.js) for identical behavior on Mac
+   browsers, iPad, and phone. Native pinch-to-zoom and scroll both work on
+   this since it's just images in normal document flow. */
+.proof-viewer-pages {
   flex: 1;
   width: 100%;
-  border: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   background: var(--surface-sunken);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
+}
+.proof-viewer-page {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  box-shadow: var(--shadow-2);
 }
 
 .due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }

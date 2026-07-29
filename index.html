@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="styles/layout.css?v=2026.07.27.2" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.16.8" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.1" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.2" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
@@ -215,7 +215,8 @@
     <span id="proof-viewer-title"></span>
     <button id="proof-viewer-close" class="job-detail-close" aria-label="Close">&times;</button>
   </div>
-  <iframe id="proof-viewer-frame" class="proof-viewer-frame" title="Production file"></iframe>
+  <div id="proof-viewer-loading" class="proof-viewer-loading" hidden></div>
+  <div id="proof-viewer-pages" class="proof-viewer-pages"></div>
 </div>
 
 <div id="user-mgmt-overlay">
@@ -240,6 +241,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.27.2"></script>
+<script type="module" src="js/app.js?v=2026.07.27.3"></script>
 </body>
 </html>
