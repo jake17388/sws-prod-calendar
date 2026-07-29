@@ -1190,7 +1190,14 @@ function refreshDropboxProofs() {
   if (!accessToken) return;
 
   const { start, end } = defaultCalendarWindow();
-  const jobNums = getCalendarJobs(start, end).map(j => j.jobNum);
+  const tracking = getAllTracking();
+  // Completed jobs don't need their proof re-checked every refresh — this
+  // is the main lever on runtime, since each remaining job costs a few
+  // serial Dropbox API calls (range folder lookup, job folder, Proofs
+  // folder) with no concurrency available in Apps Script.
+  const jobNums = getCalendarJobs(start, end)
+    .filter(j => !(tracking[j.jobNum] && tracking[j.jobNum].completed))
+    .map(j => j.jobNum);
   const rangeFolders = listDropboxRangeFolders(accessToken);
   const sheet = getDropboxProofsSheet();
   const data = sheet.getDataRange().getValues();
