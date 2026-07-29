@@ -450,7 +450,11 @@ function doPost(e) {
   if (data.action === 'refreshDropboxProofsNow') {
     if (actor.department !== 'Admin') return json({ error: 'forbidden' });
     if (!isDropboxConnected()) return json({ success: false, error: 'Dropbox not connected' });
-    refreshDropboxProofs();
+    try {
+      refreshDropboxProofs();
+    } catch (err) {
+      return json({ success: false, error: err.message });
+    }
     return json({ success: true });
   }
   return json({ error: 'unknown action' });
@@ -1026,10 +1030,13 @@ function dropboxApiCall(accessToken, endpoint, payload) {
 // instead of one at a time — the bulk refresh (refreshDropboxProofs) is
 // dominated by this being the only thing that cuts its wall-clock time,
 // since a single job's own 3-call chain (bucket → job folder → Proofs
-// folder) is inherently sequential. Chunked to keep any one fetchAll batch
-// a reasonable size. `calls` is [{endpoint, payload}]; returns parsed
-// bodies in the same order, null for any call that errored.
-const DROPBOX_BATCH_CHUNK_SIZE = 40;
+// folder) is inherently sequential. Chunked well under Apps Script's
+// concurrent-URL-Fetch ceiling (undocumented exact number, but batches
+// above ~50 have been reported to throw) — a chunk that does throw is
+// caught so the rest of the refresh still completes instead of the whole
+// thing failing. `calls` is [{endpoint, payload}]; returns parsed bodies in
+// the same order, null for any call that errored.
+const DROPBOX_BATCH_CHUNK_SIZE = 15;
 function dropboxApiCallBatch(accessToken, calls) {
   if (!calls.length) return [];
   const pathRoot = getDropboxPathRootHeader(accessToken);
@@ -1047,7 +1054,8 @@ function dropboxApiCallBatch(accessToken, calls) {
       payload: JSON.stringify(c.payload || {}),
       muteHttpExceptions: true,
     }));
-    const responses = UrlFetchApp.fetchAll(requests);
+    let responses;
+    try { responses = UrlFetchApp.fetchAll(requests); } catch (err) { chunk.forEach(() => results.push(null)); continue; }
     responses.forEach(resp => {
       const code = resp.getResponseCode();
       if (code < 200 || code >= 300) { results.push(null); return; }
