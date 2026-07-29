@@ -990,7 +990,9 @@ function getDropboxPathRootHeader(accessToken) {
 
   const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
     method: 'post',
+    contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + accessToken },
+    payload: 'null',
     muteHttpExceptions: true,
   });
   if (resp.getResponseCode() !== 200) return null;
@@ -1107,7 +1109,9 @@ function debugFindLatestProof(jobNum) {
 
   const acctResp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
     method: 'post',
+    contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + accessToken },
+    payload: 'null',
     muteHttpExceptions: true,
   });
   const accountDebug = { code: acctResp.getResponseCode(), body: acctResp.getContentText() };
