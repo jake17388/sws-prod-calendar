@@ -1,7 +1,7 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
 import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
-import { closeJobDetail } from './components/jobDetail.js';
+import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
 import { renderStatsBar } from './components/statsBar.js';
@@ -188,6 +188,7 @@ function boot() {
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
   });
+  document.getElementById('proof-viewer-close').addEventListener('click', closeProofViewer);
 
   document.getElementById('settings-btn').addEventListener('click', openSettings);
   document.getElementById('settings-close-btn').addEventListener('click', closeSettings);

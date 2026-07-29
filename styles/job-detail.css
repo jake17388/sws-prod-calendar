@@ -249,34 +249,49 @@
 }
 .checklist-add button:hover { background: var(--accent-solid-hover); }
 
-.proof-viewer {
-  position: relative;
-  width: 100%;
-  height: 360px;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-2sm);
-  overflow: hidden;
-}
-.proof-frame {
-  width: 100%;
-  height: 100%;
-  border: none;
-}
 .proof-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: var(--ink-tertiary);
   font-size: var(--text-sm);
-  text-align: center;
-  padding: var(--space-4);
+  padding: var(--space-3) 0;
 }
 /* Author CSS beats the UA [hidden] rule (see .job-detail-complete-toggle
    above) — same fix needed here since this element also sets display. */
 .proof-empty[hidden] { display: none; }
+
+/* ── Production file viewer — full-screen on every device, not a panel ──── */
+#proof-viewer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  background: var(--surface-canvas);
+  flex-direction: column;
+}
+#proof-viewer-overlay.open { display: flex; }
+.proof-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+#proof-viewer-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--ink-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proof-viewer-frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--surface-sunken);
+}
 
 .due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .due-date-edit-form[hidden] { display: none; }

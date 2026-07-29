@@ -26,18 +26,28 @@ function revokeCurrentProofUrl() {
   }
 }
 
+function openProofViewer(job, url) {
+  document.getElementById('proof-viewer-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
+  document.getElementById('proof-viewer-frame').src = url;
+  document.getElementById('proof-viewer-overlay').classList.add('open');
+}
+
+export function closeProofViewer() {
+  document.getElementById('proof-viewer-overlay').classList.remove('open');
+  document.getElementById('proof-viewer-frame').src = '';
+}
+
 // Fetched live on open rather than kept with the job list — see
 // getDropboxProofFile in Code.js for why. jobKey is a job's job number, so
 // a job with no Dropbox folder match (or no PDF in its Proofs folder) just
-// reports { available: false } and this shows "No File Available".
+// reports { available: false } and this shows "No File Available". The PDF
+// itself only renders full-screen, on demand, when "View Production File"
+// is tapped — not inline in the (fairly small) job detail panel.
 function renderProofSection(job) {
-  const frame = document.getElementById('job-detail-proof-frame');
   const empty = document.getElementById('job-detail-proof-empty');
   const openBtn = document.getElementById('job-detail-proof-open');
 
   revokeCurrentProofUrl();
-  frame.hidden = true;
-  frame.src = '';
   openBtn.hidden = true;
   empty.hidden = false;
   empty.textContent = 'Loading proof…';
@@ -52,11 +62,9 @@ function renderProofSection(job) {
       }
       const url = URL.createObjectURL(base64ToPdfBlob(res.base64));
       currentProofObjectUrl = url;
-      frame.src = url;
-      frame.hidden = false;
       empty.hidden = true;
       openBtn.hidden = false;
-      openBtn.onclick = () => window.open(url, '_blank');
+      openBtn.onclick = () => openProofViewer(job, url);
     })
     .catch(() => {
       if (token !== proofRequestToken) return;
@@ -253,4 +261,5 @@ export function closeJobDetail() {
   setHeaderDimmed(false);
   proofRequestToken++; // invalidate any in-flight proof fetch
   revokeCurrentProofUrl();
+  closeProofViewer();
 }

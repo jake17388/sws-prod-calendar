@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="styles/layout.css?v=2026.07.27.2" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.16.8" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.24.1" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.1" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
@@ -190,11 +190,8 @@
 
       <div class="job-detail-section">
         <h3>Proof</h3>
-        <div class="proof-viewer">
-          <iframe id="job-detail-proof-frame" class="proof-frame" title="Proof PDF" hidden></iframe>
-          <div id="job-detail-proof-empty" class="proof-empty"></div>
-        </div>
-        <button class="settings-action" id="job-detail-proof-open" hidden>Open in new tab</button>
+        <div id="job-detail-proof-empty" class="proof-empty"></div>
+        <button class="settings-action primary" id="job-detail-proof-open" hidden>View Production File</button>
       </div>
 
       <div id="due-date-editor" class="job-detail-section" hidden>
@@ -211,6 +208,14 @@
       </div>
     </div>
   </section>
+</div>
+
+<div id="proof-viewer-overlay">
+  <div class="proof-viewer-header">
+    <span id="proof-viewer-title"></span>
+    <button id="proof-viewer-close" class="job-detail-close" aria-label="Close">&times;</button>
+  </div>
+  <iframe id="proof-viewer-frame" class="proof-viewer-frame" title="Production file"></iframe>
 </div>
 
 <div id="user-mgmt-overlay">
@@ -235,6 +240,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.27.1"></script>
+<script type="module" src="js/app.js?v=2026.07.27.2"></script>
 </body>
 </html>
