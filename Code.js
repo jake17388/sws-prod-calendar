@@ -1022,6 +1022,59 @@ function dropboxApiCall(accessToken, endpoint, payload) {
   try { return JSON.parse(resp.getContentText()); } catch (err) { return null; }
 }
 
+// Runs many independent Dropbox calls concurrently via UrlFetchApp.fetchAll
+// instead of one at a time — the bulk refresh (refreshDropboxProofs) is
+// dominated by this being the only thing that cuts its wall-clock time,
+// since a single job's own 3-call chain (bucket → job folder → Proofs
+// folder) is inherently sequential. Chunked to keep any one fetchAll batch
+// a reasonable size. `calls` is [{endpoint, payload}]; returns parsed
+// bodies in the same order, null for any call that errored.
+const DROPBOX_BATCH_CHUNK_SIZE = 40;
+function dropboxApiCallBatch(accessToken, calls) {
+  if (!calls.length) return [];
+  const pathRoot = getDropboxPathRootHeader(accessToken);
+  const headers = { Authorization: 'Bearer ' + accessToken };
+  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
+
+  const results = [];
+  for (let i = 0; i < calls.length; i += DROPBOX_BATCH_CHUNK_SIZE) {
+    const chunk = calls.slice(i, i + DROPBOX_BATCH_CHUNK_SIZE);
+    const requests = chunk.map(c => ({
+      url: 'https://api.dropboxapi.com/2/' + c.endpoint,
+      method: 'post',
+      contentType: 'application/json',
+      headers,
+      payload: JSON.stringify(c.payload || {}),
+      muteHttpExceptions: true,
+    }));
+    const responses = UrlFetchApp.fetchAll(requests);
+    responses.forEach(resp => {
+      const code = resp.getResponseCode();
+      if (code < 200 || code >= 300) { results.push(null); return; }
+      try { results.push(JSON.parse(resp.getContentText())); } catch (err) { results.push(null); }
+    });
+  }
+  return results;
+}
+
+// Picks the newest PDF out of a Proofs folder's file listing. Proof
+// filenames follow "..._v{N}.pdf" — the highest N wins; falls back to most
+// recently modified when a name doesn't fit that pattern. Shared by the
+// single-job path (findLatestProof) and the batched bulk-refresh path
+// (findLatestProofsBatch) so the two can't drift apart.
+function pickWinnerPdf(pdfs) {
+  if (!pdfs.length) return null;
+  const versioned = pdfs
+    .map(f => ({ file: f, version: (f.name.match(/_v(\d+)\.pdf$/i) || [])[1] }))
+    .filter(f => f.version);
+  const pool = versioned.length ? versioned : pdfs.map(f => ({ file: f, version: null }));
+  pool.sort((a, b) => (a.version && b.version)
+    ? (+b.version) - (+a.version)
+    : new Date(b.file.server_modified) - new Date(a.file.server_modified));
+  const winner = pool[0].file;
+  return { id: winner.id, name: winner.name, modified: winner.server_modified };
+}
+
 // files/search_v2 scoped to DROPBOX_ORDERS_PATH turned out to return zero
 // matches for job folders that plainly exist there (confirmed via the
 // Settings debug tool) — Dropbox's search index apparently isn't reliable
@@ -1084,18 +1137,76 @@ function findLatestProof(accessToken, jobNum, rangeFolders) {
   const proofsListing = dropboxApiCall(accessToken, 'files/list_folder', { path: proofsFolder.path_lower });
   if (!proofsListing || !proofsListing.entries) return null;
   const pdfs = proofsListing.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
-  if (!pdfs.length) return null;
+  return pickWinnerPdf(pdfs);
+}
 
-  const versioned = pdfs
-    .map(f => ({ file: f, version: (f.name.match(/_v(\d+)\.pdf$/i) || [])[1] }))
-    .filter(f => f.version);
-  const pool = versioned.length ? versioned : pdfs.map(f => ({ file: f, version: null }));
-  pool.sort((a, b) => (a.version && b.version)
-    ? (+b.version) - (+a.version)
-    : new Date(b.file.server_modified) - new Date(a.file.server_modified));
+// Bulk equivalent of findLatestProof for many jobs at once — instead of
+// each job running its own sequential 3-call chain, this runs the whole
+// job list in three concurrent waves (bucket folders → job folders →
+// Proofs folders), deduping repeated folder paths so jobs sharing a bucket
+// only fetch it once. Returns { [jobNum]: proof-or-null }.
+function findLatestProofsBatch(accessToken, jobNums, rangeFolders) {
+  const result = {};
 
-  const winner = pool[0].file;
-  return { id: winner.id, name: winner.name, modified: winner.server_modified };
+  // Wave 1: list every distinct range-bucket folder that brackets any of
+  // these jobs (jobs sharing a bucket, e.g. two jobs both in
+  // "_260200 - 260299", reuse the same listing instead of each re-fetching it).
+  const candidatesByJobNum = {};
+  const bucketPaths = new Set();
+  jobNums.forEach(jobNum => {
+    const n = +jobNum;
+    const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
+    candidatesByJobNum[jobNum] = candidates;
+    candidates.forEach(c => bucketPaths.add(c.path_lower));
+  });
+  const bucketPathList = Array.from(bucketPaths);
+  const bucketListings = dropboxApiCallBatch(accessToken, bucketPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
+  const entriesByBucketPath = {};
+  bucketPathList.forEach((path, i) => { entriesByBucketPath[path] = (bucketListings[i] && bucketListings[i].entries) || []; });
+
+  // Wave 2: find each job's own folder inside its bracketing bucket(s)
+  // (already fetched above, no extra calls), then batch-list every
+  // distinct job folder found.
+  const jobFolderByJobNum = {};
+  const jobFolderPaths = new Set();
+  jobNums.forEach(jobNum => {
+    const candidates = candidatesByJobNum[jobNum];
+    for (let i = 0; i < candidates.length; i++) {
+      const entries = entriesByBucketPath[candidates[i].path_lower];
+      const match = entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
+      if (match) { jobFolderByJobNum[jobNum] = match; jobFolderPaths.add(match.path_lower); break; }
+    }
+  });
+  const jobFolderPathList = Array.from(jobFolderPaths);
+  const jobFolderListings = dropboxApiCallBatch(accessToken, jobFolderPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
+  const entriesByJobFolderPath = {};
+  jobFolderPathList.forEach((path, i) => { entriesByJobFolderPath[path] = (jobFolderListings[i] && jobFolderListings[i].entries) || []; });
+
+  // Wave 3: find each job's Proofs subfolder, then batch-list every
+  // distinct one found.
+  const proofsFolderByJobNum = {};
+  const proofsFolderPaths = new Set();
+  jobNums.forEach(jobNum => {
+    const jobFolder = jobFolderByJobNum[jobNum];
+    if (!jobFolder) return;
+    const entries = entriesByJobFolderPath[jobFolder.path_lower];
+    const proofsFolder = entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
+    if (proofsFolder) { proofsFolderByJobNum[jobNum] = proofsFolder; proofsFolderPaths.add(proofsFolder.path_lower); }
+  });
+  const proofsFolderPathList = Array.from(proofsFolderPaths);
+  const proofsListings = dropboxApiCallBatch(accessToken, proofsFolderPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
+  const entriesByProofsPath = {};
+  proofsFolderPathList.forEach((path, i) => { entriesByProofsPath[path] = (proofsListings[i] && proofsListings[i].entries) || []; });
+
+  jobNums.forEach(jobNum => {
+    const proofsFolder = proofsFolderByJobNum[jobNum];
+    if (!proofsFolder) { result[jobNum] = null; return; }
+    const entries = entriesByProofsPath[proofsFolder.path_lower];
+    const pdfs = entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
+    result[jobNum] = pickWinnerPdf(pdfs);
+  });
+
+  return result;
 }
 
 // Admin-only diagnostic for Settings — retraces findLatestProof's steps one
@@ -1199,6 +1310,9 @@ function refreshDropboxProofs() {
     .filter(j => !(tracking[j.jobNum] && tracking[j.jobNum].completed))
     .map(j => j.jobNum);
   const rangeFolders = listDropboxRangeFolders(accessToken);
+  let proofByJobNum = {};
+  try { proofByJobNum = findLatestProofsBatch(accessToken, jobNums, rangeFolders); } catch (err) { proofByJobNum = {}; }
+
   const sheet = getDropboxProofsSheet();
   const data = sheet.getDataRange().getValues();
   const rowByJobNum = {};
@@ -1206,8 +1320,7 @@ function refreshDropboxProofs() {
 
   const checkedAt = new Date().toISOString();
   jobNums.forEach(jobNum => {
-    let proof = null;
-    try { proof = findLatestProof(accessToken, jobNum, rangeFolders); } catch (err) { proof = null; }
+    const proof = proofByJobNum[jobNum] || null;
     const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt];
     const rowIndex = rowByJobNum[jobNum];
     if (rowIndex) {
