@@ -292,12 +292,14 @@ export function renderDepartmentEditor(container, job) {
     const wrap = document.createElement('div');
     wrap.className = 'dept-assign-item';
     wrap.innerHTML = `
-      <label class="dept-assign-checkbox-row">
-        <input type="checkbox" class="dept-needed-checkbox" ${needed ? 'checked' : ''} ${locked ? 'disabled' : ''} />
-        <span>${escapeHtml(dept)}</span>
-      </label>
-      ${locked || !showCurrentToggle ? '' : `
-      <button type="button" class="dept-current-btn ${isCurrent ? 'active' : ''}" ${needed ? '' : 'hidden'} ${openTask ? '' : 'disabled'}>Currently has it</button>`}
+      <div class="dept-assign-checkbox-row">
+        <label class="dept-assign-checkbox-label">
+          <input type="checkbox" class="dept-needed-checkbox" ${needed ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+          <span>${escapeHtml(dept)}</span>
+        </label>
+        ${locked || !showCurrentToggle ? '' : `
+        <button type="button" class="dept-current-btn ${isCurrent ? 'active' : ''}" ${needed ? '' : 'hidden'} ${openTask ? '' : 'disabled'}>Currently has it</button>`}
+      </div>
       <div class="dept-assign-checklist" ${needed ? '' : 'hidden'}></div>
       <div class="dept-assign-notes" ${needed ? '' : 'hidden'}></div>
     `;
@@ -458,7 +460,7 @@ export function renderDepartmentsReadOnly(container, job) {
     const section = document.createElement('div');
     section.className = 'dept-assign-item';
     section.innerHTML = `
-      <div class="dept-assign-checkbox-row"><span>${escapeHtml(dept)}</span>${isCurrent ? '<span class="dept-current-tag">Current</span>' : ''}</div>
+      <div class="dept-assign-checkbox-row"><span class="dept-assign-checkbox-label">${escapeHtml(dept)}</span>${isCurrent ? '<span class="dept-current-tag">Current</span>' : ''}</div>
       <div class="dept-assign-checklist"></div>
       <div class="dept-assign-notes"></div>
     `;

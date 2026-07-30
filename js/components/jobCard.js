@@ -64,7 +64,10 @@ function departmentBadgeHtml(job) {
       // app icon badge — marks a department as currently holding the job,
       // separate from (and on top of) the permanent progress/assignment
       // row itself. Only makes sense where there's a badge to sit on.
-      const isCurrent = job.currentDepartments && job.currentDepartments.includes(dept);
+      // Ship-In never gets one — it has no real "currently has it" concept
+      // of its own (see renderDepartmentEditor's self-heal comment), it's
+      // just implicitly current for as long as it's needed.
+      const isCurrent = dept !== 'Ship-In' && job.currentDepartments && job.currentDepartments.includes(dept);
       const badge = withBadge
         ? `<span class="job-card-dept-badge-wrap">
              <span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>
