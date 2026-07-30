@@ -124,6 +124,7 @@
   background: var(--color-brand-navy);
   border-radius: var(--radius-full);
 }
+.job-card-dept-progress-fill.complete { background: var(--status-success-solid); }
 .job-card-dept-progress-text {
   font-size: 9px;
   font-weight: var(--weight-semibold);

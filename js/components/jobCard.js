@@ -2,9 +2,9 @@ import { toggleComplete } from '../api.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
-import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
+import { canMarkJobComplete, canSeeDepartmentBadges, currentDepartment } from '../auth.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
-import { JOB_TAGS } from '../config.js';
+import { JOB_TAGS, JOB_DEPARTMENTS } from '../config.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -21,41 +21,52 @@ function deptProgress(job, dept) {
 
 // Company Cam-style checklist progress bar, paired with a department's
 // badge — empty when that department has no tasks yet (nothing to show a
-// ratio of).
+// ratio of). Turns green once every task is checked off, instead of
+// disappearing — the point is a permanent, at-a-glance record of how many
+// tasks are left (or that there are none), not a "still working on it"
+// indicator.
 function deptProgressHtml(job, dept) {
   const { done, total } = deptProgress(job, dept);
   if (!total) return '';
   const pct = Math.round((done / total) * 100);
+  const complete = done === total;
   return `
     <span class="job-card-dept-progress" title="${done}/${total} tasks completed">
-      <span class="job-card-dept-progress-bar"><span class="job-card-dept-progress-fill" style="width:${pct}%"></span></span>
+      <span class="job-card-dept-progress-bar"><span class="job-card-dept-progress-fill ${complete ? 'complete' : ''}" style="width:${pct}%"></span></span>
       <span class="job-card-dept-progress-text">${done}/${total}</span>
     </span>
   `;
 }
 
-// Right-side stack of rows — one per department CURRENTLY on the job (not
-// the full set it'll eventually need), each a colored badge (see
-// tokens.css's --dept-* variables) paired with a checklist-progress bar, so
-// a job with several departments running in parallel is scannable at a
-// glance instead of one cramped comma-separated badge. Ordered by JOB_TAGS
-// rather than however currentDepartments happens to be stored, so the
-// stack doesn't reshuffle between renders. Shown to everyone with a
-// session, including production-department accounts — they now see every
-// job their department is ever assigned (not just current ones), so
-// another department's badge on the same job is useful context, not noise.
+// A production-department account already knows which department it is —
+// showing it its own colored badge is noise, not information — so it only
+// ever sees the progress bar. Admin/Manager/Viewer see both.
+const showsBadges = () => JOB_DEPARTMENTS.indexOf(currentDepartment()) === -1;
+
+// Right-side stack of rows — one per department this job is EVER assigned
+// to (not just whoever currently has it — that used to be the scope here,
+// but it meant the whole row vanished the instant a department finished
+// its last task or the job got marked complete). Each row pairs a
+// checklist-progress bar with a colored badge (see tokens.css's --dept-*
+// variables) for roles that see badges, so a job with several departments
+// running in parallel is scannable at a glance instead of one cramped
+// comma-separated badge. Ordered by JOB_TAGS rather than however
+// departments happens to be stored, so the stack doesn't reshuffle between
+// renders. Shown to everyone with a session.
 function departmentBadgeHtml(job) {
-  if (!canSeeDepartmentBadges() || !job.currentDepartments || !job.currentDepartments.length) return '';
+  if (!canSeeDepartmentBadges() || !job.departments || !job.departments.length) return '';
+  const withBadge = showsBadges();
   const rows = JOB_TAGS
-    .filter(tag => job.currentDepartments.includes(tag))
-    .map(dept => `
-      <div class="job-card-dept-row">
-        ${deptProgressHtml(job, dept)}
-        <span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>
-      </div>
-    `)
+    .filter(tag => job.departments.includes(tag))
+    .map(dept => {
+      const progress = deptProgressHtml(job, dept);
+      const badge = withBadge ? `<span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>` : '';
+      if (!progress && !badge) return ''; // nothing to show for this department yet
+      return `<div class="job-card-dept-row">${progress}${badge}</div>`;
+    })
+    .filter(Boolean)
     .join('');
-  return `<div class="job-card-dept-badges">${rows}</div>`;
+  return rows ? `<div class="job-card-dept-badges">${rows}</div>` : '';
 }
 
 function handleCheckboxToggle(job) {
