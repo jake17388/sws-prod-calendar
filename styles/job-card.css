@@ -90,6 +90,12 @@
   gap: 5px;
 }
 
+.job-card-dept-badge-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .job-card-dept-badge {
   max-width: 112px;
   padding: 2px 8px;
@@ -100,6 +106,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* iOS-app-icon-style notification dot — marks a department as currently
+   holding the job, sitting on the badge's corner. */
+.job-card-dept-current-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status-critical-solid);
+  border: 1.5px solid var(--surface-card);
+  box-shadow: var(--shadow-1);
 }
 
 /* Company Cam-style checklist progress, paired with a department's badge —

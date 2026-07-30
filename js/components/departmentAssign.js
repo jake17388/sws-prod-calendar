@@ -92,19 +92,17 @@ function hasOpenTask(job, dept) {
   return dept === 'Ship-In' || (job.departmentChecklists[dept] || []).some(i => !i.done);
 }
 
-// Keeps the "Currently has it" checkbox's enabled/checked state in sync
-// with hasOpenTask immediately after a checklist edit, without waiting on
-// the server round-trip that sendPersist's rerender above also handles —
-// this just makes the common case (completing the last task) feel instant.
+// Keeps the "Currently has it" button's enabled/active state in sync with
+// hasOpenTask immediately after a checklist edit, without waiting on the
+// server round-trip that sendPersist's rerender above also handles — this
+// just makes the common case (completing the last task) feel instant.
 // `container` is any element inside the department's .dept-assign-item.
-function syncCurrentCheckboxState(container, job, dept) {
-  const row = container.closest('.dept-assign-item')?.querySelector('.dept-current-row');
-  if (!row) return;
-  const checkbox = row.querySelector('.dept-current-checkbox');
+function syncCurrentButtonState(container, job, dept) {
+  const btn = container.closest('.dept-assign-item')?.querySelector('.dept-current-btn');
+  if (!btn) return;
   const open = hasOpenTask(job, dept);
-  checkbox.disabled = !open;
-  row.classList.toggle('disabled', !open);
-  if (!open && checkbox.checked) checkbox.checked = false;
+  btn.disabled = !open;
+  if (!open) btn.classList.remove('active');
 }
 
 function renderEditableChecklist(container, job, dept) {
@@ -134,7 +132,7 @@ function renderEditableChecklist(container, job, dept) {
         item.doneAt = item.done ? new Date().toISOString() : '';
         persist(job, () => renderEditableChecklist(container, job, dept));
         renderEditableChecklist(container, job, dept);
-        syncCurrentCheckboxState(container, job, dept);
+        syncCurrentButtonState(container, job, dept);
       });
     }
     row.querySelector('input[type="text"]').addEventListener('change', e => {
@@ -146,7 +144,7 @@ function renderEditableChecklist(container, job, dept) {
         job.departmentChecklists[dept] = items.filter(i => i.id !== item.id);
         persist(job, () => renderEditableChecklist(container, job, dept));
         renderEditableChecklist(container, job, dept);
-        syncCurrentCheckboxState(container, job, dept);
+        syncCurrentButtonState(container, job, dept);
       });
     }
     container.appendChild(row);
@@ -163,7 +161,7 @@ function renderEditableChecklist(container, job, dept) {
     addInput.value = '';
     persist(job, () => renderEditableChecklist(container, job, dept));
     renderEditableChecklist(container, job, dept);
-    syncCurrentCheckboxState(container, job, dept);
+    syncCurrentButtonState(container, job, dept);
   };
   addRow.querySelector('button').addEventListener('click', doAdd);
   addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
@@ -299,10 +297,7 @@ export function renderDepartmentEditor(container, job) {
         <span>${escapeHtml(dept)}</span>
       </label>
       ${locked || !showCurrentToggle ? '' : `
-      <label class="dept-current-row ${openTask ? '' : 'disabled'}" ${needed ? '' : 'hidden'}>
-        <input type="checkbox" class="dept-current-checkbox" ${isCurrent ? 'checked' : ''} ${openTask ? '' : 'disabled'} />
-        <span>Currently has it</span>
-      </label>`}
+      <button type="button" class="dept-current-btn ${isCurrent ? 'active' : ''}" ${needed ? '' : 'hidden'} ${openTask ? '' : 'disabled'}>Currently has it</button>`}
       <div class="dept-assign-checklist" ${needed ? '' : 'hidden'}></div>
       <div class="dept-assign-notes" ${needed ? '' : 'hidden'}></div>
     `;
@@ -315,7 +310,7 @@ export function renderDepartmentEditor(container, job) {
     }
 
     if (!locked) {
-      const currentRow = wrap.querySelector('.dept-current-row');
+      const currentBtn = wrap.querySelector('.dept-current-btn');
 
       wrap.querySelector('.dept-needed-checkbox').addEventListener('change', e => {
         if (e.target.checked) {
@@ -324,11 +319,11 @@ export function renderDepartmentEditor(container, job) {
           if (dept === 'Ship-In' && !job.currentDepartments.includes('Ship-In')) {
             job.currentDepartments = [...job.currentDepartments, 'Ship-In'];
           }
-          if (currentRow) {
-            currentRow.hidden = false;
+          if (currentBtn) {
+            currentBtn.hidden = false;
             // Starts with an empty checklist — no open task yet, so
             // "Currently has it" starts disabled until one's added.
-            syncCurrentCheckboxState(currentRow, job, dept);
+            syncCurrentButtonState(currentBtn, job, dept);
           }
           checklistEl.hidden = false;
           notesEl.hidden = false;
@@ -337,9 +332,9 @@ export function renderDepartmentEditor(container, job) {
         } else {
           job.departments = job.departments.filter(d => d !== dept);
           job.currentDepartments = job.currentDepartments.filter(d => d !== dept);
-          if (currentRow) {
-            currentRow.hidden = true;
-            currentRow.querySelector('.dept-current-checkbox').checked = false;
+          if (currentBtn) {
+            currentBtn.hidden = true;
+            currentBtn.classList.remove('active');
           }
           checklistEl.hidden = true;
           checklistEl.innerHTML = '';
@@ -349,11 +344,13 @@ export function renderDepartmentEditor(container, job) {
         persist(job, () => renderDepartmentEditor(container, job));
       });
 
-      if (currentRow) {
-        currentRow.querySelector('.dept-current-checkbox').addEventListener('change', e => {
-          job.currentDepartments = e.target.checked
+      if (currentBtn) {
+        currentBtn.addEventListener('click', () => {
+          const nextCurrent = !job.currentDepartments.includes(dept);
+          job.currentDepartments = nextCurrent
             ? [...job.currentDepartments, dept]
             : job.currentDepartments.filter(d => d !== dept);
+          currentBtn.classList.toggle('active', nextCurrent);
           persist(job, () => renderDepartmentEditor(container, job));
         });
       }

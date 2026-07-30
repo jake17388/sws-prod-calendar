@@ -60,7 +60,17 @@ function departmentBadgeHtml(job) {
     .filter(tag => job.departments.includes(tag))
     .map(dept => {
       const progress = deptProgressHtml(job, dept);
-      const badge = withBadge ? `<span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>` : '';
+      // A small red notification-style dot on the badge's corner — like an
+      // app icon badge — marks a department as currently holding the job,
+      // separate from (and on top of) the permanent progress/assignment
+      // row itself. Only makes sense where there's a badge to sit on.
+      const isCurrent = job.currentDepartments && job.currentDepartments.includes(dept);
+      const badge = withBadge
+        ? `<span class="job-card-dept-badge-wrap">
+             <span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>
+             ${isCurrent ? '<span class="job-card-dept-current-dot" title="Currently has it"></span>' : ''}
+           </span>`
+        : '';
       if (!progress && !badge) return ''; // nothing to show for this department yet
       return `<div class="job-card-dept-row">${progress}${badge}</div>`;
     })

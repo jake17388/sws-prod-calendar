@@ -28,25 +28,31 @@
 }
 .dept-assign-checkbox-row input[type="checkbox"]:disabled { opacity: 0.6; }
 
-.dept-current-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.dept-current-btn {
+  display: block;
   margin-top: var(--space-2);
-  padding-left: calc(18px + var(--space-2));
+  margin-left: calc(18px + var(--space-2));
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+  color: var(--ink-tertiary);
   font-size: var(--text-xs);
-  color: var(--ink-secondary);
+  font-weight: var(--weight-medium);
+  font-family: inherit;
+  transition: background var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo);
 }
-.dept-current-row[hidden] { display: none; }
-.dept-current-row input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--color-brand-gold);
+.dept-current-btn[hidden] { display: none; }
+.dept-current-btn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--ink-secondary); }
+.dept-current-btn.active {
+  font-weight: var(--weight-bold);
+  color: var(--status-success-text);
+  background: var(--status-success-bg);
+  border-color: var(--status-success-border);
 }
 /* No open task for this department yet — "Currently has it" can't be set
    until a Manager/Admin (or the department itself) adds one. */
-.dept-current-row.disabled { color: var(--ink-disabled); }
-.dept-current-row input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
+.dept-current-btn:disabled { opacity: 0.5; cursor: default; }
 
 .dept-current-tag {
   font-size: var(--text-2xs);
@@ -100,7 +106,6 @@
    pointer:coarse rather than a device check. */
 @media (min-width: 641px) and (pointer: coarse) {
   .dept-assign-checkbox-row input[type="checkbox"] { width: 22px; height: 22px; }
-  .dept-current-row input[type="checkbox"] { width: 19px; height: 19px; }
-  .dept-current-row { padding-left: calc(22px + var(--space-2)); }
+  .dept-current-btn { margin-left: calc(22px + var(--space-2)); padding: var(--space-2) var(--space-4); }
   .dept-assign-checklist, .dept-assign-notes { padding-left: calc(22px + var(--space-2)); }
 }
