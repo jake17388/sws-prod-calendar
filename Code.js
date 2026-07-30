@@ -1312,9 +1312,11 @@ function getDropboxProofsSheet() {
 // opening a job is instant for everyone — not just whoever happens to view
 // it first — since up to a dozen people can be working the same job at
 // once. Populated during refreshDropboxProofs, evicted the moment a job is
-// marked complete (see the toggleComplete handler above). Uses the
-// narrower drive.file scope, so this is the only place in Drive the script
-// ever gets access to.
+// marked complete (see the toggleComplete handler above). Needs the full
+// `drive` scope, not the narrower drive.file — Apps Script's DriveApp
+// service requires it for creating files/folders from scratch (drive.file
+// only covers files opened via a picker), even though this script only
+// ever touches this one folder in practice.
 function getProofCacheFolder() {
   const props = PropertiesService.getScriptProperties();
   const folderId = props.getProperty('PROOF_CACHE_FOLDER_ID');
