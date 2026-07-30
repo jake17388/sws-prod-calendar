@@ -28,6 +28,7 @@ export const canEditJobs = () => !auth || auth.department !== 'Viewer';
 // Only Admin/Manager can mark an entire job complete or assign departments.
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
+export const isAdmin = () => !!auth && auth.department === 'Admin';
 // Department badges are for people who need the overview — production
 // department accounts already only see their own jobs, so the badge would
 // be redundant for them.

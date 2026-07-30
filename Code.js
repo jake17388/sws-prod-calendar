@@ -508,20 +508,45 @@ function updateJobDepartments(actor, data) {
     ? data.currentDepartments.filter(d => departments.indexOf(d) !== -1)
     : [];
 
+  // A Manager can't undo a completed task's done state or delete it — only
+  // an Admin can, so the paper trail of who completed what and when can't
+  // be erased. Mirrored client-side in renderEditableChecklist (which
+  // hides/disables those controls so a Manager doesn't even see the
+  // option), but enforced here as the actual source of truth.
+  const isAdmin = actor.department === 'Admin';
+
   const departmentChecklists = {};
   const rawChecklists = (data.departmentChecklists && typeof data.departmentChecklists === 'object') ? data.departmentChecklists : {};
   departments.forEach(dept => {
     const items = Array.isArray(rawChecklists[dept]) ? rawChecklists[dept] : [];
     const oldItems = existing.departmentChecklists[dept] || [];
-    departmentChecklists[dept] = items
+    const incomingById = new Map();
+    let nextItems = items
       .map(i => {
         const id = String((i && i.id) || Utilities.getUuid());
         const text = String((i && i.text) || '').trim();
         const done = !!(i && i.done);
         const oldItem = oldItems.find(o => o.id === id);
-        return stampChecklistItem({ id, text, done }, oldItem, actor.name);
+        const built = stampChecklistItem({ id, text, done }, oldItem, actor.name);
+        incomingById.set(id, built);
+        return built;
       })
       .filter(i => i.text);
+
+    if (!isAdmin) {
+      oldItems.forEach(oldItem => {
+        if (!oldItem.done) return;
+        const incoming = incomingById.get(oldItem.id);
+        if (!incoming || !incoming.done) {
+          // Un-checked or deleted by a non-Admin — put it back exactly as
+          // it was, dropping whatever the incoming payload tried to do to it.
+          nextItems = nextItems.filter(i => i.id !== oldItem.id);
+          nextItems.push(oldItem);
+        }
+      });
+    }
+
+    departmentChecklists[dept] = nextItems;
   });
 
   // A department can only be "currently" holding the job while it has an
