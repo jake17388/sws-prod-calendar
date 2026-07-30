@@ -42,6 +42,14 @@ function renderActiveView() {
 function switchView(view) {
   activeView = view;
   renderActiveView();
+  // Data-refresh-triggered re-renders (subscribe(renderActiveView) below)
+  // must never do this — only an actual tab switch should jump the
+  // scroll position, or a mid-read poll update would yank someone back to
+  // the top every 10 seconds. Schedule view manages its own scroll
+  // position (jumps to today), so it's excluded here.
+  if (activeView !== 'schedule') {
+    document.getElementById('view-area').scrollTop = 0;
+  }
 }
 
 // The tracking version this page last synced to — see fetchTrackingVersion()
@@ -52,6 +60,9 @@ function switchView(view) {
 let lastKnownVersion = 0;
 
 function refreshJobs() {
+  const refreshBtn = document.getElementById('refresh-btn');
+  refreshBtn.classList.add('spinning');
+  refreshBtn.disabled = true;
   return fetchProductionJobs()
     .then(({ jobs, version }) => {
       setJobs(jobs);
@@ -61,7 +72,11 @@ function refreshJobs() {
       document.getElementById('last-updated').textContent =
         `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
     })
-    .catch(() => {});
+    .catch(() => {})
+    .finally(() => {
+      refreshBtn.classList.remove('spinning');
+      refreshBtn.disabled = false;
+    });
 }
 
 const POLL_INTERVAL_MS = 10000;

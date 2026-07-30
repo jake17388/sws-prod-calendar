@@ -164,7 +164,20 @@ header.app-header {
 }
 .hdr-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--color-header-text); }
 .hdr-btn.active, .hdr-btn.active:hover { background: var(--color-brand-gold); color: var(--color-brand-navy); border-color: var(--color-brand-gold); }
+.hdr-btn:disabled { opacity: 0.6; cursor: default; }
 .settings-btn { font-size: 19px; line-height: 1; padding: 3px 11px; }
+
+.refresh-icon { display: inline-block; }
+#refresh-btn.spinning .refresh-icon { animation: refresh-spin 0.7s linear infinite; }
+@keyframes refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+/* Users with reduced-motion preferences still get the disabled/dimmed
+   state above as feedback that a refresh is happening, just not the spin. */
+@media (prefers-reduced-motion: reduce) {
+  #refresh-btn.spinning .refresh-icon { animation: none; }
+}
 
 .nav-row {
   display: flex;
