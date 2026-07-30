@@ -417,7 +417,15 @@ function doPost(e) {
 
   if (data.action === 'toggleComplete') {
     if (!canMarkJobComplete(actor.department)) return json({ error: 'forbidden' });
-    return json(setTracking(data.jobKey, { completed: !!data.completed }, user));
+    const result = setTracking(data.jobKey, { completed: !!data.completed }, user);
+    // Completed jobs don't need to stay instantly available for a dozen
+    // people at once — drop the pre-fetched copy the moment it's marked
+    // done so storage doesn't accumulate; the proof still works, it just
+    // falls back to a live Dropbox fetch (see getDropboxProofFile).
+    if (result.success && data.completed && isDropboxConnected()) {
+      try { evictProofCache(data.jobKey); } catch (err) { /* best-effort */ }
+    }
+    return json(result);
   }
   if (data.action === 'updateNotes') {
     return json(setTracking(data.jobKey, { notes: String(data.notes || '') }, user, data.expectedUpdatedAt));
@@ -1295,15 +1303,55 @@ function getDropboxProofsSheet() {
   let sheet = ss.getSheetByName('DropboxProofs');
   if (!sheet) {
     sheet = ss.insertSheet('DropboxProofs');
-    sheet.appendRow(['job_num', 'file_id', 'file_name', 'modified', 'checked_at']);
+    sheet.appendRow(['job_num', 'file_id', 'file_name', 'modified', 'checked_at', 'drive_file_id']);
   }
   return sheet;
 }
 
+// Drive folder holding pre-fetched PDF bytes for active jobs' proofs, so
+// opening a job is instant for everyone — not just whoever happens to view
+// it first — since up to a dozen people can be working the same job at
+// once. Populated during refreshDropboxProofs, evicted the moment a job is
+// marked complete (see the toggleComplete handler above). Uses the
+// narrower drive.file scope, so this is the only place in Drive the script
+// ever gets access to.
+function getProofCacheFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty('PROOF_CACHE_FOLDER_ID');
+  if (folderId) {
+    try { return DriveApp.getFolderById(folderId); } catch (err) { /* recreate below */ }
+  }
+  const folder = DriveApp.createFolder('SWS Prod Calendar - Cached Proofs');
+  props.setProperty('PROOF_CACHE_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+// Downloads a file's raw bytes from Dropbox by id. Shared by the
+// cache-warming path (refreshDropboxProofs) and the live-fallback path
+// (getDropboxProofFile) so they can't drift apart.
+function downloadDropboxFileBytes(accessToken, fileId) {
+  const pathRoot = getDropboxPathRootHeader(accessToken);
+  const headers = {
+    Authorization: 'Bearer ' + accessToken,
+    'Dropbox-API-Arg': JSON.stringify({ path: fileId }),
+  };
+  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
+  const resp = UrlFetchApp.fetch('https://content.dropboxapi.com/2/files/download', {
+    method: 'post',
+    headers,
+    muteHttpExceptions: true,
+  });
+  if (resp.getResponseCode() !== 200) return null;
+  return resp.getBlob();
+}
+
 // Re-searches Dropbox for every job currently in the app's default calendar
-// window and refreshes its cached proof pointer. Runs on an hourly trigger
-// (see ensureDropboxRefreshTrigger) plus once right after connecting, and
-// can be kicked manually from Settings.
+// window and refreshes its cached proof pointer — and, unless the winning
+// file is unchanged since last time, pre-downloads it into Drive so the
+// next person to open that job gets it instantly instead of waiting on a
+// live Dropbox round-trip. Runs on an hourly trigger (see
+// ensureDropboxRefreshTrigger) plus once right after connecting, and can be
+// kicked manually from Settings.
 function refreshDropboxProofs() {
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return;
@@ -1326,11 +1374,42 @@ function refreshDropboxProofs() {
   const rowByJobNum = {};
   for (let i = 1; i < data.length; i++) rowByJobNum[String(data[i][0])] = i + 1;
 
+  let folder = null;
   const checkedAt = new Date().toISOString();
   jobNums.forEach(jobNum => {
     const proof = proofByJobNum[jobNum] || null;
-    const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt];
     const rowIndex = rowByJobNum[jobNum];
+    const prevRow = rowIndex ? data[rowIndex - 1] : null;
+    const prevFileId = prevRow ? prevRow[1] : '';
+    const prevDriveFileId = prevRow ? prevRow[5] : '';
+
+    let driveFileId = '';
+    if (proof && proof.id === prevFileId && prevDriveFileId) {
+      // Unchanged since last refresh — no need to re-download/re-upload
+      // the same bytes.
+      driveFileId = prevDriveFileId;
+    } else if (proof) {
+      try {
+        if (!folder) folder = getProofCacheFolder();
+        const blob = downloadDropboxFileBytes(accessToken, proof.id);
+        if (blob) {
+          if (prevDriveFileId) { try { DriveApp.getFileById(prevDriveFileId).setTrashed(true); } catch (err) { /* already gone */ } }
+          driveFileId = folder.createFile(blob.setName(jobNum + '.pdf')).getId();
+        }
+      } catch (err) {
+        // Pre-caching is best-effort — getDropboxProofFile falls back to a
+        // live Dropbox fetch when there's no cached copy, so a failure
+        // here (e.g. the Drive scope hasn't been authorized yet) just
+        // means that job's proof loads a bit slower on first view instead
+        // of instantly, not a broken feature.
+        driveFileId = '';
+      }
+    } else if (prevDriveFileId) {
+      // No longer has a matching proof — drop the stale cached copy.
+      try { DriveApp.getFileById(prevDriveFileId).setTrashed(true); } catch (err) { /* already gone */ }
+    }
+
+    const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt, driveFileId];
     if (rowIndex) {
       sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
     } else {
@@ -1339,12 +1418,30 @@ function refreshDropboxProofs() {
   });
 }
 
+// Drops a job's pre-fetched proof cache — called the moment it's marked
+// complete (see the toggleComplete handler above), since a completed job no
+// longer needs to be instantly available for a dozen people at once.
+function evictProofCache(jobNum) {
+  const sheet = getDropboxProofsSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(jobNum)) {
+      const driveFileId = data[i][5];
+      if (driveFileId) {
+        try { DriveApp.getFileById(driveFileId).setTrashed(true); } catch (err) { /* already gone */ }
+        sheet.getRange(i + 1, 6).setValue('');
+      }
+      return;
+    }
+  }
+}
+
 function getCachedProof(jobNum) {
   const sheet = getDropboxProofsSheet();
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][0]) === String(jobNum) && data[i][1]) {
-      return { id: data[i][1], name: data[i][2] };
+      return { id: data[i][1], name: data[i][2], driveFileId: data[i][5] || '' };
     }
   }
   return null;
@@ -1352,29 +1449,31 @@ function getCachedProof(jobNum) {
 
 // Fetches the actual PDF bytes — only called when someone opens a job's
 // Proof section, never as part of the main job list (that's the one call in
-// this feature too slow to run for every job on every load).
+// this feature too slow to run for every job on every load). Serves from
+// the pre-fetched Drive copy when there is one (instant, no Dropbox
+// round-trip — the common case for an active job someone else already
+// opened first); falls back to a live Dropbox download otherwise (a brand
+// new job that hasn't had its first refresh yet, or a completed job whose
+// cache was evicted).
 function getDropboxProofFile(jobNum) {
   if (!jobNum || !isDropboxConnected()) return { available: false };
   const proof = getCachedProof(jobNum);
   if (!proof) return { available: false };
 
+  if (proof.driveFileId) {
+    try {
+      const blob = DriveApp.getFileById(proof.driveFileId).getBlob();
+      return { available: true, name: proof.name, base64: Utilities.base64Encode(blob.getBytes()) };
+    } catch (err) {
+      // Cached copy missing/inaccessible — fall through to a live fetch.
+    }
+  }
+
   const accessToken = getDropboxAccessToken();
   if (!accessToken) return { available: false };
-
-  const pathRoot = getDropboxPathRootHeader(accessToken);
-  const headers = {
-    Authorization: 'Bearer ' + accessToken,
-    'Dropbox-API-Arg': JSON.stringify({ path: proof.id }),
-  };
-  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
-  const resp = UrlFetchApp.fetch('https://content.dropboxapi.com/2/files/download', {
-    method: 'post',
-    headers,
-    muteHttpExceptions: true,
-  });
-  if (resp.getResponseCode() !== 200) return { available: false };
-
-  return { available: true, name: proof.name, base64: Utilities.base64Encode(resp.getBlob().getBytes()) };
+  const blob = downloadDropboxFileBytes(accessToken, proof.id);
+  if (!blob) return { available: false };
+  return { available: true, name: proof.name, base64: Utilities.base64Encode(blob.getBytes()) };
 }
 
 function ensureDropboxRefreshTrigger() {
