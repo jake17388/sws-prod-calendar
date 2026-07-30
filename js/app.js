@@ -95,12 +95,16 @@ function checkForUpdate(manual) {
     .then(data => {
       if (bootVersion === null) bootVersion = data.version;
       document.getElementById('settings-version-text').textContent = bootVersion || '';
-      if (data.version && data.version !== bootVersion) {
-        document.getElementById('update-banner').classList.add('show');
-        if (manual) checkBtn.textContent = 'Update available — see banner above';
-      } else if (manual) {
-        checkBtn.textContent = "You're up to date";
-        setTimeout(() => { checkBtn.textContent = 'Check for updates'; }, 2500);
+      const updateAvailable = !!(data.version && data.version !== bootVersion);
+      document.getElementById('update-banner').classList.toggle('show', updateAvailable);
+      // Settings is a full-screen overlay above the main app content, so
+      // the banner above (part of that content) is hidden behind it —
+      // this is the same banner, shown inside Settings too so "Update now"
+      // is reachable without backing out first.
+      document.getElementById('settings-update-banner').hidden = !updateAvailable;
+      if (manual) {
+        checkBtn.textContent = updateAvailable ? 'Update available — see banner above' : "You're up to date";
+        if (!updateAvailable) setTimeout(() => { checkBtn.textContent = 'Check for updates'; }, 2500);
       }
     })
     .catch(() => {
@@ -109,6 +113,12 @@ function checkForUpdate(manual) {
         setTimeout(() => { checkBtn.textContent = 'Check for updates'; }, 2500);
       }
     });
+}
+
+function reloadForUpdate() {
+  const url = new URL(window.location.href);
+  url.searchParams.set('v', Date.now());
+  window.location.href = url.toString();
 }
 
 const ZOOM_STEPS = [80, 90, 100, 110, 125, 150];
@@ -234,11 +244,8 @@ function boot() {
   checkForUpdate();
 }
 
-document.getElementById('update-reload-btn').addEventListener('click', () => {
-  const url = new URL(window.location.href);
-  url.searchParams.set('v', Date.now());
-  window.location.href = url.toString();
-});
+document.getElementById('update-reload-btn').addEventListener('click', reloadForUpdate);
+document.getElementById('settings-update-reload-btn').addEventListener('click', reloadForUpdate);
 
 // A home-screen PWA left open in the background is often resumed from a
 // suspended in-memory instance rather than a real reload, so it never

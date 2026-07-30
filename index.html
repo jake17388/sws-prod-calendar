@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.16.2" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.27.3" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.16.8" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.2" />
@@ -112,6 +112,10 @@
   <div class="settings-header">
     <span>Settings</span>
     <button class="settings-close-btn" id="settings-close-btn" title="Close">✕</button>
+  </div>
+  <div id="settings-update-banner" class="settings-update-banner" hidden>
+    <span>🔄 A new version is available</span>
+    <button id="settings-update-reload-btn">Update now</button>
   </div>
   <div class="settings-row">
     <span>Version</span>
@@ -241,6 +245,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.27.3"></script>
+<script type="module" src="js/app.js?v=2026.07.27.4"></script>
 </body>
 </html>

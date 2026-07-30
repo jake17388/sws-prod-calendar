@@ -251,6 +251,40 @@ main.view-area {
 }
 #update-banner button:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
 
+/* Same "update available" banner as #update-banner above, duplicated
+   inside Settings — that one sits behind the full-screen Settings
+   takeover (z-index-wise it's part of the normal app content, not the
+   overlay), so without this there'd be no way to see or act on it without
+   closing Settings first. */
+.settings-update-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--status-warning-bg);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  color: var(--status-warning-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.settings-update-banner[hidden] { display: none; }
+.settings-update-banner:not([hidden]) { display: flex; }
+.settings-update-banner button {
+  background: var(--color-brand-navy);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-2sm);
+  padding: 6px var(--space-3);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
+}
+.settings-update-banner button:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+
 /* ── Settings panel (version, text size, update check, sign out) ─────────── */
 .settings-backdrop {
   display: none;
