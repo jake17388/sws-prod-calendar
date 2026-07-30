@@ -4,21 +4,31 @@ import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
 import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
+import { JOB_TAGS } from '../config.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
 }
 
-// Top-right corner badge showing which department(s) CURRENTLY have the
-// job (not the full set it'll eventually need) — or "Ship-In" for jobs made
-// elsewhere and just shipped in. Only shown to roles that need the
-// overview — production-department accounts only ever see their own jobs
-// anyway, so the badge would just repeat what they know.
+// class-safe slug for each department tag, e.g. "Ship-In" -> "ship-in"
+const deptBadgeClass = dept => `job-card-dept-badge-${dept.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+// Right-side stack of badges — one per department CURRENTLY on the job (not
+// the full set it'll eventually need), each colored distinctly (see
+// tokens.css's --dept-* variables) so a job with several departments
+// running in parallel is scannable at a glance instead of one cramped
+// comma-separated badge. Ordered by JOB_TAGS rather than however
+// currentDepartments happens to be stored, so the stack doesn't reshuffle
+// between renders. Only shown to roles that need the overview —
+// production-department accounts only ever see their own jobs anyway, so
+// the badges would just repeat what they know.
 function departmentBadgeHtml(job) {
   if (!canSeeDepartmentBadges() || !job.currentDepartments || !job.currentDepartments.length) return '';
-  const isShipInOnly = job.currentDepartments.length === 1 && job.currentDepartments[0] === 'Ship-In';
-  const label = job.currentDepartments.join(', ');
-  return `<span class="job-card-dept-badge ${isShipInOnly ? 'ship-in' : ''}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+  const badges = JOB_TAGS
+    .filter(tag => job.currentDepartments.includes(tag))
+    .map(dept => `<span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>`)
+    .join('');
+  return `<div class="job-card-dept-badges">${badges}</div>`;
 }
 
 function handleCheckboxToggle(job) {

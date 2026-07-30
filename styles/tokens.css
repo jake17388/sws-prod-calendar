@@ -104,6 +104,38 @@
   --status-neutral-text: #a8bdec;
   --status-neutral-border: rgba(107, 143, 217, 0.3);
 
+  /* One distinct hue per department badge — deliberately apart from the
+     due-date/status colors above (critical red, warning gold, success
+     green, accent blue) so a job card's department stack never reads as a
+     status indicator. */
+  --dept-manufacturing-bg: rgba(14, 165, 233, 0.15);
+  --dept-manufacturing-text: #7dd3fc;
+  --dept-manufacturing-border: rgba(14, 165, 233, 0.32);
+
+  --dept-graphics-bg: rgba(139, 92, 246, 0.16);
+  --dept-graphics-text: #c4b5fd;
+  --dept-graphics-border: rgba(139, 92, 246, 0.34);
+
+  --dept-paint-bg: rgba(236, 72, 153, 0.15);
+  --dept-paint-text: #f9a8d4;
+  --dept-paint-border: rgba(236, 72, 153, 0.32);
+
+  --dept-assembly-bg: rgba(20, 184, 166, 0.15);
+  --dept-assembly-text: #5eead4;
+  --dept-assembly-border: rgba(20, 184, 166, 0.32);
+
+  --dept-letters-bg: rgba(99, 102, 241, 0.16);
+  --dept-letters-text: #a5b4fc;
+  --dept-letters-border: rgba(99, 102, 241, 0.34);
+
+  --dept-routing-bg: rgba(249, 115, 22, 0.15);
+  --dept-routing-text: #fdba74;
+  --dept-routing-border: rgba(249, 115, 22, 0.32);
+
+  --dept-ship-in-bg: rgba(234, 179, 8, 0.16);
+  --dept-ship-in-text: #fde047;
+  --dept-ship-in-border: rgba(234, 179, 8, 0.34);
+
   --radius-2xs: 4px;
   --radius-2sm: 8px;
   --radius-md: 10px;
@@ -199,6 +231,34 @@
     --status-neutral-bg: #ebf0fb;
     --status-neutral-text: var(--color-accent);
     --status-neutral-border: #cddaf5;
+
+    --dept-manufacturing-bg: #e0f2fe;
+    --dept-manufacturing-text: #075985;
+    --dept-manufacturing-border: #bae6fd;
+
+    --dept-graphics-bg: #f3e8ff;
+    --dept-graphics-text: #5b21b6;
+    --dept-graphics-border: #ddd6fe;
+
+    --dept-paint-bg: #fce7f3;
+    --dept-paint-text: #9d174d;
+    --dept-paint-border: #fbcfe8;
+
+    --dept-assembly-bg: #ccfbf1;
+    --dept-assembly-text: #0f766e;
+    --dept-assembly-border: #99f6e4;
+
+    --dept-letters-bg: #e0e7ff;
+    --dept-letters-text: #3730a3;
+    --dept-letters-border: #c7d2fe;
+
+    --dept-routing-bg: #ffedd5;
+    --dept-routing-text: #9a3412;
+    --dept-routing-border: #fed7aa;
+
+    --dept-ship-in-bg: #fef9c3;
+    --dept-ship-in-text: #854d0e;
+    --dept-ship-in-border: #fde68a;
 
     --shadow-1: 0 1px 2px rgba(20, 22, 30, 0.05);
     --shadow-2: 0 2px 10px rgba(20, 22, 30, 0.07);

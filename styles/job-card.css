@@ -70,19 +70,24 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  padding-right: 118px;
+}
+
+/* A real flex sibling of job-card-body (not absolutely positioned) — a job
+   with several current departments stacks several badges vertically here,
+   and the card's own height grows to fit rather than the stack overflowing
+   or overlapping content below it. */
+.job-card-dept-badges {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
 }
 
 .job-card-dept-badge {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
   max-width: 112px;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: var(--status-neutral-bg);
-  color: var(--status-neutral-text);
-  border: 1px solid var(--status-neutral-border);
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   text-align: right;
@@ -90,11 +95,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.job-card-dept-badge.ship-in {
-  background: var(--status-warning-bg);
-  color: var(--status-warning-text);
-  border-color: var(--status-warning-border);
-}
+
+/* One distinct color per department (see tokens.css's --dept-* variables)
+   — deliberately apart from the due-date/status colors used elsewhere on
+   the card (critical red, warning gold, success green, accent blue) so the
+   badge stack never reads as a status indicator. */
+.job-card-dept-badge-manufacturing { background: var(--dept-manufacturing-bg); color: var(--dept-manufacturing-text); border: 1px solid var(--dept-manufacturing-border); }
+.job-card-dept-badge-graphics      { background: var(--dept-graphics-bg);      color: var(--dept-graphics-text);      border: 1px solid var(--dept-graphics-border); }
+.job-card-dept-badge-paint         { background: var(--dept-paint-bg);         color: var(--dept-paint-text);         border: 1px solid var(--dept-paint-border); }
+.job-card-dept-badge-assembly      { background: var(--dept-assembly-bg);      color: var(--dept-assembly-text);      border: 1px solid var(--dept-assembly-border); }
+.job-card-dept-badge-letters       { background: var(--dept-letters-bg);       color: var(--dept-letters-text);       border: 1px solid var(--dept-letters-border); }
+.job-card-dept-badge-routing       { background: var(--dept-routing-bg);       color: var(--dept-routing-text);       border: 1px solid var(--dept-routing-border); }
+.job-card-dept-badge-ship-in       { background: var(--dept-ship-in-bg);       color: var(--dept-ship-in-text);       border: 1px solid var(--dept-ship-in-border); }
 
 .job-card-meta {
   display: flex;
