@@ -3,21 +3,26 @@
 html {
   margin: 0;
   padding: 0;
+  height: 100%;
+  background: var(--surface-canvas);
   touch-action: manipulation;
 }
 
 body {
   margin: 0;
-  height: 100vh;
   overflow: hidden;
   overscroll-behavior: none;
   /* Plain overflow:hidden isn't enough on iOS Safari/iPadOS — the OS-level
      elastic drag-scroll (dragging down on the header/status bar area)
      still moves the whole document unless body is taken out of normal
-     flow entirely. */
+     flow entirely. inset:0 alone (no explicit height) is deliberate — an
+     explicit 100vh here competed with inset's top/bottom:0 and, since vh
+     on iOS Safari is measured against the viewport with its address bar
+     hidden (taller than what's actually visible with the bar showing),
+     left a sliver of unstyled white space at the bottom instead of
+     tracking the real visible area. */
   position: fixed;
   inset: 0;
-  width: 100%;
   background: var(--surface-canvas);
   color: var(--ink-primary);
   font-family: var(--font-sans);
@@ -34,7 +39,9 @@ button {
 #app {
   display: none;
   flex-direction: column;
-  height: 100vh;
+  /* 100% of body's real (position:fixed, inset:0) box — not 100vh, which
+     mismatches the actual visible viewport on iOS Safari (see body above). */
+  height: 100%;
 }
 
 header.app-header {

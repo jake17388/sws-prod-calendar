@@ -21,6 +21,17 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
+// The rest of the app disables pinch-zoom (user-scalable=no) so it feels
+// like a native app rather than a webpage — but that's exactly what you
+// need to read fine print on a proof, so it's switched on only while the
+// full-screen viewer is open and restored the moment it closes.
+const DEFAULT_VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover';
+const ZOOMABLE_VIEWPORT_CONTENT = 'width=device-width, initial-scale=1, viewport-fit=cover';
+function setViewportZoomable(zoomable) {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (meta) meta.setAttribute('content', zoomable ? ZOOMABLE_VIEWPORT_CONTENT : DEFAULT_VIEWPORT_CONTENT);
+}
+
 function openProofViewer(job, bytes) {
   document.getElementById('proof-viewer-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
   const pages = document.getElementById('proof-viewer-pages');
@@ -29,6 +40,7 @@ function openProofViewer(job, bytes) {
   loading.hidden = false;
   loading.textContent = 'Loading…';
   document.getElementById('proof-viewer-overlay').classList.add('open');
+  setViewportZoomable(true);
 
   const token = ++viewerRequestToken;
   renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
@@ -40,6 +52,7 @@ export function closeProofViewer() {
   viewerRequestToken++; // stop any in-flight page rendering
   document.getElementById('proof-viewer-overlay').classList.remove('open');
   document.getElementById('proof-viewer-pages').innerHTML = '';
+  setViewportZoomable(false);
 }
 
 // Fetched live on open rather than kept with the job list — see
