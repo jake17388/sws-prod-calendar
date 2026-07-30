@@ -7,28 +7,38 @@ html {
   background: var(--surface-canvas);
   touch-action: manipulation;
 }
+@supports (-webkit-touch-callout: none) {
+  html { height: -webkit-fill-available; }
+}
 
 body {
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
   /* Plain overflow:hidden isn't enough on iOS Safari/iPadOS — the OS-level
-     elastic drag-scroll (dragging down on the header/status bar area)
-     still moves the whole document unless body is taken out of normal
-     flow entirely. inset:0 alone (no explicit height) is deliberate — an
-     explicit 100vh here competed with inset's top/bottom:0 and, since vh
-     on iOS Safari is measured against the viewport with its address bar
-     hidden (taller than what's actually visible with the bar showing),
-     left a sliver of unstyled white space at the bottom instead of
-     tracking the real visible area. */
+     elastic drag-scroll still moves the whole document unless body is
+     taken out of normal flow entirely. */
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  /* Standalone home-screen PWAs on iOS/iPadOS specifically (not regular
+     Safari tabs) can leave a gap under the home indicator with 100%/100vh
+     sizing even when the box is position:fixed — a longstanding WebKit
+     quirk, not a spec-compliance issue. -webkit-fill-available is Apple's
+     own documented workaround: it resolves to the *actual* available
+     height including the safe area, where 100vh does not. Feature-queried
+     so non-WebKit browsers just keep the 100vh above. */
   background: var(--surface-canvas);
   color: var(--ink-primary);
   font-family: var(--font-sans);
   font-size: var(--text-base);
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation;
+}
+@supports (-webkit-touch-callout: none) {
+  body { height: -webkit-fill-available; }
 }
 
 button {
@@ -39,9 +49,7 @@ button {
 #app {
   display: none;
   flex-direction: column;
-  /* 100% of body's real (position:fixed, inset:0) box — not 100vh, which
-     mismatches the actual visible viewport on iOS Safari (see body above). */
-  height: 100%;
+  height: 100%; /* resolves against body's real height — see body above */
 }
 
 header.app-header {
