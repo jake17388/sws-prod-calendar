@@ -1,15 +1,15 @@
-import { toggleComplete, updateNotes, updateDueDate, fetchProofFile } from '../api.js';
+import { toggleComplete, updateDueDate, fetchProofFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
-import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
+import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canAddProjectNotes, currentDepartment } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
+import { renderNotes } from './notes.js';
 import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { renderPdfPages } from '../pdfViewer.js';
 
-let notesSaveTimer = null;
 let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
@@ -203,7 +203,6 @@ export function openJobDetail(jobKey) {
   renderDepartmentSection(job);
   renderProofSection(job);
 
-  const canEdit = canEditJobs();
   const canComplete = canMarkJobComplete();
 
   document.getElementById('job-detail-complete-row').hidden = !canComplete;
@@ -241,36 +240,7 @@ export function openJobDetail(jobKey) {
       });
   } : null;
 
-  const notesEl = document.getElementById('job-detail-notes');
-  const notesHint = document.getElementById('notes-save-hint');
-  notesEl.value = job.notes || '';
-  notesEl.readOnly = !canEdit;
-  notesEl.oninput = canEdit ? () => {
-    notesHint.textContent = 'Saving…';
-    clearTimeout(notesSaveTimer);
-    notesSaveTimer = setTimeout(() => {
-      const expectedUpdatedAt = job.updatedAt;
-      patchJob(job.jobKey, { notes: notesEl.value });
-      updateNotes(job.jobKey, notesEl.value, expectedUpdatedAt)
-        .then(res => {
-          if (res.error === 'conflict') {
-            job.notes = res.notes;
-            job.updatedAt = res.updatedAt;
-            patchJob(job.jobKey, { notes: res.notes, updatedAt: res.updatedAt });
-            notesEl.value = res.notes;
-            notesHint.textContent = 'Someone else edited this — showing their version, please redo your change';
-            showToast('Someone else edited these notes first', 'error');
-            return;
-          }
-          if (!res.success) { notesHint.textContent = 'Failed to save — try again'; showToast('Failed to save notes', 'error'); return; }
-          job.updatedAt = res.updatedAt;
-          patchJob(job.jobKey, { updatedAt: res.updatedAt });
-          notesHint.textContent = 'Saved';
-          setTimeout(() => (notesHint.textContent = ''), 1500);
-        })
-        .catch(() => { notesHint.textContent = 'Failed to save — try again'; showToast('Failed to save notes', 'error'); });
-    }, 600);
-  } : null;
+  renderNotes(document.getElementById('job-detail-notes'), job, 'project', '', { canWrite: canAddProjectNotes() });
 
   document.getElementById('job-detail-overlay').classList.add('open');
   setHeaderDimmed(true);

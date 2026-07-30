@@ -90,17 +90,6 @@
 .dept-assign-notes[hidden] { display: none; }
 .dept-assign-notes:empty { margin-top: 0; }
 
-.dept-notes-textarea {
-  min-height: 52px;
-}
-
-.dept-notes-static {
-  font-size: var(--text-sm);
-  color: var(--ink-secondary);
-  white-space: pre-wrap;
-  padding: var(--space-1) 0;
-}
-
 .dept-own-notes {
   padding-left: 0;
   margin-top: var(--space-3);

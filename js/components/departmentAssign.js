@@ -1,9 +1,10 @@
-import { updateJobDepartments, toggleDepartmentTaskDone, updateDepartmentNotes } from '../api.js';
+import { updateJobDepartments, toggleDepartmentTaskDone } from '../api.js';
 import { patchJob } from '../state.js';
 import { currentUser, isAdmin } from '../auth.js';
 import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
+import { renderNotes } from './notes.js';
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -194,63 +195,14 @@ function renderStaticChecklist(container, items) {
   });
 }
 
-// Debounced, conflict-aware free-text notes box scoped to one department on
-// one job — same save UX as the job-level Notes field in jobDetail.js, but
-// hitting updateDepartmentNotes so a production-department account can only
-// ever touch its own department's note. `readOnly` mirrors the job-level
-// lock (whole job complete) as well as any role that can't edit at all
-// (Viewers): shows the text as a static block, and renders nothing when
-// there's no note to show.
-function renderDeptNotes(container, job, dept, readOnly) {
-  container.innerHTML = '';
-  const notes = (job.departmentNotes && job.departmentNotes[dept]) || '';
-
-  if (readOnly) {
-    if (!notes) return;
-    const block = document.createElement('div');
-    block.className = 'dept-notes-static';
-    block.textContent = notes;
-    container.appendChild(block);
-    return;
-  }
-
-  const textarea = document.createElement('textarea');
-  textarea.className = 'notes-textarea dept-notes-textarea';
-  textarea.placeholder = 'Add notes…';
-  textarea.value = notes;
-  const hint = document.createElement('div');
-  hint.className = 'notes-save-hint';
-
-  let saveTimer = null;
-  textarea.addEventListener('input', () => {
-    hint.textContent = 'Saving…';
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const expectedUpdatedAt = job.updatedAt;
-      job.departmentNotes = { ...(job.departmentNotes || {}), [dept]: textarea.value };
-      patchJob(job.jobKey, { departmentNotes: job.departmentNotes });
-      updateDepartmentNotes(job.jobKey, dept, textarea.value, expectedUpdatedAt)
-        .then(res => {
-          if (res.error === 'conflict') {
-            job.departmentNotes = res.departmentNotes;
-            job.updatedAt = res.updatedAt;
-            patchJob(job.jobKey, { departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
-            textarea.value = (res.departmentNotes && res.departmentNotes[dept]) || '';
-            hint.textContent = 'Someone else edited this — showing their version, please redo your change';
-            return;
-          }
-          if (!res.success) { hint.textContent = 'Failed to save — try again'; return; }
-          job.updatedAt = res.updatedAt;
-          patchJob(job.jobKey, { updatedAt: res.updatedAt });
-          hint.textContent = 'Saved';
-          setTimeout(() => (hint.textContent = ''), 1500);
-        })
-        .catch(() => { hint.textContent = 'Failed to save — try again'; });
-    }, 600);
-  });
-
-  container.appendChild(textarea);
-  container.appendChild(hint);
+// Department notes for one department on one job — a list of authored,
+// timestamped notes (see notes.js), writable by Admin, Manager, or whoever
+// is logged in as that specific department. `canWrite` covers the job-level
+// lock (whole job complete) and any role that can't write at all (Viewers,
+// other departments) — same as before, just delegated to the shared
+// component instead of a single free-text textarea per department.
+function renderDeptNotes(container, job, dept, canWrite) {
+  renderNotes(container, job, 'department', dept, { canWrite });
 }
 
 /**
@@ -308,7 +260,7 @@ export function renderDepartmentEditor(container, job) {
     if (needed) {
       if (locked) renderStaticChecklist(checklistEl, job.departmentChecklists[dept] || []);
       else renderEditableChecklist(checklistEl, job, dept);
-      renderDeptNotes(notesEl, job, dept, locked);
+      renderDeptNotes(notesEl, job, dept, !locked);
     }
 
     if (!locked) {
@@ -330,7 +282,7 @@ export function renderDepartmentEditor(container, job) {
           checklistEl.hidden = false;
           notesEl.hidden = false;
           renderEditableChecklist(checklistEl, job, dept);
-          renderDeptNotes(notesEl, job, dept, false);
+          renderDeptNotes(notesEl, job, dept, true);
         } else {
           job.departments = job.departments.filter(d => d !== dept);
           job.currentDepartments = job.currentDepartments.filter(d => d !== dept);
@@ -442,7 +394,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
   const notesEl = document.createElement('div');
   notesEl.className = 'dept-assign-notes dept-own-notes';
   container.appendChild(notesEl);
-  renderDeptNotes(notesEl, job, department, locked);
+  renderDeptNotes(notesEl, job, department, !locked);
 }
 
 /**
@@ -465,7 +417,7 @@ export function renderDepartmentsReadOnly(container, job) {
       <div class="dept-assign-notes"></div>
     `;
     renderStaticChecklist(section.querySelector('.dept-assign-checklist'), job.departmentChecklists[dept] || []);
-    renderDeptNotes(section.querySelector('.dept-assign-notes'), job, dept, true);
+    renderDeptNotes(section.querySelector('.dept-assign-notes'), job, dept, false);
     container.appendChild(section);
   });
 }

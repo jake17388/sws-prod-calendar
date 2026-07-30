@@ -36,10 +36,6 @@ export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d
 export const toggleComplete = (jobKey, completed) =>
   scriptPost({ action: 'toggleComplete', jobKey, completed });
 
-/** @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
-export const updateNotes = (jobKey, notes, expectedUpdatedAt) =>
-  scriptPost({ action: 'updateNotes', jobKey, notes, expectedUpdatedAt });
-
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>
   scriptPost({ action: 'updateDueDate', jobKey, dueDate });
@@ -68,9 +64,17 @@ export const updateJobDepartments = (jobKey, departments, departmentChecklists, 
 export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>
   scriptPost({ action: 'toggleDepartmentTaskDone', jobKey, department, itemId, done });
 
-/** @param {string} jobKey @param {string} department @param {string} notes @param {string} expectedUpdatedAt — the job's updatedAt as last read; server rejects with a 'conflict' if it's since moved */
-export const updateDepartmentNotes = (jobKey, department, notes, expectedUpdatedAt) =>
-  scriptPost({ action: 'updateDepartmentNotes', jobKey, department, notes, expectedUpdatedAt });
+/** @param {string} jobKey @param {'project'|'department'} scope @param {string} department — required when scope is 'department' @param {string} text */
+export const addNote = (jobKey, scope, department, text) =>
+  scriptPost({ action: 'addNote', jobKey, scope, department, text });
+
+/** @param {string} jobKey @param {'project'|'department'} scope @param {string} department @param {string} noteId @param {string} text */
+export const updateNote = (jobKey, scope, department, noteId, text) =>
+  scriptPost({ action: 'updateNote', jobKey, scope, department, noteId, text });
+
+/** @param {string} jobKey @param {'project'|'department'} scope @param {string} department @param {string} noteId */
+export const deleteNote = (jobKey, scope, department, noteId) =>
+  scriptPost({ action: 'deleteNote', jobKey, scope, department, noteId });
 
 /** @param {string} jobNum @returns {Promise<{available: boolean, name?: string, base64?: string}>} */
 export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum });

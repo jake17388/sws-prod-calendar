@@ -125,13 +125,82 @@
   transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
 .notes-textarea:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
-.notes-textarea:read-only { color: var(--ink-secondary); }
 .notes-save-hint {
   font-size: var(--text-xs);
   color: var(--ink-tertiary);
   margin-top: var(--space-1);
   min-height: 1.2em;
 }
+
+/* ── Notes list — shared by project notes and department notes ─────────── */
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.notes-empty {
+  font-size: var(--text-sm);
+  color: var(--ink-tertiary);
+  padding: var(--space-1) 0;
+}
+.note-item {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  padding: var(--space-3);
+}
+.note-item-text {
+  font-size: var(--text-sm);
+  color: var(--ink-primary);
+  white-space: pre-wrap;
+  line-height: var(--line-normal);
+}
+.note-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.note-item-stamp {
+  font-size: var(--text-2xs);
+  color: var(--ink-disabled);
+  flex: 1;
+  min-width: 0;
+}
+.note-action-btn {
+  background: none;
+  border: none;
+  color: var(--ink-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  padding: 2px 6px;
+  border-radius: var(--radius-2xs);
+  transition: color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
+}
+.note-action-btn:hover { color: var(--ink-primary); background: var(--surface-card-hover); }
+.note-action-btn.danger:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
+
+.notes-add-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-2sm);
+  color: var(--ink-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  transition: color var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo);
+}
+.notes-add-btn:hover { color: var(--accent-solid); border-color: var(--accent-solid); }
+.notes-add-wrap { display: flex; flex-direction: column; }
+.note-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.note-edit-actions .settings-action { margin-top: 0; width: auto; padding: 6px 14px; }
 
 .checklist {
   display: flex;
