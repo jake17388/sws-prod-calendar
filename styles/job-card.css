@@ -84,6 +84,12 @@
   gap: var(--space-1);
 }
 
+.job-card-dept-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .job-card-dept-badge {
   max-width: 112px;
   padding: 2px 8px;
@@ -94,6 +100,36 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Company Cam-style checklist progress, paired with a department's badge —
+   a small filled bar plus an X/Y count, sitting just to its left. */
+.job-card-dept-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.job-card-dept-progress-bar {
+  width: 32px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.job-card-dept-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-brand-navy);
+  border-radius: var(--radius-full);
+}
+.job-card-dept-progress-text {
+  font-size: 9px;
+  font-weight: var(--weight-semibold);
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* One distinct color per department (see tokens.css's --dept-* variables)

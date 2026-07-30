@@ -447,6 +447,26 @@ export function renderOwnDepartmentTasks(container, job, department) {
  * actually sits right now, not just which departments it'll eventually need.
  * @param {HTMLElement} container @param {object} job
  */
+/**
+ * Read-only view of a production-department account's own checklist for a
+ * job assigned to their department but not currently theirs (already
+ * finished, or not their turn yet) — same information renderOwnDepartmentTasks
+ * shows while it is current, minus the ability to toggle anything. Jobs stay
+ * visible to a department indefinitely now (see getProductionJobs in
+ * Code.js), so this is what they land on instead of an empty section.
+ * @param {HTMLElement} container @param {object} job @param {string} department
+ */
+export function renderOwnDepartmentReadOnly(container, job, department) {
+  container.innerHTML = '';
+  const tasksEl = document.createElement('div');
+  container.appendChild(tasksEl);
+  renderStaticChecklist(tasksEl, job.departmentChecklists[department] || []);
+  const notesEl = document.createElement('div');
+  notesEl.className = 'dept-assign-notes dept-own-notes';
+  container.appendChild(notesEl);
+  renderDeptNotes(notesEl, job, department, true);
+}
+
 export function renderDepartmentsReadOnly(container, job) {
   container.innerHTML = '';
 

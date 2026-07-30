@@ -29,10 +29,11 @@ export const canEditJobs = () => !auth || auth.department !== 'Viewer';
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const isAdmin = () => !!auth && auth.department === 'Admin';
-// Department badges are for people who need the overview — production
-// department accounts already only see their own jobs, so the badge would
-// be redundant for them.
-export const canSeeDepartmentBadges = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager' || auth.department === 'Viewer');
+// Now shown to everyone with a session, including production-department
+// accounts — a job can show departments other than their own (they see
+// every job their department is ever assigned, not just current ones), and
+// the per-department progress bar next to each badge is useful to them too.
+export const canSeeDepartmentBadges = () => !!auth;
 
 /** Merges a patch (e.g. after a "My Account" save) into the cached session and persists it. */
 export function updateAuthProfile(patch) {

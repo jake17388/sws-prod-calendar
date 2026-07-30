@@ -13,22 +13,49 @@ function crewLabel(job) {
 // class-safe slug for each department tag, e.g. "Ship-In" -> "ship-in"
 const deptBadgeClass = dept => `job-card-dept-badge-${dept.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-// Right-side stack of badges — one per department CURRENTLY on the job (not
-// the full set it'll eventually need), each colored distinctly (see
-// tokens.css's --dept-* variables) so a job with several departments
-// running in parallel is scannable at a glance instead of one cramped
-// comma-separated badge. Ordered by JOB_TAGS rather than however
-// currentDepartments happens to be stored, so the stack doesn't reshuffle
-// between renders. Only shown to roles that need the overview —
-// production-department accounts only ever see their own jobs anyway, so
-// the badges would just repeat what they know.
+function deptProgress(job, dept) {
+  const items = (job.departmentChecklists && job.departmentChecklists[dept]) || [];
+  const done = items.filter(i => i.done).length;
+  return { done, total: items.length };
+}
+
+// Company Cam-style checklist progress bar, paired with a department's
+// badge — empty when that department has no tasks yet (nothing to show a
+// ratio of).
+function deptProgressHtml(job, dept) {
+  const { done, total } = deptProgress(job, dept);
+  if (!total) return '';
+  const pct = Math.round((done / total) * 100);
+  return `
+    <span class="job-card-dept-progress" title="${done}/${total} tasks completed">
+      <span class="job-card-dept-progress-bar"><span class="job-card-dept-progress-fill" style="width:${pct}%"></span></span>
+      <span class="job-card-dept-progress-text">${done}/${total}</span>
+    </span>
+  `;
+}
+
+// Right-side stack of rows — one per department CURRENTLY on the job (not
+// the full set it'll eventually need), each a colored badge (see
+// tokens.css's --dept-* variables) paired with a checklist-progress bar, so
+// a job with several departments running in parallel is scannable at a
+// glance instead of one cramped comma-separated badge. Ordered by JOB_TAGS
+// rather than however currentDepartments happens to be stored, so the
+// stack doesn't reshuffle between renders. Shown to everyone with a
+// session, including production-department accounts — they now see every
+// job their department is ever assigned (not just current ones), so
+// another department's badge on the same job is useful context, not noise.
 function departmentBadgeHtml(job) {
   if (!canSeeDepartmentBadges() || !job.currentDepartments || !job.currentDepartments.length) return '';
-  const badges = JOB_TAGS
+  const rows = JOB_TAGS
     .filter(tag => job.currentDepartments.includes(tag))
-    .map(dept => `<span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>`)
+    .map(dept => `
+      <div class="job-card-dept-row">
+        ${deptProgressHtml(job, dept)}
+        <span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>
+      </div>
+    `)
     .join('');
-  return `<div class="job-card-dept-badges">${badges}</div>`;
+  return `<div class="job-card-dept-badges">${rows}</div>`;
 }
 
 function handleCheckboxToggle(job) {

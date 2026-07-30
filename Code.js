@@ -725,11 +725,17 @@ function getProductionJobs(e, actor) {
     job.updatedAt = t.updatedAt || '';
   });
 
-  // Production-department users (Manufacturing, Graphics, etc.) only see a
-  // job while it's actually their turn — everyone else (Admin, Manager,
-  // Viewer) sees the full list, including unassigned jobs.
+  // Production-department users (Manufacturing, Graphics, etc.) see every
+  // job their department is ever assigned to, whether or not it's
+  // currently their turn — including once they've finished their own
+  // tasks, and even after the whole job is marked complete, so a job never
+  // disappears out from under them. (This used to filter on
+  // currentDepartments instead, which meant a job vanished the moment
+  // their department's last task was checked off.) Everyone else (Admin,
+  // Manager, Viewer) sees the full list regardless, including unassigned
+  // jobs.
   if (actor && JOB_DEPARTMENTS.indexOf(actor.department) !== -1) {
-    jobs = jobs.filter(job => job.currentDepartments.indexOf(actor.department) !== -1);
+    jobs = jobs.filter(job => job.departments.indexOf(actor.department) !== -1);
   }
 
   return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: getTrackingVersion() };
