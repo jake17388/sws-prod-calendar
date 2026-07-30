@@ -504,7 +504,7 @@ function updateJobDepartments(actor, data) {
   const departments = Array.isArray(data.departments)
     ? data.departments.filter(d => JOB_TAGS.indexOf(d) !== -1)
     : [];
-  const currentDepartments = Array.isArray(data.currentDepartments)
+  const rawCurrentDepartments = Array.isArray(data.currentDepartments)
     ? data.currentDepartments.filter(d => departments.indexOf(d) !== -1)
     : [];
 
@@ -523,6 +523,17 @@ function updateJobDepartments(actor, data) {
       })
       .filter(i => i.text);
   });
+
+  // A department can only be "currently" holding the job while it has an
+  // open (not-done) task — Ship-In is the one exception, since it has no
+  // checklist-driven workflow of its own (see renderDepartmentEditor's
+  // self-heal comment). This both rejects a client trying to mark a
+  // department current with no open tasks, and auto-drops a department the
+  // moment its last open task on this very save gets checked off — a
+  // Manager/Admin has to hand it back with a fresh task, rather than it
+  // silently sitting "current" forever with nothing left to do.
+  const currentDepartments = rawCurrentDepartments.filter(dept =>
+    dept === 'Ship-In' || (departmentChecklists[dept] || []).some(i => !i.done));
 
   // Carries forward each kept department's notes (written through the
   // separate updateDepartmentNotes action below) and drops any belonging to
@@ -591,7 +602,17 @@ function toggleDepartmentTaskDone(actor, data) {
   const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: !!data.done }, prevItem, actor.name) : i));
   const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
 
-  return setTracking(data.jobKey, { departmentChecklists }, actor.name);
+  // Checking off the last open task hands the department back — it's no
+  // longer "currently" holding the job, so a Manager/Admin has to reassign
+  // it once there's a new open task rather than it silently sitting
+  // "current" forever with nothing left to do. Same rule
+  // updateJobDepartments enforces for the Admin/Manager editor.
+  const patch = { departmentChecklists };
+  if (updatedItems.length && updatedItems.every(i => i.done)) {
+    patch.currentDepartments = current.currentDepartments.filter(d => d !== department);
+  }
+
+  return setTracking(data.jobKey, patch, actor.name);
 }
 
 // ── Calendar jobs ────────────────────────────────────────────────────────────

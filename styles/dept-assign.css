@@ -43,6 +43,10 @@
   height: 15px;
   accent-color: var(--color-brand-gold);
 }
+/* No open task for this department yet — "Currently has it" can't be set
+   until a Manager/Admin (or the department itself) adds one. */
+.dept-current-row.disabled { color: var(--ink-disabled); }
+.dept-current-row input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
 
 .dept-current-tag {
   font-size: var(--text-2xs);

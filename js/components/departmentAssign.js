@@ -61,18 +61,50 @@ function sendPersist(job, queue) {
       // state already supersedes this response, so don't let this response
       // stomp it. It'll be sent (with the now-current updatedAt) below.
       if (queue.dirty) return;
+      // The server silently drops a department from currentDepartments the
+      // moment its last open task gets checked off (see
+      // updateJobDepartments/toggleDepartmentTaskDone in Code.js) — that
+      // isn't reflected by the caller's own optimistic re-render (which only
+      // repaints the checklist it just edited, not the sibling "Currently
+      // has it" checkbox), so force a full rerender whenever this response's
+      // currentDepartments differs from what was sent.
+      const currentDepartmentsChanged = JSON.stringify(job.currentDepartments) !== JSON.stringify(res.currentDepartments);
       job.departments = res.departments;
       job.departmentChecklists = res.departmentChecklists;
       job.currentDepartments = res.currentDepartments;
       job.departmentNotes = res.departmentNotes;
       patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
-      if (res.error === 'conflict' && queue.rerender) queue.rerender();
+      if ((res.error === 'conflict' || currentDepartmentsChanged) && queue.rerender) queue.rerender();
     })
     .catch(() => {})
     .finally(() => {
       queue.saving = false;
       if (queue.dirty) sendPersist(job, queue);
     });
+}
+
+// A department can only be "currently" holding the job while it has an open
+// (not-done) task — Ship-In is the exception (see renderDepartmentEditor's
+// self-heal comment, it has no checklist-driven workflow of its own).
+// Mirrors the same rule enforced server-side in updateJobDepartments/
+// toggleDepartmentTaskDone.
+function hasOpenTask(job, dept) {
+  return dept === 'Ship-In' || (job.departmentChecklists[dept] || []).some(i => !i.done);
+}
+
+// Keeps the "Currently has it" checkbox's enabled/checked state in sync
+// with hasOpenTask immediately after a checklist edit, without waiting on
+// the server round-trip that sendPersist's rerender above also handles —
+// this just makes the common case (completing the last task) feel instant.
+// `container` is any element inside the department's .dept-assign-item.
+function syncCurrentCheckboxState(container, job, dept) {
+  const row = container.closest('.dept-assign-item')?.querySelector('.dept-current-row');
+  if (!row) return;
+  const checkbox = row.querySelector('.dept-current-checkbox');
+  const open = hasOpenTask(job, dept);
+  checkbox.disabled = !open;
+  row.classList.toggle('disabled', !open);
+  if (!open && checkbox.checked) checkbox.checked = false;
 }
 
 function renderEditableChecklist(container, job, dept) {
@@ -96,6 +128,7 @@ function renderEditableChecklist(container, job, dept) {
       item.doneAt = item.done ? new Date().toISOString() : '';
       persist(job, () => renderEditableChecklist(container, job, dept));
       renderEditableChecklist(container, job, dept);
+      syncCurrentCheckboxState(container, job, dept);
     });
     row.querySelector('input[type="text"]').addEventListener('change', e => {
       item.text = e.target.value.trim();
@@ -105,6 +138,7 @@ function renderEditableChecklist(container, job, dept) {
       job.departmentChecklists[dept] = items.filter(i => i.id !== item.id);
       persist(job, () => renderEditableChecklist(container, job, dept));
       renderEditableChecklist(container, job, dept);
+      syncCurrentCheckboxState(container, job, dept);
     });
     container.appendChild(row);
   });
@@ -120,6 +154,7 @@ function renderEditableChecklist(container, job, dept) {
     addInput.value = '';
     persist(job, () => renderEditableChecklist(container, job, dept));
     renderEditableChecklist(container, job, dept);
+    syncCurrentCheckboxState(container, job, dept);
   };
   addRow.querySelector('button').addEventListener('click', doAdd);
   addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
@@ -246,6 +281,7 @@ export function renderDepartmentEditor(container, job) {
     const needed = job.departments.includes(dept);
     const isCurrent = job.currentDepartments.includes(dept);
     const showCurrentToggle = dept !== 'Ship-In';
+    const openTask = hasOpenTask(job, dept);
     const wrap = document.createElement('div');
     wrap.className = 'dept-assign-item';
     wrap.innerHTML = `
@@ -254,8 +290,8 @@ export function renderDepartmentEditor(container, job) {
         <span>${escapeHtml(dept)}</span>
       </label>
       ${locked || !showCurrentToggle ? '' : `
-      <label class="dept-current-row" ${needed ? '' : 'hidden'}>
-        <input type="checkbox" class="dept-current-checkbox" ${isCurrent ? 'checked' : ''} />
+      <label class="dept-current-row ${openTask ? '' : 'disabled'}" ${needed ? '' : 'hidden'}>
+        <input type="checkbox" class="dept-current-checkbox" ${isCurrent ? 'checked' : ''} ${openTask ? '' : 'disabled'} />
         <span>Currently has it</span>
       </label>`}
       <div class="dept-assign-checklist" ${needed ? '' : 'hidden'}></div>
@@ -279,7 +315,12 @@ export function renderDepartmentEditor(container, job) {
           if (dept === 'Ship-In' && !job.currentDepartments.includes('Ship-In')) {
             job.currentDepartments = [...job.currentDepartments, 'Ship-In'];
           }
-          if (currentRow) currentRow.hidden = false;
+          if (currentRow) {
+            currentRow.hidden = false;
+            // Starts with an empty checklist — no open task yet, so
+            // "Currently has it" starts disabled until one's added.
+            syncCurrentCheckboxState(currentRow, job, dept);
+          }
           checklistEl.hidden = false;
           notesEl.hidden = false;
           renderEditableChecklist(checklistEl, job, dept);
