@@ -387,15 +387,21 @@ export function renderOwnDepartmentTasks(container, job, department) {
     tasksEl.appendChild(empty);
   } else {
     items.forEach(item => {
+      // Checking a task is always allowed; un-checking one is only allowed
+      // for whoever completed it — otherwise a teammate could erase your
+      // completed record (or vice versa). Mirrored server-side in
+      // toggleDepartmentTaskDone as the actual enforcement.
+      const canToggle = !item.done || item.doneBy === currentUser();
       const row = document.createElement('div');
       row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
       row.innerHTML = `
-        <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done"></button>
+        <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canToggle ? '' : `disabled title="Only ${escapeHtml(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
         <div class="checklist-item-main">
           <span class="checklist-item-text">${escapeHtml(item.text)}</span>
           ${stampHtml(item)}
         </div>
       `;
+      if (!canToggle) { tasksEl.appendChild(row); return; }
       row.querySelector('.checklist-check').addEventListener('click', () => {
         const nextDone = !item.done;
         const prevDoneBy = item.doneBy;
@@ -447,26 +453,6 @@ export function renderOwnDepartmentTasks(container, job, department) {
  * actually sits right now, not just which departments it'll eventually need.
  * @param {HTMLElement} container @param {object} job
  */
-/**
- * Read-only view of a production-department account's own checklist for a
- * job assigned to their department but not currently theirs (already
- * finished, or not their turn yet) — same information renderOwnDepartmentTasks
- * shows while it is current, minus the ability to toggle anything. Jobs stay
- * visible to a department indefinitely now (see getProductionJobs in
- * Code.js), so this is what they land on instead of an empty section.
- * @param {HTMLElement} container @param {object} job @param {string} department
- */
-export function renderOwnDepartmentReadOnly(container, job, department) {
-  container.innerHTML = '';
-  const tasksEl = document.createElement('div');
-  container.appendChild(tasksEl);
-  renderStaticChecklist(tasksEl, job.departmentChecklists[department] || []);
-  const notesEl = document.createElement('div');
-  notesEl.className = 'dept-assign-notes dept-own-notes';
-  container.appendChild(notesEl);
-  renderDeptNotes(notesEl, job, department, true);
-}
-
 export function renderDepartmentsReadOnly(container, job) {
   container.innerHTML = '';
 

@@ -3,7 +3,7 @@ import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canEditJobs, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
-import { renderDepartmentEditor, renderOwnDepartmentTasks, renderOwnDepartmentReadOnly, renderDepartmentsReadOnly } from './departmentAssign.js';
+import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
@@ -175,16 +175,12 @@ function renderDepartmentSection(job) {
 
   const dept = currentDepartment();
   if (JOB_DEPARTMENTS.indexOf(dept) !== -1) {
-    // Jobs stay visible to a department indefinitely now (see
-    // getProductionJobs in Code.js) — not being current anymore (already
-    // finished, or not their turn yet) means read-only, not hidden.
+    // A department can work its own checklist for as long as it's assigned
+    // to the job — not just while it's "current" (see getProductionJobs in
+    // Code.js, which now keeps a job visible to a department indefinitely).
     if (job.departments.indexOf(dept) === -1) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    if (job.currentDepartments.indexOf(dept) !== -1) {
-      renderOwnDepartmentTasks(list, job, dept);
-    } else {
-      renderOwnDepartmentReadOnly(list, job, dept);
-    }
+    renderOwnDepartmentTasks(list, job, dept);
     return;
   }
 

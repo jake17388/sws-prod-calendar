@@ -605,10 +605,12 @@ function updateDepartmentNotes(actor, data) {
 // and never touch which departments are assigned or current. That's
 // deliberately narrower than updateJobDepartments (Admin/Manager) so a
 // lower-privilege client can't smuggle in unrelated changes through this
-// endpoint. Requires the department to be *current*, not just assigned —
-// matches the calendar filter, so a department whose turn has passed can't
-// keep editing a job it can no longer even see. Also locked once the whole
-// job is marked complete.
+// endpoint. Requires the department to be *assigned* to the job (not
+// necessarily current — a job stays visible and workable for a department
+// the whole time it's assigned, see getProductionJobs). Checking a task off
+// is always allowed; un-checking one is only allowed for whoever completed
+// it — otherwise one department member could erase a teammate's completed
+// record. Also locked once the whole job is marked complete.
 function toggleDepartmentTaskDone(actor, data) {
   const department = String(data.department || '');
   if (JOB_DEPARTMENTS.indexOf(department) === -1 || actor.department !== department) {
@@ -619,12 +621,19 @@ function toggleDepartmentTaskDone(actor, data) {
   const tracking = getAllTracking();
   const current = tracking[String(data.jobKey)] || { completed: false, departments: [], departmentChecklists: {}, currentDepartments: [] };
   if (current.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
-  if (current.currentDepartments.indexOf(department) === -1) return { success: false, error: 'Not currently your department\'s job' };
+  if (current.departments.indexOf(department) === -1) return { success: false, error: 'Not your department\'s job' };
 
   const itemId = String(data.itemId || '');
   const items = current.departmentChecklists[department] || [];
   const prevItem = items.find(i => i.id === itemId);
-  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: !!data.done }, prevItem, actor.name) : i));
+  if (!prevItem) return { success: false, error: 'Task not found' };
+
+  const requestedDone = !!data.done;
+  if (prevItem.done && !requestedDone && prevItem.doneBy !== actor.name) {
+    return { success: false, error: 'Only the person who completed this task can un-check it' };
+  }
+
+  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: requestedDone }, prevItem, actor.name) : i));
   const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
 
   // Checking off the last open task hands the department back — it's no
