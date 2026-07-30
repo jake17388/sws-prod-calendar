@@ -851,6 +851,11 @@ function getAllTracking() {
   for (let i = 1; i < data.length; i++) {
     const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson] = data[i];
     if (!jobKey) continue;
+    // A duplicate job_key row (see dedupeTrackingSheet) must resolve the
+    // same way setTracking's own row-finder does — first occurrence wins —
+    // or a write to the first row can silently get overwritten right back
+    // by a stale second row on the very next read.
+    if (Object.prototype.hasOwnProperty.call(tracking, String(jobKey))) continue;
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
     let departments = [];
@@ -870,6 +875,35 @@ function getAllTracking() {
     };
   }
   return tracking;
+}
+
+// One-time cleanup for duplicate job_key rows already in the sheet (e.g.
+// job 260162 had two — a fresh "completed" row and a stale leftover
+// "incomplete" one, which kept clobbering the fresh one back on every
+// read; see getAllTracking's comment for the read-side fix). Keeps the
+// first occurrence of each job_key — same resolution order setTracking's
+// row-finder and getAllTracking both use — and deletes the rest. Not
+// wired to any UI action; run manually from the Apps Script editor
+// (Run > dedupeTrackingSheet) if duplicates are ever suspected again.
+// Logs how many rows it removed.
+function dedupeTrackingSheet() {
+  const sheet = getTrackingSheet();
+  const data = sheet.getDataRange().getValues();
+  const seen = new Set();
+  const rowsToDelete = [];
+  for (let i = 1; i < data.length; i++) {
+    const jobKey = String(data[i][0]);
+    if (!jobKey) continue;
+    if (seen.has(jobKey)) {
+      rowsToDelete.push(i + 1);
+    } else {
+      seen.add(jobKey);
+    }
+  }
+  // Delete bottom-up so earlier row indexes stay valid as rows shift up.
+  rowsToDelete.sort((a, b) => b - a).forEach(rowIndex => sheet.deleteRow(rowIndex));
+  Logger.log('Removed %s duplicate row(s)', rowsToDelete.length);
+  return rowsToDelete.length;
 }
 
 // `expectedUpdatedAt`, when passed, is the updatedAt the caller last read
