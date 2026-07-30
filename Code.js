@@ -616,12 +616,12 @@ function addNote(actor, data) {
   const text = String(data.text || '').trim();
   if (!text) return { success: false, error: 'Note text required' };
 
-  const tracking = getAllTracking()[String(data.jobKey)] || { completed: false, notes: [], departmentNotes: {} };
-  if (tracking.completed) return { success: false, error: 'Job is complete — reopen it to add notes' };
-
-  const note = { id: Utilities.getUuid(), text, author: actor.name, createdAt: new Date().toISOString() };
-  const list = [...getNoteList(tracking, scope, department), note];
-  return setTracking(data.jobKey, withNoteList(tracking, scope, department, list), actor.name);
+  return setTracking(data.jobKey, current => {
+    if (current.completed) return { error: 'Job is complete — reopen it to add notes' };
+    const note = { id: Utilities.getUuid(), text, author: actor.name, createdAt: new Date().toISOString() };
+    const list = [...getNoteList(current, scope, department), note];
+    return withNoteList(current, scope, department, list);
+  }, actor.name);
 }
 
 function updateNote(actor, data) {
@@ -630,32 +630,30 @@ function updateNote(actor, data) {
   const text = String(data.text || '').trim();
   if (!text) return { success: false, error: 'Note text required' };
 
-  const tracking = getAllTracking()[String(data.jobKey)] || { completed: false, notes: [], departmentNotes: {} };
-  if (tracking.completed) return { success: false, error: 'Job is complete — reopen it to edit notes' };
-
-  const list = getNoteList(tracking, scope, department);
-  const existing = list.find(n => n.id === data.noteId);
-  if (!existing) return { success: false, error: 'Note not found' };
-  if (!canEditNote(actor, existing)) return { success: false, error: 'Only the author or an Admin can edit this note' };
-
-  const updatedList = list.map(n => (n.id === data.noteId ? { ...n, text } : n));
-  return setTracking(data.jobKey, withNoteList(tracking, scope, department, updatedList), actor.name);
+  return setTracking(data.jobKey, current => {
+    if (current.completed) return { error: 'Job is complete — reopen it to edit notes' };
+    const list = getNoteList(current, scope, department);
+    const existing = list.find(n => n.id === data.noteId);
+    if (!existing) return { error: 'Note not found' };
+    if (!canEditNote(actor, existing)) return { error: 'Only the author or an Admin can edit this note' };
+    const updatedList = list.map(n => (n.id === data.noteId ? { ...n, text } : n));
+    return withNoteList(current, scope, department, updatedList);
+  }, actor.name);
 }
 
 function deleteNote(actor, data) {
   const { scope, department } = noteScopeAndDept(data);
   if (!data.jobKey) return { success: false, error: 'jobKey required' };
 
-  const tracking = getAllTracking()[String(data.jobKey)] || { completed: false, notes: [], departmentNotes: {} };
-  if (tracking.completed) return { success: false, error: 'Job is complete — reopen it to delete notes' };
-
-  const list = getNoteList(tracking, scope, department);
-  const existing = list.find(n => n.id === data.noteId);
-  if (!existing) return { success: false, error: 'Note not found' };
-  if (!canEditNote(actor, existing)) return { success: false, error: 'Only the author or an Admin can delete this note' };
-
-  const updatedList = list.filter(n => n.id !== data.noteId);
-  return setTracking(data.jobKey, withNoteList(tracking, scope, department, updatedList), actor.name);
+  return setTracking(data.jobKey, current => {
+    if (current.completed) return { error: 'Job is complete — reopen it to delete notes' };
+    const list = getNoteList(current, scope, department);
+    const existing = list.find(n => n.id === data.noteId);
+    if (!existing) return { error: 'Note not found' };
+    if (!canEditNote(actor, existing)) return { error: 'Only the author or an Admin can delete this note' };
+    const updatedList = list.filter(n => n.id !== data.noteId);
+    return withNoteList(current, scope, department, updatedList);
+  }, actor.name);
 }
 
 // A production-department account (Manufacturing, Graphics, etc.) can only
@@ -1064,6 +1062,16 @@ function dedupeTrackingSheet() {
 // that only flip a single field (toggleComplete, toggleDepartmentTaskDone)
 // don't need this — `current` below is always re-read fresh under the lock,
 // so a single-field patch can never clobber unrelated concurrent changes.
+//
+// `patch` can also be a function of `current` — for callers (addNote/
+// updateNote/deleteNote) that need to build their patch FROM the current
+// value of a field (appending to a notes list, checking who wrote an entry)
+// rather than just overwrite it. Without this they'd need their own
+// getAllTracking() call first to see that current value, which parses
+// every JSON field on every row in the whole sheet just to read one job —
+// doubling the cost of what's otherwise a single cheap row read here.
+// Returning `{ error }` from the function rejects the write without ever
+// touching the sheet.
 function setTracking(jobKey, patch, user, expectedUpdatedAt) {
   if (!jobKey) return { success: false, error: 'jobKey required' };
   const lock = LockService.getScriptLock();
@@ -1095,13 +1103,16 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       return { success: false, error: 'conflict', ...current };
     }
 
-    const next = { ...current, ...patch };
+    const resolvedPatch = typeof patch === 'function' ? patch(current) : patch;
+    if (resolvedPatch && resolvedPatch.error) return { success: false, error: resolvedPatch.error };
+
+    const next = { ...current, ...resolvedPatch };
     // completedAt/completedBy only change on an actual complete/un-complete
     // toggle (patch.completed present) — editing notes or the checklist
     // shouldn't touch who/when it was marked done.
-    if (patch.completed !== undefined) {
-      next.completedAt = patch.completed ? new Date().toISOString() : '';
-      next.completedBy = patch.completed ? user : '';
+    if (resolvedPatch.completed !== undefined) {
+      next.completedAt = resolvedPatch.completed ? new Date().toISOString() : '';
+      next.completedBy = resolvedPatch.completed ? user : '';
     }
     next.updatedAt = new Date().toISOString();
     const row = [jobKey, next.completed, JSON.stringify(next.notes), JSON.stringify(next.checklist), next.updatedAt, user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments), JSON.stringify(next.departmentNotes)];
