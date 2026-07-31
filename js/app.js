@@ -25,6 +25,34 @@ const VIEWS = {
 let activeView = 'week';
 let refDate = new Date();
 
+// Which anchor the NEXT schedule render should scroll to, or null to leave the
+// scroll position alone. Set only by deliberate navigation (entering the view,
+// the arrows, "Today") and cleared once used.
+//
+// This has to be opt-in per render because renderActiveView is subscribed to
+// every state change. Previously the schedule scrolled to its anchor on any
+// re-render at all, so a poll landing mid-read — or just ticking a checkbox —
+// yanked the reader back up the page. That's the exact hazard the comment in
+// switchView warns about; schedule view had been exempted from the guard in a
+// way that reintroduced it.
+let scheduleScrollTarget = null;
+
+function applyScheduleScroll(container) {
+  if (activeView !== 'schedule' || !scheduleScrollTarget) return;
+  // Fall back to the other anchor when the preferred one isn't in the DOM —
+  // "oldest open job" doesn't exist when everything is complete, and the
+  // refDate group doesn't exist on a day with no jobs due.
+  const preferred = scheduleScrollTarget === 'open' ? '[data-open-anchor="true"]' : '[data-date-anchor="true"]';
+  const fallback = scheduleScrollTarget === 'open' ? '[data-date-anchor="true"]' : '[data-open-anchor="true"]';
+  const anchor = container.querySelector(preferred) || container.querySelector(fallback);
+  // Only consume the request once it's actually been honoured. If the view
+  // rendered before the job list arrived there's nothing to anchor to yet, and
+  // the scroll should happen on the render that finally has data.
+  if (!anchor) return;
+  anchor.scrollIntoView({ block: 'start' });
+  scheduleScrollTarget = null;
+}
+
 function renderActiveView() {
   const view = VIEWS[activeView];
   const container = document.getElementById('view-area');
@@ -34,20 +62,19 @@ function renderActiveView() {
     btn.classList.toggle('active', btn.dataset.view === activeView);
   });
   document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
-  if (activeView === 'schedule') {
-    const anchor = container.querySelector('[data-scroll-anchor="true"]');
-    if (anchor) anchor.scrollIntoView({ block: 'start' });
-  }
+  applyScheduleScroll(container);
 }
 
 function switchView(view) {
   activeView = view;
+  // Opening the schedule lands on the oldest still-open job rather than today.
+  if (view === 'schedule') scheduleScrollTarget = 'open';
   renderActiveView();
   // Data-refresh-triggered re-renders (subscribe(renderActiveView) below)
   // must never do this — only an actual tab switch should jump the
   // scroll position, or a mid-read poll update would yank someone back to
-  // the top every 10 seconds. Schedule view manages its own scroll
-  // position (jumps to today), so it's excluded here.
+  // the top every 30 seconds. Schedule view positions itself via
+  // scheduleScrollTarget above, so it's excluded here.
   if (activeView !== 'schedule') {
     document.getElementById('view-area').scrollTop = 0;
   }
@@ -269,16 +296,24 @@ function boot() {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
   document.getElementById('view-btn-assign').addEventListener('click', () => switchView('assign'));
+  // The arrows step by date in every view, schedule included — that's what
+  // makes them meaningful there, since the schedule renders every job at once
+  // and only the scroll position distinguishes one "page" from the next.
   document.getElementById('nav-prev').addEventListener('click', () => {
     refDate = VIEWS[activeView].step(refDate, -1);
+    scheduleScrollTarget = 'date';
     renderActiveView();
   });
   document.getElementById('nav-next').addEventListener('click', () => {
     refDate = VIEWS[activeView].step(refDate, 1);
+    scheduleScrollTarget = 'date';
     renderActiveView();
   });
+  // "Today" is the get-me-back-to-where-I-should-be button, so in the schedule
+  // it returns to the oldest open job rather than the literal current date.
   document.getElementById('nav-today').addEventListener('click', () => {
     refDate = new Date();
+    scheduleScrollTarget = 'open';
     renderActiveView();
   });
   document.getElementById('refresh-btn').addEventListener('click', () => refreshJobs(true));
