@@ -2,9 +2,9 @@ import { toggleComplete } from '../api.js';
 import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
-import { canMarkJobComplete, canSeeDepartmentBadges, currentDepartment } from '../auth.js';
+import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
-import { JOB_TAGS, JOB_DEPARTMENTS } from '../config.js';
+import { JOB_TAGS } from '../config.js';
 import { escapeHtml } from '../lib/html.js';
 
 function crewLabel(job) {
@@ -39,24 +39,24 @@ function deptProgressHtml(job, dept) {
   `;
 }
 
-// A production-department account already knows which department it is —
-// showing it its own colored badge is noise, not information — so it only
-// ever sees the progress bar. Admin/Manager/Viewer see both.
-const showsBadges = () => JOB_DEPARTMENTS.indexOf(currentDepartment()) === -1;
-
 // Right-side stack of rows — one per department this job is EVER assigned
 // to (not just whoever currently has it — that used to be the scope here,
 // but it meant the whole row vanished the instant a department finished
 // its last task or the job got marked complete). Each row pairs a
 // checklist-progress bar with a colored badge (see tokens.css's --dept-*
-// variables) for roles that see badges, so a job with several departments
-// running in parallel is scannable at a glance instead of one cramped
-// comma-separated badge. Ordered by JOB_TAGS rather than however
-// departments happens to be stored, so the stack doesn't reshuffle between
-// renders. Shown to everyone with a session.
+// variables), so a job with several departments running in parallel is
+// scannable at a glance instead of one cramped comma-separated badge.
+// Ordered by JOB_TAGS rather than however departments happens to be stored,
+// so the stack doesn't reshuffle between renders.
+//
+// Every role sees the same thing. Production-department accounts used to get
+// progress bars with no badges, on the reasoning that someone in Graphics
+// already knows they're in Graphics — but a job assigned to three
+// departments then showed them three unlabeled bars with no way to tell
+// which was theirs. The badge is what makes the row readable, so everyone
+// with a session gets it.
 function departmentBadgeHtml(job) {
   if (!canSeeDepartmentBadges() || !job.departments || !job.departments.length) return '';
-  const withBadge = showsBadges();
   const rows = JOB_TAGS
     .filter(tag => job.departments.includes(tag))
     .map(dept => {
@@ -64,21 +64,16 @@ function departmentBadgeHtml(job) {
       // A small red notification-style dot on the badge's corner — like an
       // app icon badge — marks a department as currently holding the job,
       // separate from (and on top of) the permanent progress/assignment
-      // row itself. Only makes sense where there's a badge to sit on.
-      // Ship-In never gets one — it has no real "currently has it" concept
-      // of its own (see renderDepartmentEditor's self-heal comment), it's
-      // just implicitly current for as long as it's needed.
+      // row itself. Ship-In never gets one — it has no real "currently has
+      // it" concept of its own (see renderDepartmentEditor's self-heal
+      // comment), it's just implicitly current for as long as it's needed.
       const isCurrent = dept !== 'Ship-In' && job.currentDepartments && job.currentDepartments.includes(dept);
-      const badge = withBadge
-        ? `<span class="job-card-dept-badge-wrap">
+      const badge = `<span class="job-card-dept-badge-wrap">
              <span class="job-card-dept-badge ${deptBadgeClass(dept)}">${escapeHtml(dept)}</span>
              ${isCurrent ? '<span class="job-card-dept-current-dot" title="Currently has it"></span>' : ''}
-           </span>`
-        : '';
-      if (!progress && !badge) return ''; // nothing to show for this department yet
+           </span>`;
       return `<div class="job-card-dept-row">${progress}${badge}</div>`;
     })
-    .filter(Boolean)
     .join('');
   return rows ? `<div class="job-card-dept-badges">${rows}</div>` : '';
 }
