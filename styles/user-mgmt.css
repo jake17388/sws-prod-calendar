@@ -146,6 +146,8 @@
   padding: var(--space-2) var(--space-3);
 }
 .user-row-lock { text-align: right; opacity: 0.6; }
+/* PINs are never sent to the client — this is a placeholder, not a value. */
+.user-row-pin-hidden { opacity: 0.45; letter-spacing: 0.15em; }
 
 .user-mgmt-empty {
   color: var(--ink-tertiary);

@@ -3,6 +3,7 @@ import { DEPARTMENTS, PM_BLOCKED_DEPARTMENTS } from '../config.js';
 import { currentDepartment } from '../auth.js';
 import { showToast } from '../toast.js';
 import { setHeaderDimmed } from '../headerDim.js';
+import { escapeHtml, escapeAttr } from '../lib/html.js';
 
 let users = [];
 
@@ -19,15 +20,9 @@ function availableDepartments(actorDept) {
   return actorDept === 'Admin' ? DEPARTMENTS : DEPARTMENTS.filter(d => PM_BLOCKED_DEPARTMENTS.indexOf(d) === -1);
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 function departmentOptionsHtml(actorDept, selected) {
   return availableDepartments(actorDept)
-    .map(d => `<option value="${d}" ${d === selected ? 'selected' : ''}>${escapeHtml(d)}</option>`)
+    .map(d => `<option value="${escapeAttr(d)}" ${d === selected ? 'selected' : ''}>${escapeHtml(d)}</option>`)
     .join('');
 }
 
@@ -44,7 +39,7 @@ function renderLockedRow(user) {
   row.innerHTML = `
     <span class="user-row-name">${escapeHtml(user.name)}</span>
     <span class="user-row-dept">${escapeHtml(user.department)}</span>
-    <span class="user-row-pin">${escapeHtml(user.pin)}</span>
+    <span class="user-row-pin user-row-pin-hidden">••••</span>
     <span class="user-row-lock" title="You don't have permission to edit this account">&#128274;</span>
   `;
   return row;
@@ -53,10 +48,14 @@ function renderLockedRow(user) {
 function renderEditableRow(user, actorDept) {
   const row = document.createElement('div');
   row.className = 'user-row';
+  // The PIN field is write-only: the server no longer sends PINs to any
+  // client (see publicUser() in Code.js), so there's nothing to prefill and
+  // nothing for a Manager to read off a colleague's screen. Typing a new
+  // 4-digit value replaces it; leaving it blank leaves the PIN alone.
   row.innerHTML = `
-    <input type="text" class="user-row-name" value="${escapeHtml(user.name)}" />
+    <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" />
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
-    <input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="${escapeHtml(user.pin)}" />
+    <input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="" placeholder="••••" title="Enter a new 4-digit PIN to change it" />
     <button class="user-row-delete" aria-label="Delete user">&times;</button>
     <span class="user-row-hint"></span>
   `;
@@ -82,11 +81,12 @@ function renderEditableRow(user, actorDept) {
 
   row.querySelector('.user-row-pin').addEventListener('change', e => {
     const pin = e.target.value.trim();
-    if (!/^\d{4}$/.test(pin)) { showRowHint(row, 'PIN must be 4 digits', true); e.target.value = user.pin; return; }
+    if (!pin) return; // left blank — keep the existing PIN
+    if (!/^\d{4}$/.test(pin)) { showRowHint(row, 'PIN must be 4 digits', true); e.target.value = ''; return; }
     updateUserApi(user.id, { pin }).then(res => {
-      if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); e.target.value = user.pin; return; }
-      user.pin = res.user.pin;
-      showRowHint(row, 'Saved');
+      e.target.value = ''; // never leave a PIN sitting in the DOM
+      if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); return; }
+      showRowHint(row, 'PIN updated');
     });
   });
 

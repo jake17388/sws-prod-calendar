@@ -18,12 +18,21 @@ const DUE_DATE_BUSINESS_DAYS = 2;
 // section below. Job folders (e.g. "251509_Laveen Traditional Academy -
 // EMC's") sit inside numbered range subfolders under this path.
 const DROPBOX_ORDERS_PATH = '/Summit West Signs Team Folder/01 Orders';
-const DROPBOX_PROOFS_REFRESH_HOURS = 1;
-
-// Names (must match a PIN's mapped name exactly) allowed to manually
-// override a job's calculated due date for one-off scheduling edge cases.
-// Add more names here and redeploy to grant the permission to others.
-const DUE_DATE_EDITORS = ['Jake Banks'];
+// This script runs on a consumer (@gmail.com) account, which allows only 90
+// minutes of TOTAL trigger runtime per day. refreshDropboxProofs is the only
+// time-driven trigger here and it's expensive (a folder walk plus a PDF
+// download per changed job), so the interval directly sets how much of that
+// daily budget it can consume:
+//   hourly  = 24 runs/day → 3.75 min/run before the budget is gone
+//   6-hourly = 4 runs/day → 22.5 min/run, i.e. comfortably under the 6-minute
+//                           per-execution ceiling even in the worst case
+// Blowing the daily budget silently stops ALL triggers for the rest of the
+// day, so this stays conservative. A stale proof cache is cheap — see
+// getDropboxProofFile, which falls back to a live Dropbox fetch.
+// NOTE: changing this constant does not by itself re-schedule an existing
+// trigger — ensureDropboxRefreshTrigger() self-heals on the next call, or run
+// resetDropboxRefreshTrigger() manually from the Apps Script editor.
+const DROPBOX_PROOFS_REFRESH_HOURS = 6;
 
 // ── Users & roles ────────────────────────────────────────────────────────────
 // Each user is { id, name, department, pin } stored as one JSON array in the
@@ -54,6 +63,20 @@ function canMarkJobComplete(department) {
   return department === 'Admin' || department === 'Manager';
 }
 
+// Who may manually override a job's calculated due date, for one-off
+// scheduling edge cases the automatic 2-business-day rule gets wrong.
+//
+// This used to be a list of NAMES (`DUE_DATE_EDITORS = ['Jake Banks']`)
+// compared against actor.name — which was a privilege escalation, because
+// updateSelf() lets any signed-in account (including a Viewer) rename itself
+// to anything with no uniqueness check. Renaming yourself to a listed name
+// granted you the permission. Permissions must key off something the holder
+// can't edit: department here, exactly like canAssignDepartments and
+// canMarkJobComplete above. Names are display data, never authorization.
+function canEditDueDates(department) {
+  return department === 'Admin';
+}
+
 // Departments a Manager can't see in the user list at all.
 const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer'];
 // Departments a Manager can see but can't add/edit/delete — separate from
@@ -82,8 +105,10 @@ function isLastAdmin(users, userId) {
 
 function visibleUsersFor(actor) {
   const users = getUsers();
-  if (actor.department === 'Admin') return users;
-  return users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
+  const visible = actor.department === 'Admin'
+    ? users
+    : users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
+  return visible.map(publicUser);
 }
 
 // Placeholder only, mirroring the old DEFAULT_PINS pattern — real users
@@ -161,7 +186,7 @@ function addUser(actor, data) {
     const newUser = { id: Utilities.getUuid(), name, department, pin };
     users.push(newUser);
     saveUsers(users);
-    return { success: true, user: newUser };
+    return { success: true, user: publicUser(newUser) };
   } finally {
     lock.releaseLock();
   }
@@ -200,7 +225,7 @@ function updateUser(actor, data) {
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: next };
+    return { success: true, user: publicUser(next) };
   } finally {
     lock.releaseLock();
   }
@@ -251,7 +276,7 @@ function updateSelf(actor, data) {
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: next };
+    return { success: true, user: publicUser(next) };
   } finally {
     lock.releaseLock();
   }
@@ -318,9 +343,25 @@ function checkPin(pin) {
     user: user.name,
     department: user.department,
     token: makeToken(user.id),
-    isDueDateEditor: DUE_DATE_EDITORS.indexOf(user.name) !== -1,
+    // Deprecated: the client now derives this from `department` (see
+    // canEditDueDates in auth.js). Still sent so a browser running JS cached
+    // from before that change doesn't lose the due-date button during the
+    // window where Pages and Apps Script are deployed a few seconds apart.
+    // Safe to delete once every client has reloaded.
+    isDueDateEditor: canEditDueDates(user.department),
     canManageUsers: canAccessUserManagement(user.department),
   };
+}
+
+// Strips the PIN off a user record before it ever leaves the server. PINs are
+// credentials: they were previously returned by getUsers (and echoed back by
+// addUser/updateUser/updateSelf) and rendered into visible inputs in User
+// Management, so any Manager could read every account's PIN off the screen.
+// Nothing in the client needs a PIN value — it only ever writes new ones.
+function publicUser(user) {
+  if (!user) return user;
+  const { pin, ...rest } = user;
+  return rest;
 }
 
 function json(obj) {
@@ -423,7 +464,7 @@ function doPost(e) {
     return json(result);
   }
   if (data.action === 'updateDueDate') {
-    if (DUE_DATE_EDITORS.indexOf(user) === -1) return json({ error: 'forbidden' });
+    if (!canEditDueDates(actor.department)) return json({ error: 'forbidden' });
     return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
   }
   if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
@@ -1672,10 +1713,33 @@ function getDropboxProofFile(jobNum) {
   return { available: true, name: proof.name, base64: Utilities.base64Encode(blob.getBytes()) };
 }
 
+// Apps Script gives no way to read an existing trigger's interval back, so the
+// interval it was created with is recorded alongside it. When
+// DROPBOX_PROOFS_REFRESH_HOURS changes, the stored value no longer matches and
+// the trigger is rebuilt — otherwise editing the constant would have no effect
+// on an already-scheduled trigger, and the quota reasoning above would be
+// silently wrong in production.
+const DROPBOX_TRIGGER_HOURS_PROP = 'DROPBOX_TRIGGER_HOURS';
+
 function ensureDropboxRefreshTrigger() {
-  const already = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'refreshDropboxProofs');
-  if (already) return;
+  const props = PropertiesService.getScriptProperties();
+  const existing = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'refreshDropboxProofs');
+  const scheduledHours = +(props.getProperty(DROPBOX_TRIGGER_HOURS_PROP) || 0);
+  if (existing.length === 1 && scheduledHours === DROPBOX_PROOFS_REFRESH_HOURS) return;
+  resetDropboxRefreshTrigger();
+}
+
+// Deletes every refreshDropboxProofs trigger and creates exactly one at the
+// current interval. Safe to run by hand from the Apps Script editor
+// (Run > resetDropboxRefreshTrigger) — that's the fastest way to apply an
+// interval change to an already-deployed script.
+function resetDropboxRefreshTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'refreshDropboxProofs')
+    .forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('refreshDropboxProofs').timeBased().everyHours(DROPBOX_PROOFS_REFRESH_HOURS).create();
+  PropertiesService.getScriptProperties().setProperty(DROPBOX_TRIGGER_HOURS_PROP, String(DROPBOX_PROOFS_REFRESH_HOURS));
+  Logger.log('refreshDropboxProofs trigger set to every %s hour(s)', DROPBOX_PROOFS_REFRESH_HOURS);
 }
 
 // ── Dropbox OAuth connect (Settings → Admin only) ───────────────────────────

@@ -9,7 +9,18 @@ let pinBusy = false;
 function readAuth() {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const stored = JSON.parse(raw);
+    // Sessions written before PINs were removed from the session object still
+    // have one sitting in localStorage. Strip it on first read and rewrite, so
+    // existing installs stop carrying a live credential without needing anyone
+    // to sign out and back in.
+    if (stored && stored.pin !== undefined) {
+      const { pin, isDueDateEditor, ...rest } = stored;
+      localStorage.setItem(AUTH_KEY, JSON.stringify(rest));
+      return rest;
+    }
+    return stored;
   } catch (err) {
     return null;
   }
@@ -17,9 +28,13 @@ function readAuth() {
 
 export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
-export const currentPin = () => auth ? auth.pin : null;
 export const currentDepartment = () => auth ? auth.department : null;
-export const canEditDueDates = () => !!(auth && auth.isDueDateEditor);
+// Derived from department, matching canEditDueDates() in Code.js. This used to
+// read a name-based `isDueDateEditor` flag baked into the session at login —
+// see the Code.js comment for why keying a permission off an editable name was
+// a privilege escalation. Deriving it here also means sessions cached in
+// localStorage before this change self-correct instead of keeping a stale flag.
+export const canEditDueDates = () => !!auth && auth.department === 'Admin';
 export const canManageUsers = () => !!(auth && auth.canManageUsers);
 // Only Admin/Manager can mark an entire job complete or assign departments.
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
@@ -107,7 +122,12 @@ function submitPin(onLogin) {
         renderDots();
         return;
       }
-      auth = { token: res.token, user: res.user, department: res.department, isDueDateEditor: !!res.isDueDateEditor, canManageUsers: !!res.canManageUsers, pin: pinEntry };
+      // The PIN is deliberately NOT stored. It used to be kept here purely so
+      // the Settings panel could prefill the field, which left a working
+      // credential sitting in localStorage for any XSS — or anyone holding the
+      // device — to read. Settings now asks for a new PIN instead of showing
+      // the current one.
+      auth = { token: res.token, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentPin, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
@@ -79,21 +79,68 @@ function refreshJobs() {
     });
 }
 
-const POLL_INTERVAL_MS = 10000;
+// This app's backend runs on a consumer Google account, whose hard ceiling is
+// 30 simultaneous Apps Script executions. At 30 users an aggressive poll makes
+// that a real risk — not on average, but in bursts (everyone opening the app at
+// shift start), and a burst past the ceiling surfaces as failed requests.
+//
+// Three things keep the aggregate down without the app feeling any less live:
+//   • 30s base interval rather than 10s
+//   • random jitter, so tabs that started together don't stay in lockstep and
+//     re-converge into a thundering herd on every tick
+//   • a longer interval once a tab has gone untouched for a while — a screen
+//     left open on a shop-floor terminal shouldn't cost the same as one being
+//     actively worked
+// Responsiveness comes from the visibilitychange handler below (an immediate
+// check whenever a tab is focused) and from optimistic local updates, not from
+// the poll rate.
+const POLL_INTERVAL_MS = 30000;
+const POLL_JITTER_MS = 5000;
+const POLL_IDLE_INTERVAL_MS = 180000;
+const IDLE_AFTER_MS = 300000;
+
 let pollTimer = null;
+// Bumped by every start/stop. A tick that resolves after its generation is
+// superseded doesn't reschedule — without this, calling startPolling() while a
+// request is in flight (which visibilitychange does) leaves the old chain alive
+// alongside the new one, doubling the poll rate every time a tab is refocused.
+let pollGeneration = 0;
+let lastInteractionAt = Date.now();
+
+['pointerdown', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, () => { lastInteractionAt = Date.now(); }, { passive: true });
+});
+
+function nextPollDelay() {
+  const idle = Date.now() - lastInteractionAt > IDLE_AFTER_MS;
+  const base = idle ? POLL_IDLE_INTERVAL_MS : POLL_INTERVAL_MS;
+  return base + Math.random() * POLL_JITTER_MS;
+}
 
 function checkForTrackingUpdate() {
-  fetchTrackingVersion()
+  return fetchTrackingVersion()
     .then(version => { if (version !== lastKnownVersion) refreshJobs(); })
     .catch(() => {});
 }
 
+// setTimeout rather than setInterval so each tick can pick a fresh jittered
+// delay, and so a slow response can never stack overlapping requests.
+function scheduleNextPoll(generation) {
+  pollTimer = setTimeout(() => {
+    if (generation !== pollGeneration) return;
+    checkForTrackingUpdate().finally(() => {
+      if (generation === pollGeneration) scheduleNextPoll(generation);
+    });
+  }, nextPollDelay());
+}
+
 function startPolling() {
   stopPolling();
-  pollTimer = setInterval(checkForTrackingUpdate, POLL_INTERVAL_MS);
+  scheduleNextPoll(pollGeneration);
 }
 function stopPolling() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  pollGeneration++;
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
 }
 
 // The version this page load booted with — captured from version.json on
@@ -153,7 +200,9 @@ function openSettings() {
   document.getElementById('settings-panel').classList.add('show');
   setHeaderDimmed(true);
   document.getElementById('my-account-name').value = currentUser() || '';
-  document.getElementById('my-account-pin').value = currentPin() || '';
+  // Left blank on purpose — the client no longer holds the current PIN. Typing
+  // a new 4-digit value changes it; leaving it blank keeps the existing one.
+  document.getElementById('my-account-pin').value = '';
   document.getElementById('my-account-hint').textContent = '';
   refreshDropboxSettingsUI();
 }
@@ -168,12 +217,16 @@ function saveMyAccount() {
   const name = document.getElementById('my-account-name').value.trim();
   const pin = document.getElementById('my-account-pin').value.trim();
   if (!name) { hint.textContent = 'Name is required'; return; }
-  if (!/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
+  // A blank PIN field means "leave my PIN alone" — it's no longer prefilled
+  // with the current value, so requiring it would force a change on every
+  // name edit.
+  if (pin && !/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
   hint.textContent = 'Saving…';
-  updateSelf({ name, pin })
+  updateSelf(pin ? { name, pin } : { name })
     .then(res => {
+      document.getElementById('my-account-pin').value = '';
       if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
-      updateAuthProfile({ user: res.user.name, pin: res.user.pin });
+      updateAuthProfile({ user: res.user.name });
       document.getElementById('user-badge').textContent = res.user.name;
       hint.textContent = 'Saved';
       showToast('Account details saved');

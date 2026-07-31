@@ -123,8 +123,12 @@ function renderDueDateEditor(job) {
     editBtn.hidden = false;
   };
 
+  // Must return the promise — the callers below chain .then/.catch onto it for
+  // the toast and the "failed to save" hint. Without the return this threw a
+  // TypeError on every save, so the override landed but the form never closed
+  // and errors were silently unreachable.
   const applyOverride = dueDate => {
-    updateDueDate(job.jobKey, dueDate).then(res => {
+    return updateDueDate(job.jobKey, dueDate).then(res => {
       if (!res.success) throw new Error(res.error || 'failed');
       job.dueOverride = res.dueOverride;
       job.dueDate = res.dueOverride || job.autoDueDate;

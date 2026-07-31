@@ -5,12 +5,7 @@ import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { renderNotes } from './notes.js';
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+import { escapeHtml, escapeAttr } from '../lib/html.js';
 
 function stampHtml(item) {
   if (!item.done || !item.doneBy) return '';
@@ -121,7 +116,7 @@ function renderEditableChecklist(container, job, dept) {
     row.innerHTML = `
       <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${locked ? 'disabled title="Only an Admin can un-check a completed task"' : ''}></button>
       <div class="checklist-item-main">
-        <input type="text" value="${item.text.replace(/"/g, '&quot;')}" />
+        <input type="text" value="${escapeAttr(item.text)}" />
         ${stampHtml(item)}
       </div>
       ${locked ? '' : '<button class="checklist-remove" aria-label="Remove item">&times;</button>'}
@@ -346,7 +341,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
       const row = document.createElement('div');
       row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
       row.innerHTML = `
-        <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canToggle ? '' : `disabled title="Only ${escapeHtml(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
+        <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canToggle ? '' : `disabled title="Only ${escapeAttr(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
         <div class="checklist-item-main">
           <span class="checklist-item-text">${escapeHtml(item.text)}</span>
           ${stampHtml(item)}

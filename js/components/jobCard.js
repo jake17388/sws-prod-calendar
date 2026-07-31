@@ -5,6 +5,7 @@ import { openJobDetail } from './jobDetail.js';
 import { canMarkJobComplete, canSeeDepartmentBadges, currentDepartment } from '../auth.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { JOB_TAGS, JOB_DEPARTMENTS } from '../config.js';
+import { escapeHtml } from '../lib/html.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -112,9 +113,9 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   el.innerHTML = `
     ${canComplete ? `<button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>` : ''}
     <div class="job-card-body">
-      <div class="job-card-title">${job.jobNum ? `${job.jobNum} — ` : ''}${escapeHtml(job.title)}</div>
+      <div class="job-card-title">${job.jobNum ? `${escapeHtml(job.jobNum)} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">
-        ${showCrew ? `<span class="job-card-crew">${crewLabel(job)}</span>` : ''}
+        ${showCrew ? `<span class="job-card-crew">${escapeHtml(crewLabel(job))}</span>` : ''}
       </div>
     </div>
     ${departmentBadgeHtml(job)}
@@ -122,7 +123,7 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   if (canComplete) {
     el.querySelector('.job-card-checkbox').addEventListener('click', e => {
       e.stopPropagation();
-      handleCheckboxToggle(job, e.currentTarget);
+      handleCheckboxToggle(job);
     });
   }
   el.addEventListener('click', () => onOpen(job.jobKey));
@@ -151,10 +152,4 @@ export function renderJobChip(job) {
   }
   el.addEventListener('click', () => openJobDetail(job.jobKey));
   return el;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
