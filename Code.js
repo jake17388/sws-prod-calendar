@@ -42,7 +42,6 @@ const DROPBOX_PROOFS_REFRESH_HOURS = 6;
 // Real names/PINs are never committed — see migrateLegacyPins() and
 // defaultUsers() below.
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000; // sessions last 30 days
-const MAX_PIN_FAILS = 10;                   // then logins lock for 10 minutes
 
 const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
@@ -329,15 +328,95 @@ function resolveActor(token) {
   return getUsers().find(u => u.id === uid) || null;
 }
 
-function checkPin(pin) {
+// ── Login throttling ────────────────────────────────────────────────────────
+// This replaces a single script-wide `pin_fails` counter, which had three
+// problems: one person mistyping their PIN ten times locked out the entire
+// company; the /exec endpoint is ANYONE_ANONYMOUS, so anyone on the internet
+// could trigger that lockout deliberately; and because CacheService.put resets
+// an entry's TTL, every further attempt pushed the unlock time back, so a
+// script hammering the endpoint kept everyone locked out indefinitely.
+//
+// Now failures are counted per device, and the lockout is stored as an ABSOLUTE
+// expiry timestamp — re-writing the entry can no longer extend an active
+// lockout. A much higher global counter is kept as a last-resort circuit
+// breaker, since Apps Script never exposes the client IP and a determined
+// attacker can just rotate device ids.
+//
+// This is a mitigation, not a fix. A 4-digit PIN is still the entire identity
+// space (checkPin looks users up BY PIN), so ~10k guesses enumerates every
+// account. The real fix is review item #22: identify-then-authenticate, hashed
+// PINs, and per-account limits. Until then the global breaker is what bounds
+// how fast an attacker can work.
+const PIN_FAILS_PER_DEVICE = 8;
+const DEVICE_LOCKOUT_MS = 10 * 60 * 1000;
+const GLOBAL_FAILS_LIMIT = 60;          // across all devices, per window
+const GLOBAL_WINDOW_SECONDS = 600;
+const GLOBAL_COOLDOWN_MS = 5 * 60 * 1000;
+const THROTTLE_CACHE_SECONDS = 3600;
+
+function readThrottle(cache, key) {
+  const raw = cache.get(key);
+  if (!raw) return { n: 0, until: 0 };
+  try {
+    const parsed = JSON.parse(raw);
+    return { n: +parsed.n || 0, until: +parsed.until || 0 };
+  } catch (err) {
+    return { n: 0, until: 0 };
+  }
+}
+
+function writeThrottle(cache, key, state) {
+  cache.put(key, JSON.stringify(state), THROTTLE_CACHE_SECONDS);
+}
+
+// Device ids come from the client and are trivially forgeable — they exist to
+// keep one person's typos from affecting anyone else, not as a security
+// boundary. Anything unusable falls back to a shared bucket rather than being
+// rejected, so a client that can't supply one still gets throttled.
+function deviceKey(deviceId) {
+  const clean = String(deviceId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  return 'pin_fails_dev_' + (clean || 'unknown');
+}
+
+function checkPin(pin, deviceId) {
   const cache = CacheService.getScriptCache();
-  const fails = +(cache.get('pin_fails') || 0);
-  if (fails >= MAX_PIN_FAILS) return { ok: false, locked: true };
+  const now = Date.now();
+  const devKey = deviceKey(deviceId);
+
+  const device = readThrottle(cache, devKey);
+  if (device.until && now < device.until) {
+    return { ok: false, locked: true, retryInSeconds: Math.ceil((device.until - now) / 1000) };
+  }
+
+  const global = readThrottle(cache, 'pin_fails_global');
+  if (global.until && now < global.until) {
+    return { ok: false, locked: true, retryInSeconds: Math.ceil((global.until - now) / 1000) };
+  }
+
   const user = getUsers().find(u => u.pin === String(pin));
   if (!user) {
-    cache.put('pin_fails', String(fails + 1), 600);
+    const nextDeviceCount = device.n + 1;
+    writeThrottle(cache, devKey, nextDeviceCount >= PIN_FAILS_PER_DEVICE
+      ? { n: 0, until: now + DEVICE_LOCKOUT_MS }
+      : { n: nextDeviceCount, until: 0 });
+
+    // The global counter's own window is the cache TTL — it isn't refreshed on
+    // every write the way the old counter's was, so a burst has to actually
+    // reach the limit inside one window to trip the breaker.
+    const nextGlobalCount = global.n + 1;
+    if (nextGlobalCount >= GLOBAL_FAILS_LIMIT) {
+      cache.put('pin_fails_global', JSON.stringify({ n: 0, until: now + GLOBAL_COOLDOWN_MS }), THROTTLE_CACHE_SECONDS);
+      console.warn('Global PIN failure limit reached — logins paused for %s minutes', GLOBAL_COOLDOWN_MS / 60000);
+    } else {
+      cache.put('pin_fails_global', JSON.stringify({ n: nextGlobalCount, until: 0 }), GLOBAL_WINDOW_SECONDS);
+    }
     return { ok: false };
   }
+
+  // Clear this device's failures on success — the old counter never reset, so
+  // nine mistypes followed by a correct PIN left everyone one attempt from a
+  // lockout for the next ten minutes.
+  cache.remove(devKey);
   return {
     ok: true,
     user: user.name,
@@ -387,14 +466,46 @@ function bumpTrackingVersion() {
 }
 
 // ── Routing ──────────────────────────────────────────────────────────────────
+// Anything thrown below this point — a malformed request body, a LockService
+// timeout under load (a normal condition, not a bug), a Calendar hiccup —
+// otherwise escapes as Apps Script's own HTML error page. The client then calls
+// r.json() on HTML and rejects with an opaque SyntaxError that says nothing
+// about what actually failed. These wrappers guarantee every response is JSON
+// the client can reason about, and log the stack for Stackdriver.
 function doGet(e) {
+  try {
+    return routeGet(e);
+  } catch (err) {
+    console.error('doGet failed: %s\n%s', err && err.message, err && err.stack);
+    return json({ error: 'internal', message: String((err && err.message) || err) });
+  }
+}
+
+function doPost(e) {
+  try {
+    return routePost(e);
+  } catch (err) {
+    console.error('doPost failed: %s\n%s', err && err.message, err && err.stack);
+    return json({ error: 'internal', message: String((err && err.message) || err) });
+  }
+}
+
+function routeGet(e) {
+  const params = (e && e.parameter) || {};
   // Dropbox's OAuth redirect lands here with no `action` of ours — it's
   // e.parameter.code/state instead. Must be checked before action routing.
-  if (e.parameter.code && e.parameter.state) {
-    return handleDropboxOAuthCallback(e, ScriptApp.getService().getUrl());
+  // This branch returns HTML on purpose (a human is looking at it), so it
+  // handles its own errors rather than falling through to the JSON wrapper.
+  if (params.code && params.state) {
+    try {
+      return handleDropboxOAuthCallback(e, ScriptApp.getService().getUrl());
+    } catch (err) {
+      console.error('Dropbox OAuth callback failed: %s\n%s', err && err.message, err && err.stack);
+      return HtmlService.createHtmlOutput('<p>Dropbox connection failed. Close this tab and try again from Settings.</p>');
+    }
   }
 
-  const action = e.parameter.action;
+  const action = params.action;
 
   if (action === 'getProductionJobs') {
     const actor = resolveActor(e.parameter.token);
@@ -440,11 +551,22 @@ function doGet(e) {
     'SWS Production Calendar: https://jake17388.github.io/sws-prod-calendar/');
 }
 
-function doPost(e) {
-  const data = JSON.parse(e.postData.contents);
+function routePost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return json({ error: 'bad_request', message: 'Missing request body' });
+  }
+  let data;
+  try {
+    data = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return json({ error: 'bad_request', message: 'Request body is not valid JSON' });
+  }
+  if (!data || typeof data !== 'object') {
+    return json({ error: 'bad_request', message: 'Request body must be a JSON object' });
+  }
 
   if (data.action === 'login') {
-    return json(checkPin(data.pin));
+    return json(checkPin(data.pin, data.deviceId));
   }
 
   const actor = resolveActor(data.token);
@@ -1787,3 +1909,87 @@ function handleDropboxOAuthCallback(e, scriptUrl) {
   return HtmlService.createHtmlOutput('<p>Dropbox connected. You can close this tab and go back to the app.</p>');
 }
 
+
+// ── Backups ─────────────────────────────────────────────────────────────────
+// The tracking spreadsheet holds every note, checklist, completion record and
+// department assignment in the system, and its id exists only in Script
+// Properties. Until this, there was no backup of any kind: deleting or
+// corrupting that one file would have destroyed all production history with no
+// recovery path. Jobs themselves would repopulate from Calendar; nothing else
+// would.
+//
+// A daily copy is deliberately the simplest thing that works — one Drive
+// file copy, negligible against the 90-minute daily trigger budget. Copies live
+// in their own folder so they can't be confused with the live sheet, and old
+// ones are pruned so this can't grow without bound.
+//
+// NOTE: these copies live in the same Google account as the original, so they
+// protect against deletion and corruption but NOT against loss of the account
+// itself. See review item #36 — the account credentials belonging to a company
+// password manager is the other half of this.
+const BACKUP_FOLDER_NAME = 'SWS Prod Calendar - Tracking Backups';
+const BACKUP_FOLDER_PROP = 'BACKUP_FOLDER_ID';
+const BACKUP_RETENTION_COUNT = 30;
+
+function getBackupFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty(BACKUP_FOLDER_PROP);
+  if (folderId) {
+    try { return DriveApp.getFolderById(folderId); } catch (err) { /* recreate below */ }
+  }
+  const folder = DriveApp.createFolder(BACKUP_FOLDER_NAME);
+  props.setProperty(BACKUP_FOLDER_PROP, folder.getId());
+  return folder;
+}
+
+// Keeps the newest BACKUP_RETENTION_COUNT copies and trashes the rest. Sorts by
+// the file's own creation date rather than parsing names, so a manually renamed
+// or hand-made copy in this folder still ages out correctly.
+function pruneOldBackups(folder) {
+  const files = [];
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    files.push({ file: f, created: f.getDateCreated().getTime() });
+  }
+  if (files.length <= BACKUP_RETENTION_COUNT) return 0;
+  files.sort((a, b) => b.created - a.created);
+  const stale = files.slice(BACKUP_RETENTION_COUNT);
+  stale.forEach(entry => { try { entry.file.setTrashed(true); } catch (err) { /* already gone */ } });
+  return stale.length;
+}
+
+// Runs daily on a trigger (see setupAllTriggers). Safe to run by hand from the
+// Apps Script editor to take an immediate backup.
+function backupTrackingSpreadsheet() {
+  const ss = getTrackingSpreadsheet();
+  const folder = getBackupFolder();
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  const copy = DriveApp.getFileById(ss.getId()).makeCopy('SWS Production Tracking ' + stamp, folder);
+  const pruned = pruneOldBackups(folder);
+  Logger.log('Backed up tracking sheet to "%s" (pruned %s old copy/copies)', copy.getName(), pruned);
+  return { name: copy.getName(), id: copy.getId(), pruned };
+}
+
+// ── Trigger setup ───────────────────────────────────────────────────────────
+// One place that installs every time-driven trigger this script needs, so
+// there's a single thing to run after a deploy that adds or changes one. Run
+// from the Apps Script editor: Run > setupAllTriggers.
+//
+// Both are idempotent — running this repeatedly won't stack duplicate triggers.
+function setupAllTriggers() {
+  ensureDropboxRefreshTrigger();
+  ensureBackupTrigger();
+  const summary = ScriptApp.getProjectTriggers()
+    .map(t => t.getHandlerFunction())
+    .join(', ');
+  Logger.log('Triggers installed: %s', summary);
+  return summary;
+}
+
+function ensureBackupTrigger() {
+  const already = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'backupTrackingSpreadsheet');
+  if (already) return;
+  ScriptApp.newTrigger('backupTrackingSpreadsheet').timeBased().everyDays(1).atHour(2).create();
+  Logger.log('Daily tracking-sheet backup trigger created (runs ~2am).');
+}

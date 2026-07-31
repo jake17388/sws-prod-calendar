@@ -6,6 +6,7 @@ import { abbreviateName, formatTimestamp } from '../dates.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { renderNotes } from './notes.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
+import { showToast } from '../toast.js';
 
 function stampHtml(item) {
   if (!item.done || !item.doneBy) return '';
@@ -51,7 +52,14 @@ function sendPersist(job, queue) {
   const expectedUpdatedAt = job.updatedAt;
   updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments, expectedUpdatedAt)
     .then(res => {
-      if (!res.success && res.error !== 'conflict') return;
+      if (!res.success && res.error !== 'conflict') {
+        // A rejected save (job locked, permission denied, validation) used to
+        // return here silently, leaving the optimistic local edit on screen as
+        // though it had been written. The next poll would quietly revert it.
+        showToast(res.error || "Couldn't save department changes", 'error');
+        if (queue.rerender) queue.rerender();
+        return;
+      }
       job.updatedAt = res.updatedAt;
       // A newer local edit landed while this request was in flight — its
       // state already supersedes this response, so don't let this response
@@ -72,7 +80,13 @@ function sendPersist(job, queue) {
       patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
       if ((res.error === 'conflict' || currentDepartmentsChanged) && queue.rerender) queue.rerender();
     })
-    .catch(() => {})
+    .catch(err => {
+      // Network failure on a write. The edit is still sitting on screen looking
+      // saved, so say so — the queue below will retry if a newer local change
+      // arrives, but nothing else would ever tell the user this didn't land.
+      console.error('Failed to save department changes:', err);
+      showToast("Couldn't save department changes — check your connection", 'error');
+    })
     .finally(() => {
       queue.saving = false;
       if (queue.dirty) sendPersist(job, queue);

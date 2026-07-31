@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.27.7" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.31.2" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
@@ -76,6 +76,7 @@
       <div class="toolbar-left">
         <button class="hdr-btn" id="refresh-btn"><span class="refresh-icon">↻</span> Refresh</button>
         <span id="last-updated"></span>
+        <span id="sync-status" class="sync-status" role="status" hidden></span>
         <span id="header-count"></span>
       </div>
       <button class="hdr-btn" id="view-btn-assign" hidden>Jobs to Assign</button>
@@ -244,6 +245,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.31.1"></script>
+<script type="module" src="js/app.js?v=2026.07.31.2"></script>
 </body>
 </html>

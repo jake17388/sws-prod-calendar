@@ -10,6 +10,11 @@ on:
   # Lets a failed deploy be re-run without an empty commit.
   workflow_dispatch:
 
+# Needed by the failure-notification step below, which opens an issue.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -67,3 +72,57 @@ jobs:
             exit 1
           fi
           echo "Verified: live deployment is serving CI deploy $SHORT_SHA"
+
+      # A red run that nobody looks at is the same as no run at all — this is
+      # exactly how commit 1c318d0 shipped a frontend whose backend never
+      # deployed. An issue shows up in normal GitHub notifications rather than
+      # only on a tab someone has to remember to check. Reuses one open issue
+      # instead of filing a new one per failed attempt.
+      - name: Open an issue if the deploy failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'deploy-failure';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.sha.substring(0, 7);
+            const body = [
+              `**The backend deploy failed for \`${sha}\`.**`,
+              '',
+              `Run: ${runUrl}`,
+              '',
+              'The frontend deploys from a separate workflow and may have succeeded,',
+              'which means production could be running new frontend code against an',
+              'older backend. Check before assuming this is cosmetic.',
+              '',
+              'Manual recovery:',
+              '```bash',
+              'clasp push --force',
+              'clasp list-deployments   # copy the non-@HEAD id',
+              'clasp deploy -i <ID> -d "manual deploy ' + sha + '"',
+              '```',
+            ].join('\n');
+
+            try {
+              await github.rest.issues.createLabel({
+                ...context.repo, name: label, color: 'b60205',
+                description: 'Automated: an Apps Script deploy failed',
+              });
+            } catch (err) { /* already exists */ }
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo, state: 'open', labels: label,
+            });
+
+            if (open.length) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: open[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                ...context.repo,
+                title: 'Apps Script deploy is failing',
+                labels: [label],
+                body,
+              });
+            }

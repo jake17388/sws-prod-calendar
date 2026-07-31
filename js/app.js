@@ -13,6 +13,7 @@ import { addDays } from './dates.js';
 import { showToast } from './toast.js';
 import { setHeaderDimmed } from './headerDim.js';
 import { loadCachedJobs, saveCachedJobs } from './jobsCache.js';
+import { reportSyncSuccess, reportSyncFailure, setOnFirstFailure } from './syncStatus.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -59,7 +60,12 @@ function switchView(view) {
 // poll tick instead of a full refetch.
 let lastKnownVersion = 0;
 
-function refreshJobs() {
+/**
+ * @param {boolean} [userInitiated] true when the Refresh button was pressed —
+ *   an explicit action always deserves immediate feedback, whereas a background
+ *   poll waits for repeated failures before saying anything (see syncStatus).
+ */
+function refreshJobs(userInitiated = false) {
   const refreshBtn = document.getElementById('refresh-btn');
   refreshBtn.classList.add('spinning');
   refreshBtn.disabled = true;
@@ -71,8 +77,16 @@ function refreshJobs() {
       document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
       document.getElementById('last-updated').textContent =
         `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      reportSyncSuccess();
     })
-    .catch(() => {})
+    .catch(err => {
+      // Was `.catch(() => {})`. A silent failure here left a stale list sitting
+      // under a fresh-looking "Updated" timestamp with nothing to suggest it
+      // wasn't current.
+      console.error('Failed to refresh jobs:', err);
+      if (userInitiated) showToast("Couldn't refresh — check your connection", 'error');
+      reportSyncFailure();
+    })
     .finally(() => {
       refreshBtn.classList.remove('spinning');
       refreshBtn.disabled = false;
@@ -119,8 +133,14 @@ function nextPollDelay() {
 
 function checkForTrackingUpdate() {
   return fetchTrackingVersion()
-    .then(version => { if (version !== lastKnownVersion) refreshJobs(); })
-    .catch(() => {});
+    .then(version => {
+      reportSyncSuccess();
+      if (version !== lastKnownVersion) refreshJobs();
+    })
+    .catch(err => {
+      console.error('Tracking version poll failed:', err);
+      reportSyncFailure();
+    });
 }
 
 // setTimeout rather than setInterval so each tick can pick a fresh jittered
@@ -261,7 +281,7 @@ function boot() {
     refDate = new Date();
     renderActiveView();
   });
-  document.getElementById('refresh-btn').addEventListener('click', refreshJobs);
+  document.getElementById('refresh-btn').addEventListener('click', () => refreshJobs(true));
   document.getElementById('job-detail-close').addEventListener('click', closeJobDetail);
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
@@ -300,6 +320,9 @@ function boot() {
 
   subscribe(renderActiveView);
   subscribe(renderStatsBar);
+
+  // Fires once per outage, not once per failed poll.
+  setOnFirstFailure(() => showToast('Not syncing — showing the last data received', 'error'));
 
   // Paint last-known jobs instantly from a local cache while the real
   // fetch is still in flight (it re-hits CalendarApp + the tracking Sheet,

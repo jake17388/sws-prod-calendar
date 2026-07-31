@@ -1,6 +1,7 @@
 import { AUTH_KEY } from './config.js';
 import { scriptPost } from './api.js';
 import { clearCachedJobs } from './jobsCache.js';
+import { getDeviceId } from './deviceId.js';
 
 let auth = readAuth(); // { token, user } — validated server-side on every call
 let pinEntry = '';
@@ -109,15 +110,25 @@ function pinDel() {
   renderDots();
 }
 
+// The server returns how long the lockout has left, so this reports the real
+// remaining time instead of the flat "10 minutes" it used to claim — which was
+// wrong whenever the lockout was partly elapsed, and wrong again whenever the
+// old global counter silently pushed the unlock time back.
+function lockoutMessage(retryInSeconds) {
+  if (!retryInSeconds || retryInSeconds < 0) return 'Too many attempts — try again shortly.';
+  const minutes = Math.ceil(retryInSeconds / 60);
+  return `Too many attempts — try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
 function submitPin(onLogin) {
   pinBusy = true;
   const errorEl = document.getElementById('pin-error');
   errorEl.textContent = 'Verifying…';
-  scriptPost({ action: 'login', pin: pinEntry })
+  scriptPost({ action: 'login', pin: pinEntry, deviceId: getDeviceId() })
     .then(res => {
       pinBusy = false;
       if (!res.ok) {
-        errorEl.textContent = res.locked ? 'Too many attempts — try again in 10 minutes.' : 'Incorrect PIN';
+        errorEl.textContent = res.locked ? lockoutMessage(res.retryInSeconds) : 'Incorrect PIN';
         pinEntry = '';
         renderDots();
         return;
