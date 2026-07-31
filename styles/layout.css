@@ -449,6 +449,10 @@ main.view-area {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
+  /* Text inputs don't need to run the full width of the panel the way the
+     action buttons below them do — on an iPad that left the name field
+     sprawling across ~1100px for a value that's never more than a few words. */
+  max-width: 30rem;
 }
 /* Author CSS beats the UA [hidden] rule — needed since dropbox-credentials-fields
    reuses this class and gets toggled with the `hidden` attribute from JS. */
@@ -466,7 +470,18 @@ main.view-area {
   transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
 .my-account-fields input:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
-#my-account-pin { flex: 0 0 5em; }
+/* Wide enough for the "New PIN" placeholder to show in full — at 5em it
+   truncated to "New P", which read like a broken label rather than a hint. */
+#my-account-pin { flex: 0 0 7.5em; }
+
+/* Static hint under the account fields, explaining that a blank PIN keeps the
+   existing one. This can't live in the placeholder (too long for the field) or
+   in #my-account-hint (that's overwritten by save status messages). */
+.my-account-note {
+  margin-top: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--ink-secondary);
+}
 
 .dropbox-debug-output {
   margin-top: var(--space-2);

@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.31.2" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.07.31.4" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
@@ -136,8 +136,9 @@
   </div>
   <div class="my-account-fields">
     <input type="text" id="my-account-name" placeholder="Name" />
-    <input type="text" id="my-account-pin" placeholder="New PIN (leave blank to keep)" inputmode="numeric" maxlength="4" />
+    <input type="text" id="my-account-pin" placeholder="New PIN" inputmode="numeric" maxlength="4" title="Enter a new 4-digit PIN to change it, or leave blank to keep your current one" />
   </div>
+  <div class="my-account-note">Leave the PIN blank to keep your current one.</div>
   <button class="settings-action" id="my-account-save-btn">Save my info</button>
   <div id="my-account-hint" class="notes-save-hint"></div>
   <button class="settings-action" id="settings-check-btn">Check for updates</button>
