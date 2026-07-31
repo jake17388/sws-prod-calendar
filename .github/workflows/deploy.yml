@@ -6,6 +6,9 @@ on:
     paths:
       - 'Code.js'
       - 'appsscript.json'
+      - '.github/workflows/deploy.yml'
+  # Lets a failed deploy be re-run without an empty commit.
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -18,16 +21,49 @@ jobs:
         with:
           node-version: '20'
 
+      # Pinned deliberately. This was previously `npm install -g @google/clasp`,
+      # which silently follows major versions — and clasp 3.x changed both the
+      # credential handling and several command names. A backend deploy that
+      # quietly stops working looks identical to one that worked (the code is in
+      # git either way), so the version that CI runs must not drift on its own.
+      # Keep this in sync with whatever `clasp --version` reports locally.
       - name: Install clasp
-        run: npm install -g @google/clasp
+        run: npm install -g @google/clasp@3.3.0
 
       - name: Write clasp credentials
-        run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
+        env:
+          CLASP_TOKEN: ${{ secrets.CLASP_TOKEN }}
+        run: |
+          if [ -z "$CLASP_TOKEN" ]; then
+            echo "::error::CLASP_TOKEN secret is empty or unset."
+            exit 1
+          fi
+          printf '%s' "$CLASP_TOKEN" > ~/.clasprc.json
+          if ! grep -q 'refresh_token\|refreshToken' ~/.clasprc.json; then
+            echo "::error::CLASP_TOKEN does not look like a valid ~/.clasprc.json (no refresh token found)."
+            echo "::error::Regenerate it locally with 'clasp login', then copy ~/.clasprc.json into the secret."
+            exit 1
+          fi
 
       - name: Push to Apps Script
         run: clasp push --force
 
       # clasp push only updates source; the live /exec URL serves a versioned
-      # deployment that must be re-pointed at a new version each time
+      # deployment that must be re-pointed at a new version each time.
       - name: Deploy new version to live web app
-        run: clasp deploy -i ${{ secrets.CLASP_DEPLOYMENT_ID }} -d "CI deploy ${GITHUB_SHA::7}"
+        run: clasp deploy -i "${{ secrets.CLASP_DEPLOYMENT_ID }}" -d "CI deploy ${GITHUB_SHA::7}"
+
+      # The failure this guards against has actually happened: the push
+      # succeeded, the deploy silently did not, and the code looked live in git
+      # while the old version kept serving. Confirm the live deployment now
+      # carries this commit's description before calling the job green.
+      - name: Verify the deployment actually moved
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          DEPLOYMENTS="$(clasp list-deployments)"
+          echo "$DEPLOYMENTS"
+          if ! echo "$DEPLOYMENTS" | grep -q "CI deploy $SHORT_SHA"; then
+            echo "::error::Live deployment does not reference $SHORT_SHA — the deploy did not take effect."
+            exit 1
+          fi
+          echo "Verified: live deployment is serving CI deploy $SHORT_SHA"
