@@ -33,13 +33,22 @@ function showRowHint(row, text, isError) {
   if (!isError) setTimeout(() => { hint.textContent = ''; }, 1500);
 }
 
+// Whether this row's PIN is readable. The server decides — it simply omits the
+// `pin` field from any record the viewer isn't allowed to see (canSeePin in
+// Code.js), so the presence of the field IS the permission. Nothing here can
+// reveal a PIN the server didn't send.
+const pinVisible = user => typeof user.pin === 'string' && user.pin.length > 0;
+
 function renderLockedRow(user) {
   const row = document.createElement('div');
   row.className = 'user-row user-row-locked';
+  const pinCell = pinVisible(user)
+    ? `<span class="user-row-pin">${escapeHtml(user.pin)}</span>`
+    : '<span class="user-row-pin user-row-pin-hidden">••••</span>';
   row.innerHTML = `
     <span class="user-row-name">${escapeHtml(user.name)}</span>
     <span class="user-row-dept">${escapeHtml(user.department)}</span>
-    <span class="user-row-pin user-row-pin-hidden">••••</span>
+    ${pinCell}
     <span class="user-row-lock" title="You don't have permission to edit this account">&#128274;</span>
   `;
   return row;
@@ -48,14 +57,19 @@ function renderLockedRow(user) {
 function renderEditableRow(user, actorDept) {
   const row = document.createElement('div');
   row.className = 'user-row';
-  // The PIN field is write-only: the server no longer sends PINs to any
-  // client (see publicUser() in Code.js), so there's nothing to prefill and
-  // nothing for a Manager to read off a colleague's screen. Typing a new
-  // 4-digit value replaces it; leaving it blank leaves the PIN alone.
+  // Two modes, driven entirely by whether the server sent a PIN:
+  //   readable  — Admins, and your own row: prefilled and editable in place.
+  //   write-only — everyone else: blank with a "••••" placeholder, so a
+  //                Manager can change a production account's PIN without ever
+  //                being able to read it.
+  const canRead = pinVisible(user);
+  const pinInput = canRead
+    ? `<input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="${escapeAttr(user.pin)}" title="4-digit PIN" />`
+    : '<input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="" placeholder="••••" title="Enter a new 4-digit PIN to change it" />';
   row.innerHTML = `
     <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" />
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
-    <input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="" placeholder="••••" title="Enter a new 4-digit PIN to change it" />
+    ${pinInput}
     <button class="user-row-delete" aria-label="Delete user">&times;</button>
     <span class="user-row-hint"></span>
   `;
@@ -81,11 +95,27 @@ function renderEditableRow(user, actorDept) {
 
   row.querySelector('.user-row-pin').addEventListener('change', e => {
     const pin = e.target.value.trim();
-    if (!pin) return; // left blank — keep the existing PIN
-    if (!/^\d{4}$/.test(pin)) { showRowHint(row, 'PIN must be 4 digits', true); e.target.value = ''; return; }
+    // A blank write-only field means "leave it alone". A blank readable field
+    // is the user clearing it, which isn't a valid PIN — restore what was there.
+    if (!pin) { if (canRead) e.target.value = user.pin; return; }
+    if (!/^\d{4}$/.test(pin)) {
+      showRowHint(row, 'PIN must be 4 digits', true);
+      e.target.value = canRead ? user.pin : '';
+      return;
+    }
     updateUserApi(user.id, { pin }).then(res => {
-      e.target.value = ''; // never leave a PIN sitting in the DOM
-      if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); return; }
+      if (!res.success) {
+        showRowHint(row, res.error || 'Failed to save', true);
+        // Rejected (usually a duplicate PIN) — put the field back to the real
+        // stored value rather than leaving the rejected one looking accepted.
+        e.target.value = canRead ? user.pin : '';
+        return;
+      }
+      // Keep the local copy current so a later revert restores the new PIN,
+      // not the one it replaced.
+      if (res.user && typeof res.user.pin === 'string') user.pin = res.user.pin;
+      else if (canRead) user.pin = pin;
+      if (!canRead) e.target.value = ''; // never leave an unreadable PIN in the DOM
       showRowHint(row, 'PIN updated');
     });
   });

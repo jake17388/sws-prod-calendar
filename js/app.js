@@ -1,4 +1,4 @@
-import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
+import { fetchProductionJobs, fetchTrackingVersion, updateSelf, fetchMyPin } from './api.js';
 import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
@@ -242,21 +242,47 @@ function applyZoom() {
   localStorage.setItem(ZOOM_KEY, pct);
 }
 
+// Bumped every time Settings opens, so a slow PIN fetch from a previous open
+// can't write into a panel that's since been closed and reopened.
+let settingsOpenToken = 0;
+
 function openSettings() {
   document.getElementById('settings-backdrop').classList.add('show');
   document.getElementById('settings-panel').classList.add('show');
   setHeaderDimmed(true);
   document.getElementById('my-account-name').value = currentUser() || '';
-  // Left blank on purpose — the client no longer holds the current PIN. Typing
-  // a new 4-digit value changes it; leaving it blank keeps the existing one.
-  document.getElementById('my-account-pin').value = '';
   document.getElementById('my-account-hint').textContent = '';
+
+  // Fetched fresh each time rather than kept in the session, so the PIN lives
+  // only in this input while the panel is open — it's never written to
+  // localStorage the way it used to be.
+  const pinField = document.getElementById('my-account-pin');
+  pinField.value = '';
+  pinField.placeholder = 'Loading…';
+  const token = ++settingsOpenToken;
+  fetchMyPin()
+    .then(pin => {
+      if (token !== settingsOpenToken) return;
+      pinField.value = pin;
+      pinField.placeholder = 'PIN';
+    })
+    .catch(() => {
+      if (token !== settingsOpenToken) return;
+      // Falls back to the write-only behaviour: you can still set a new PIN,
+      // you just can't see the current one.
+      pinField.placeholder = 'New PIN';
+    });
+
   refreshDropboxSettingsUI();
 }
 function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('show');
   document.getElementById('settings-panel').classList.remove('show');
   setHeaderDimmed(false);
+  // Don't leave the PIN sitting in the DOM once the panel is closed, and
+  // invalidate any fetch still in flight (see settingsOpenToken).
+  settingsOpenToken++;
+  document.getElementById('my-account-pin').value = '';
 }
 
 function saveMyAccount() {
@@ -264,15 +290,20 @@ function saveMyAccount() {
   const name = document.getElementById('my-account-name').value.trim();
   const pin = document.getElementById('my-account-pin').value.trim();
   if (!name) { hint.textContent = 'Name is required'; return; }
-  // A blank PIN field means "leave my PIN alone" — it's no longer prefilled
-  // with the current value, so requiring it would force a change on every
-  // name edit.
+  // A blank PIN means "leave mine alone". The field is normally prefilled, so
+  // blank only happens if the user cleared it — or if the fetch that fills it
+  // failed, in which case treating blank as "keep" is what lets the panel still
+  // work at all.
   if (pin && !/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
   hint.textContent = 'Saving…';
   updateSelf(pin ? { name, pin } : { name })
     .then(res => {
-      document.getElementById('my-account-pin').value = '';
       if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
+      // Reflect what was actually stored, so a rejected PIN doesn't linger in
+      // the field looking accepted.
+      if (res.user && typeof res.user.pin === 'string') {
+        document.getElementById('my-account-pin').value = res.user.pin;
+      }
       updateAuthProfile({ user: res.user.name });
       document.getElementById('user-badge').textContent = res.user.name;
       hint.textContent = 'Saved';

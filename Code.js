@@ -102,12 +102,30 @@ function isLastAdmin(users, userId) {
   return admins.length === 1 && admins[0].id === userId;
 }
 
+// Who may see a PIN in cleartext: Admins see everyone's, everyone else sees
+// only their own. Deliberately narrower than the department-management rules —
+// a Manager can add, edit and delete a production account without ever being
+// able to read its PIN.
+//
+// This is the one place a credential is intentionally readable, so it's a
+// single function rather than a check scattered across the handlers. Note the
+// consequence: PINs must stay in plaintext for this to work at all, which rules
+// out hashing them (review item #22). The alternative that survives hashing is
+// letting an Admin RESET a PIN rather than read it.
+function canSeePin(actor, targetUser) {
+  return actor.department === 'Admin' || actor.id === targetUser.id;
+}
+
+function userFor(actor, user) {
+  return canSeePin(actor, user) ? user : publicUser(user);
+}
+
 function visibleUsersFor(actor) {
   const users = getUsers();
   const visible = actor.department === 'Admin'
     ? users
     : users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
-  return visible.map(publicUser);
+  return visible.map(u => userFor(actor, u));
 }
 
 // Placeholder only, mirroring the old DEFAULT_PINS pattern — real users
@@ -185,7 +203,7 @@ function addUser(actor, data) {
     const newUser = { id: Utilities.getUuid(), name, department, pin };
     users.push(newUser);
     saveUsers(users);
-    return { success: true, user: publicUser(newUser) };
+    return { success: true, user: userFor(actor, newUser) };
   } finally {
     lock.releaseLock();
   }
@@ -224,7 +242,7 @@ function updateUser(actor, data) {
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: publicUser(next) };
+    return { success: true, user: userFor(actor, next) };
   } finally {
     lock.releaseLock();
   }
@@ -275,7 +293,7 @@ function updateSelf(actor, data) {
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: publicUser(next) };
+    return { success: true, user: userFor(actor, next) };
   } finally {
     lock.releaseLock();
   }
@@ -517,6 +535,15 @@ function routeGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     if (!canAccessUserManagement(actor.department)) return json({ error: 'forbidden' });
     return json({ users: visibleUsersFor(actor) });
+  }
+  // Lets Settings show a user their own PIN without it ever being persisted
+  // client-side. It's fetched when the panel opens and lives only in the DOM
+  // until it closes — deliberately not part of the login response, which the
+  // client writes to localStorage.
+  if (action === 'getMyPin') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json({ pin: actor.pin || '' });
   }
   if (action === 'getTrackingVersion') {
     const actor = resolveActor(e.parameter.token);
