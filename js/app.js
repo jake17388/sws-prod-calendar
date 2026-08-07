@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut, isAdmin } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
@@ -245,7 +245,7 @@ function reloadForUpdate() {
   window.location.href = url.toString();
 }
 
-const ZOOM_STEPS = [80, 90, 100, 110, 125, 150];
+const ZOOM_STEPS = [50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200];
 const ZOOM_KEY = 'sws_prod_cal_zoom';
 const savedZoomIdx = ZOOM_STEPS.indexOf(+localStorage.getItem(ZOOM_KEY));
 let zoomIdx = savedZoomIdx !== -1 ? savedZoomIdx : ZOOM_STEPS.indexOf(100);
@@ -257,15 +257,14 @@ function applyZoom() {
   localStorage.setItem(ZOOM_KEY, pct);
 }
 
-// Bumped every time Settings opens, so a slow PIN fetch from a previous open
-// can't write into a panel that's since been closed and reopened.
-let settingsOpenToken = 0;
-
 function openSettings() {
   document.getElementById('settings-backdrop').classList.add('show');
   document.getElementById('settings-panel').classList.add('show');
   setHeaderDimmed(true);
-  document.getElementById('my-account-name').value = currentUser() || '';
+  const nameField = document.getElementById('my-account-name');
+  nameField.value = currentUser() || '';
+  nameField.readOnly = !isAdmin();
+  nameField.title = isAdmin() ? 'Admins can update account names' : 'Only an Admin can change account names';
   document.getElementById('my-account-hint').textContent = '';
 
   // Fetched fresh each time rather than kept in the session, so the PIN lives
@@ -274,7 +273,6 @@ function openSettings() {
   const pinField = document.getElementById('my-account-pin');
   pinField.value = '';
   pinField.placeholder = 'New 6-digit PIN';
-  settingsOpenToken++;
 
   refreshDropboxSettingsUI();
 }
@@ -282,9 +280,7 @@ function closeSettings() {
   document.getElementById('settings-backdrop').classList.remove('show');
   document.getElementById('settings-panel').classList.remove('show');
   setHeaderDimmed(false);
-  // Don't leave the PIN sitting in the DOM once the panel is closed, and
-  // invalidate any fetch still in flight (see settingsOpenToken).
-  settingsOpenToken++;
+  // Don't leave the PIN sitting in the DOM once the panel is closed.
   document.getElementById('my-account-pin').value = '';
 }
 
@@ -293,13 +289,15 @@ function saveMyAccount() {
   const saveButton = document.getElementById('my-account-save-btn');
   const name = document.getElementById('my-account-name').value.trim();
   const pin = document.getElementById('my-account-pin').value.trim();
-  if (!name) { hint.textContent = 'Name is required'; return; }
+  if (isAdmin() && !name) { hint.textContent = 'Name is required'; return; }
   // A blank PIN means "leave mine alone"; current credentials are never
   // prefilled or stored in the browser.
   if (pin && !/^\d{6}$/.test(pin)) { hint.textContent = 'PIN must be 6 digits'; return; }
+  if (!pin && !isAdmin()) { hint.textContent = 'Enter a new 6-digit PIN'; return; }
   hint.textContent = 'Saving…';
   saveButton.disabled = true;
-  return updateSelf(pin ? { name, pin } : { name })
+  const patch = { ...(isAdmin() ? { name } : {}), ...(pin ? { pin } : {}) };
+  return updateSelf(patch)
     .then(res => {
       if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
       // Reflect what was actually stored, so a rejected PIN doesn't linger in
@@ -323,6 +321,7 @@ function boot() {
   deptBadge.hidden = !department || department === 'Viewer';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
+  document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments());
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
   applyZoom();
 

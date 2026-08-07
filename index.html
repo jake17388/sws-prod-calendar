@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.07.31.4" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.08.07.9" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
@@ -112,63 +112,109 @@
 <div id="toast-stack" aria-live="polite"></div>
 
 <div class="settings-backdrop" id="settings-backdrop"></div>
-<div class="settings-panel" id="settings-panel">
-  <div class="settings-header">
-    <span>Settings</span>
-    <button class="settings-close-btn" id="settings-close-btn" title="Close">✕</button>
-  </div>
-  <div id="settings-update-banner" class="settings-update-banner" hidden>
-    <span>🔄 A new version is available</span>
-    <button id="settings-update-reload-btn">Update now</button>
-  </div>
-  <div class="settings-row">
-    <span>Version</span>
-    <span id="settings-version-text"></span>
-  </div>
-  <div class="settings-row">
-    <span>Text size</span>
-    <div class="zoom-controls">
-      <button class="zoom-btn" id="zoom-out-btn">−</button>
-      <span class="zoom-label" id="zoom-label">100%</span>
-      <button class="zoom-btn" id="zoom-in-btn">+</button>
-      <button class="zoom-reset-btn" id="zoom-reset-btn">Reset</button>
+<div class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="settings-shell">
+    <div class="settings-header">
+      <div>
+        <h2 id="settings-title">Settings</h2>
+        <p>Personal preferences and account controls</p>
+      </div>
+      <button class="settings-close-btn" id="settings-close-btn" aria-label="Close settings">✕</button>
+    </div>
+    <div id="settings-update-banner" class="settings-update-banner" hidden>
+      <span>🔄 A new version is available</span>
+      <button id="settings-update-reload-btn">Update now</button>
+    </div>
+
+    <div class="settings-grid">
+      <section class="settings-card" aria-labelledby="appearance-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="appearance-heading">Display</h3>
+            <p>Adjust how the production calendar looks on this device.</p>
+          </div>
+        </div>
+        <div class="settings-row">
+          <span>Version</span>
+          <span id="settings-version-text"></span>
+        </div>
+        <div class="settings-row">
+          <span>Text size</span>
+          <div class="zoom-controls">
+            <button class="zoom-btn" id="zoom-out-btn" aria-label="Decrease text size">−</button>
+            <span class="zoom-label" id="zoom-label">100%</span>
+            <button class="zoom-btn" id="zoom-in-btn" aria-label="Increase text size">+</button>
+            <button class="zoom-reset-btn" id="zoom-reset-btn">Reset</button>
+          </div>
+        </div>
+        <button class="settings-action" id="settings-check-btn">Check for updates</button>
+      </section>
+
+      <section class="settings-card" aria-labelledby="account-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="account-heading">My Account</h3>
+            <p>Update the PIN used to sign in on this account.</p>
+          </div>
+        </div>
+        <div class="my-account-fields">
+          <label class="settings-field">
+            <span>Name</span>
+            <input type="text" id="my-account-name" placeholder="Name" />
+          </label>
+          <label class="settings-field">
+            <span>New PIN</span>
+            <input type="password" id="my-account-pin" placeholder="6 digits" inputmode="numeric" maxlength="6" title="Type a new 6-digit PIN to change it" autocomplete="new-password" />
+          </label>
+        </div>
+        <div class="my-account-note">Type a new 6-digit number to change your PIN. Leave it blank to keep your current PIN.</div>
+        <button class="settings-action primary" id="my-account-save-btn">Save my info</button>
+        <div id="my-account-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="settings-card settings-card-management" id="settings-management-card" aria-labelledby="management-heading" hidden>
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="management-heading">Management</h3>
+            <p>Manage people, permissions, and reusable task buttons.</p>
+          </div>
+        </div>
+        <div class="settings-button-row">
+          <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
+          <button class="settings-action" id="settings-common-tasks-btn" hidden>Common Task Buttons</button>
+        </div>
+      </section>
+
+      <section class="settings-card settings-card-dropbox" id="dropbox-settings-section" aria-labelledby="dropbox-heading" hidden>
+        <div class="settings-card-heading settings-card-heading-status">
+          <div>
+            <h3 id="dropbox-heading">Dropbox Integration</h3>
+            <p>Connection and production proof controls.</p>
+          </div>
+          <span id="dropbox-status-text" class="settings-status-pill"></span>
+        </div>
+        <button class="settings-action primary" id="dropbox-refresh-btn" hidden>Refresh proofs now</button>
+        <button class="settings-action primary" id="dropbox-connect-btn" hidden>Connect Dropbox</button>
+        <div id="dropbox-credentials-fields" class="my-account-fields" hidden>
+          <label class="settings-field">
+            <span>App key</span>
+            <input type="text" id="dropbox-app-key" placeholder="Dropbox app key" autocomplete="off" />
+          </label>
+          <label class="settings-field">
+            <span>App secret</span>
+            <input type="password" id="dropbox-app-secret" placeholder="Dropbox app secret" autocomplete="new-password" />
+          </label>
+        </div>
+        <button class="settings-action" id="dropbox-save-credentials-btn" hidden>Save Dropbox app key/secret</button>
+        <button class="settings-action danger" id="dropbox-disconnect-btn" hidden>Disconnect Dropbox</button>
+        <div id="dropbox-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <div class="settings-footer">
+      <button class="settings-action danger" id="settings-signout-btn">Sign out</button>
     </div>
   </div>
-  <div class="settings-row my-account-row">
-    <span>My Account</span>
-  </div>
-  <div class="my-account-fields">
-    <input type="text" id="my-account-name" placeholder="Name" />
-    <input type="password" id="my-account-pin" placeholder="New 6-digit PIN" inputmode="numeric" maxlength="6" title="Type a new 6-digit PIN to change it" autocomplete="new-password" />
-  </div>
-  <div class="my-account-note">Type a new 6-digit number to change your PIN. Leave it blank to keep your current PIN.</div>
-  <button class="settings-action" id="my-account-save-btn">Save my info</button>
-  <div id="my-account-hint" class="notes-save-hint"></div>
-  <button class="settings-action" id="settings-check-btn">Check for updates</button>
-  <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
-  <button class="settings-action" id="settings-common-tasks-btn" hidden>Common Task Buttons</button>
-
-  <div class="settings-row" id="dropbox-settings-row" hidden>
-    <span>Dropbox Integration</span>
-    <span id="dropbox-status-text"></span>
-  </div>
-  <div id="dropbox-credentials-fields" class="my-account-fields" hidden>
-    <input type="text" id="dropbox-app-key" placeholder="App key" />
-    <input type="text" id="dropbox-app-secret" placeholder="App secret" />
-  </div>
-  <button class="settings-action" id="dropbox-save-credentials-btn" hidden>Save Dropbox app key/secret</button>
-  <button class="settings-action primary" id="dropbox-connect-btn" hidden>Connect Dropbox</button>
-  <button class="settings-action" id="dropbox-refresh-btn" hidden>Refresh proofs now</button>
-  <button class="settings-action danger" id="dropbox-disconnect-btn" hidden>Disconnect Dropbox</button>
-  <div id="dropbox-hint" class="notes-save-hint"></div>
-
-  <div id="dropbox-debug-fields" class="my-account-fields" hidden>
-    <input type="text" id="dropbox-debug-jobnum" placeholder="Job # to debug (e.g. 260219)" />
-  </div>
-  <button class="settings-action" id="dropbox-debug-btn" hidden>Debug proof lookup</button>
-  <pre id="dropbox-debug-output" class="dropbox-debug-output" hidden></pre>
-
-  <button class="settings-action danger" id="settings-signout-btn">Sign out</button>
 </div>
 
 <div id="common-task-overlay">
@@ -278,6 +324,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.07.8"></script>
+<script type="module" src="js/app.js?v=2026.08.07.9"></script>
 </body>
 </html>

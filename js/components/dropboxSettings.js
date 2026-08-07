@@ -1,4 +1,4 @@
-import { fetchDropboxStatus, fetchDropboxAuthUrl, setDropboxCredentials, disconnectDropbox, refreshDropboxProofsNow, debugDropboxProof } from '../api.js';
+import { fetchDropboxStatus, fetchDropboxAuthUrl, setDropboxCredentials, disconnectDropbox, refreshDropboxProofsNow } from '../api.js';
 import { currentDepartment } from '../auth.js';
 import { showToast } from '../toast.js';
 
@@ -13,6 +13,7 @@ function setHint(text) {
 function renderStatus(status) {
   const statusText = document.getElementById('dropbox-status-text');
   statusText.textContent = status.connected ? 'Connected' : (status.hasCredentials ? 'Not connected' : 'Not set up');
+  statusText.classList.toggle('connected', status.connected);
 
   document.getElementById('dropbox-connect-btn').hidden = !status.hasCredentials || status.connected;
   document.getElementById('dropbox-refresh-btn').hidden = !status.connected;
@@ -23,13 +24,11 @@ function renderStatus(status) {
 // out from under this tab (e.g. the Admin approved access in the OAuth tab
 // this flow opens, then came back here), so it's never cached client-side.
 export function refreshDropboxSettingsUI() {
-  const row = document.getElementById('dropbox-settings-row');
+  const section = document.getElementById('dropbox-settings-section');
   const admin = isAdmin();
-  row.hidden = !admin;
+  section.hidden = !admin;
   document.getElementById('dropbox-credentials-fields').hidden = !admin;
   document.getElementById('dropbox-save-credentials-btn').hidden = !admin;
-  document.getElementById('dropbox-debug-fields').hidden = !admin;
-  document.getElementById('dropbox-debug-btn').hidden = !admin;
   if (!admin) return;
 
   setHint('');
@@ -90,25 +89,9 @@ function handleDisconnect() {
     .catch(() => setHint('Network error — try again'));
 }
 
-// Retraces the Dropbox folder/Proofs-subfolder/PDF lookup for one job number
-// step by step and dumps the raw result — for tracking down why a specific
-// job isn't matching (folder-naming conventions in the Dropbox archive
-// aren't fully consistent).
-function handleDebug() {
-  const jobNum = document.getElementById('dropbox-debug-jobnum').value.trim();
-  const output = document.getElementById('dropbox-debug-output');
-  if (!jobNum) { setHint('Enter a job number first'); return; }
-  output.hidden = false;
-  output.textContent = 'Looking up…';
-  debugDropboxProof(jobNum)
-    .then(res => { output.textContent = JSON.stringify(res, null, 2); })
-    .catch(() => { output.textContent = 'Network error — try again'; });
-}
-
 export function initDropboxSettings() {
   document.getElementById('dropbox-save-credentials-btn').addEventListener('click', handleSaveCredentials);
   document.getElementById('dropbox-connect-btn').addEventListener('click', handleConnect);
   document.getElementById('dropbox-refresh-btn').addEventListener('click', handleRefresh);
   document.getElementById('dropbox-disconnect-btn').addEventListener('click', handleDisconnect);
-  document.getElementById('dropbox-debug-btn').addEventListener('click', handleDebug);
 }

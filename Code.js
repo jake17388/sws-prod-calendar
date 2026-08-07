@@ -346,6 +346,7 @@ function updateUser(actor, data) {
     const next = { ...target };
     let pinChanged = false;
     if (data.name !== undefined) {
+      if (actor.department !== 'Admin') return { success: false, error: 'forbidden' };
       const name = String(data.name).trim();
       if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
       next.name = name;
@@ -396,11 +397,10 @@ function deleteUser(actor, data) {
   }
 }
 
-// Lets any signed-in user change their own name/PIN, independent of
-// canAccessUserManagement — this is how a Viewer (or a Manager, who can't
-// edit their own Manager-department account through the department
-// permission rules above) updates their own credentials. Deliberately
-// ignores any `department` field so nobody can promote themselves.
+// Lets every signed-in user change their own PIN, independent of
+// canAccessUserManagement. Admins may also change their own name; everyone
+// else needs an Admin to rename the account. Deliberately ignores any
+// `department` field so nobody can promote themselves.
 function updateSelf(actor, data) {
   const lock = LockService.getScriptLock();
   try {
@@ -411,6 +411,7 @@ function updateSelf(actor, data) {
     const next = { ...users[idx] };
     let pinChanged = false;
     if (data.name !== undefined) {
+      if (actor.department !== 'Admin') return { success: false, error: 'forbidden' };
       const name = String(data.name).trim();
       if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
       next.name = name;
@@ -781,14 +782,6 @@ function routeGet(e) {
     if (!url) return json({ error: 'App key/secret not set yet' });
     return json({ url });
   }
-  if (action === 'debugDropboxProof') {
-    const actor = resolveActor(e.parameter.token);
-    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
-    const jobNum = String(e.parameter.jobNum || '');
-    if (!validJobKey(jobNum)) return json({ error: 'bad_request', message: 'Invalid job number' });
-    return json(debugFindLatestProof(jobNum));
-  }
-
   // The app itself is hosted on GitHub Pages, not here
   return ContentService.createTextOutput(
     'SWS Production Calendar: https://jake17388.github.io/sws-prod-calendar/');
@@ -1887,79 +1880,6 @@ function findLatestProofsBatch(accessToken, jobNums, rangeFolders) {
   });
 
   return result;
-}
-
-// Admin-only diagnostic for Settings — retraces findLatestProof's steps one
-// at a time and reports what happened at each, so a mismatch (wrong range
-// bucket, no Proofs subfolder, no PDFs) can be pinpointed instead of
-// guessed at.
-function debugFindLatestProof(jobNum) {
-  if (!jobNum) return { error: 'jobNum required' };
-  const accessToken = getDropboxAccessToken();
-  if (!accessToken) return { error: 'Could not get a Dropbox access token — check connection in Settings' };
-
-  const acctResp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + accessToken },
-    payload: 'null',
-    muteHttpExceptions: true,
-  });
-  const accountDebug = { code: acctResp.getResponseCode(), body: acctResp.getContentText() };
-
-  const pathRoot = getDropboxPathRootHeader(accessToken);
-  const rootHeaders = { Authorization: 'Bearer ' + accessToken };
-  if (pathRoot) rootHeaders['Dropbox-API-Path-Root'] = pathRoot;
-  const rootResp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/files/list_folder', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: rootHeaders,
-    payload: JSON.stringify({ path: DROPBOX_ORDERS_PATH }),
-    muteHttpExceptions: true,
-  });
-  if (rootResp.getResponseCode() !== 200) {
-    return { step: 'list_folder (01 Orders root)', usedPathRootHeader: !!pathRoot, accountDebug, code: rootResp.getResponseCode(), body: rootResp.getContentText() };
-  }
-
-  const rangeFolders = listDropboxRangeFolders(accessToken);
-  const n = +jobNum;
-  const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
-  if (!candidates.length) {
-    return { step: 'range folders', usedPathRootHeader: !!pathRoot, totalRangeFolders: rangeFolders.length, error: 'No range folder under "01 Orders" brackets job number ' + jobNum };
-  }
-
-  for (let i = 0; i < candidates.length; i++) {
-    const range = candidates[i];
-    const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: range.path_lower });
-    if (!listing || !listing.entries) {
-      return { step: 'list_folder (range folder)', rangeFolder: range.name, error: 'list_folder failed for ' + range.path_lower };
-    }
-    const folderMatch = listing.entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
-    if (!folderMatch) continue;
-
-    const jobListing = dropboxApiCall(accessToken, 'files/list_folder', { path: folderMatch.path_lower });
-    if (!jobListing || !jobListing.entries) {
-      return { step: 'list_folder (job folder)', rangeFolder: range.name, folderMatch: folderMatch.name, error: 'list_folder failed for job folder' };
-    }
-    const proofsFolder = jobListing.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
-    if (!proofsFolder) {
-      return { step: 'list_folder (job folder)', rangeFolder: range.name, folderMatch: folderMatch.name, entries: jobListing.entries.map(en => en.name), error: 'No "Proofs" subfolder found' };
-    }
-
-    const proofsListing = dropboxApiCall(accessToken, 'files/list_folder', { path: proofsFolder.path_lower });
-    if (!proofsListing || !proofsListing.entries) {
-      return { step: 'list_folder (Proofs)', rangeFolder: range.name, folderMatch: folderMatch.name, error: 'list_folder failed for Proofs subfolder' };
-    }
-    const pdfs = proofsListing.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
-    if (!pdfs.length) {
-      return { step: 'list_folder (Proofs)', rangeFolder: range.name, folderMatch: folderMatch.name, entries: proofsListing.entries.map(en => en.name), error: 'No PDFs in Proofs folder' };
-    }
-
-    const proof = findLatestProof(accessToken, jobNum, rangeFolders);
-    return { step: 'done', rangeFolder: range.name, folderMatch: folderMatch.name, pdfsFound: pdfs.map(f => f.name), winner: proof };
-  }
-
-  return { step: 'list_folder (range folder)', candidateRangeFolders: candidates.map(r => r.name), error: 'Job folder not found in any bracketing range folder' };
 }
 
 function getDropboxProofsSheet() {

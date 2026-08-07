@@ -55,10 +55,11 @@ function renderEditableRow(user, actorDept) {
   row.setAttribute('role', 'group');
   row.setAttribute('aria-label', `${user.name}, ${user.department}. Open user options.`);
   const adminCanSeePins = currentDepartment() === 'Admin';
+  const adminCanEditNames = actorDept === 'Admin';
   const currentPin = adminCanSeePins && typeof user.pin === 'string' ? user.pin : '';
   const pinType = adminCanSeePins ? 'text' : 'password';
   row.innerHTML = `
-    <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" />
+    <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" ${adminCanEditNames ? '' : 'readonly'} title="${adminCanEditNames ? 'Edit account name' : 'Only an Admin can change account names'}" />
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
     <input type="${pinType}" class="user-row-pin" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
     <span class="user-row-actions">
@@ -68,15 +69,17 @@ function renderEditableRow(user, actorDept) {
     <span class="user-row-hint"></span>
   `;
 
-  row.querySelector('.user-row-name').addEventListener('change', e => {
-    const name = e.target.value.trim();
-    if (!name) { e.target.value = user.name; return; }
-    updateUserApi(user.id, { name }).then(res => {
-      if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); e.target.value = user.name; return; }
-      user.name = res.user.name;
-      showRowHint(row, 'Saved');
-    }).catch(() => { e.target.value = user.name; showRowHint(row, 'Network error — try again', true); });
-  });
+  if (adminCanEditNames) {
+    row.querySelector('.user-row-name').addEventListener('change', e => {
+      const name = e.target.value.trim();
+      if (!name) { e.target.value = user.name; return; }
+      updateUserApi(user.id, { name }).then(res => {
+        if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); e.target.value = user.name; return; }
+        user.name = res.user.name;
+        showRowHint(row, 'Saved');
+      }).catch(() => { e.target.value = user.name; showRowHint(row, 'Network error — try again', true); });
+    });
+  }
 
   row.querySelector('.user-row-dept').addEventListener('change', e => {
     const department = e.target.value;

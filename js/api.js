@@ -106,6 +106,3 @@ export const setDropboxCredentials = (appKey, appSecret) =>
 export const disconnectDropbox = () => scriptPost({ action: 'disconnectDropbox' });
 
 export const refreshDropboxProofsNow = () => scriptPost({ action: 'refreshDropboxProofsNow' });
-
-/** @param {string} jobNum @returns {Promise<object>} raw step-by-step trace from debugFindLatestProof in Code.js */
-export const debugDropboxProof = jobNum => scriptGet('debugDropboxProof', { jobNum });
