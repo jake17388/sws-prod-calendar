@@ -113,7 +113,7 @@ test('any role can change its own PIN without losing the current session during 
   });
   const login = context.checkPin('123456', 'ipad-1');
   const actor = context.resolveActor(login.token);
-  const changed = context.updateSelf(actor, { name: 'Pat', pin: '654321' });
+  const changed = context.updateSelf(actor, { pin: '654321' });
 
   assert.equal(changed.success, true);
   assert.equal(context.resolveActor(changed.token).department, 'Paint');
@@ -125,6 +125,25 @@ test('any role can change its own PIN without losing the current session during 
   stored[0].previousAuthExpiresAt = Date.now() - 1;
   values.USERS = JSON.stringify(stored);
   assert.equal(context.resolveActor(login.token), null);
+});
+
+test('only Admins can rename accounts', () => {
+  const original = [
+    { id: 'admin', name: 'Admin', department: 'Admin', pin: '111111', authVersion: 1 },
+    { id: 'manager', name: 'Manager', department: 'Manager', pin: '222222', authVersion: 1 },
+    { id: 'worker', name: 'Pat', department: 'Paint', pin: '333333', authVersion: 1 },
+  ];
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+  });
+  const manager = context.resolveActor(context.checkPin('222222', 'ipad-1').token);
+  const worker = context.resolveActor(context.checkPin('333333', 'ipad-2').token);
+  const admin = context.resolveActor(context.checkPin('111111', 'ipad-3').token);
+
+  assert.equal(context.updateSelf(worker, { name: 'Changed' }).error, 'forbidden');
+  assert.equal(context.updateUser(manager, { id: 'worker', name: 'Changed' }).error, 'forbidden');
+  assert.equal(context.updateUser(admin, { id: 'worker', name: 'Changed' }).success, true);
 });
 
 test('four-digit PINs cannot authenticate', () => {
