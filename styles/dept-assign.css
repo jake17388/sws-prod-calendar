@@ -83,6 +83,24 @@
   color: var(--ink-tertiary);
 }
 
+.common-task-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+.common-task-button {
+  border: 1px solid var(--accent-ring);
+  border-radius: var(--radius-full);
+  background: var(--accent-subtle-bg);
+  color: var(--accent-subtle-text);
+  padding: 6px 11px;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+.common-task-button:hover { background: var(--surface-card-hover); border-color: var(--accent-solid); }
+
 .dept-assign-notes {
   margin-top: var(--space-2);
   padding-left: calc(18px + var(--space-2));

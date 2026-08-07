@@ -23,7 +23,8 @@
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.31.1" />
-<link rel="stylesheet" href="styles/dept-assign.css?v=2026.07.27.4" />
+<link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.07.1" />
+<link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.1" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
 <link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
 </head>
@@ -143,6 +144,7 @@
   <div id="my-account-hint" class="notes-save-hint"></div>
   <button class="settings-action" id="settings-check-btn">Check for updates</button>
   <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
+  <button class="settings-action" id="settings-common-tasks-btn" hidden>Common Task Buttons</button>
 
   <div class="settings-row" id="dropbox-settings-row" hidden>
     <span>Dropbox Integration</span>
@@ -165,6 +167,24 @@
   <pre id="dropbox-debug-output" class="dropbox-debug-output" hidden></pre>
 
   <button class="settings-action danger" id="settings-signout-btn">Sign out</button>
+</div>
+
+<div id="common-task-overlay">
+  <section class="common-task-panel" aria-label="Common task buttons">
+    <div class="common-task-header">
+      <div>
+        <h2>Common Task Buttons</h2>
+        <p>Create shortcuts for tasks assigned frequently.</p>
+      </div>
+      <button id="common-task-close" class="job-detail-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="common-task-body">
+      <div id="common-task-list" class="common-task-list"></div>
+      <button id="common-task-add" class="settings-action">+ Add button phrase</button>
+      <button id="common-task-save" class="settings-action primary">Save changes</button>
+      <div id="common-task-hint" class="notes-save-hint"></div>
+    </div>
+  </section>
 </div>
 
 <div id="job-detail-overlay">
@@ -246,6 +266,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.07.31.6"></script>
+<script type="module" src="js/app.js?v=2026.08.07.1"></script>
 </body>
 </html>

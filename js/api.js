@@ -42,6 +42,11 @@ export const updateDueDate = (jobKey, dueDate) =>
 
 export const fetchUsers = () => scriptGet('getUsers').then(d => d.users || []);
 
+export const fetchCommonTasks = () => scriptGet('getCommonTasks').then(d => d.tasks || []);
+
+export const saveCommonTasks = tasks =>
+  scriptPost({ action: 'saveCommonTasks', tasks });
+
 /** The signed-in user's own PIN. Fetched on demand so it's never persisted client-side. @returns {Promise<string>} */
 export const fetchMyPin = () => scriptGet('getMyPin').then(d => d.pin || '');
 

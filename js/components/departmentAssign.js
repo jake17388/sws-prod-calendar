@@ -7,10 +7,16 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { renderNotes } from './notes.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
 import { showToast } from '../toast.js';
+import { commonTasksForDepartment } from './commonTaskManagement.js';
 
 function stampHtml(item) {
   if (!item.done || !item.doneBy) return '';
   return `<span class="checklist-item-stamp">Completed by: ${escapeHtml(abbreviateName(item.doneBy))} on ${escapeHtml(formatTimestamp(item.doneAt))}</span>`;
+}
+
+function addedStampHtml(item) {
+  if (!item.addedBy || !item.addedAt) return '';
+  return `<span class="checklist-item-stamp">Added by: ${escapeHtml(abbreviateName(item.addedBy))} on ${escapeHtml(formatTimestamp(item.addedAt))}</span>`;
 }
 
 // One entry per job, tracking whether a save is currently in flight and
@@ -131,6 +137,7 @@ function renderEditableChecklist(container, job, dept) {
       <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${locked ? 'disabled title="Only an Admin can un-check a completed task"' : ''}></button>
       <div class="checklist-item-main">
         <input type="text" value="${escapeAttr(item.text)}" />
+        ${addedStampHtml(item)}
         ${stampHtml(item)}
       </div>
       ${locked ? '' : '<button class="checklist-remove" aria-label="Remove item">&times;</button>'}
@@ -160,6 +167,35 @@ function renderEditableChecklist(container, job, dept) {
     container.appendChild(row);
   });
 
+  const quickTasks = commonTasksForDepartment(dept);
+  if (quickTasks.length) {
+    const quickWrap = document.createElement('div');
+    quickWrap.className = 'common-task-buttons';
+    quickTasks.forEach(task => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'common-task-button';
+      button.textContent = task.text;
+      button.addEventListener('click', () => {
+        const now = new Date().toISOString();
+        job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: task.text,
+          done: false,
+          doneBy: '',
+          doneAt: '',
+          addedBy: currentUser(),
+          addedAt: now,
+        }];
+        persist(job, () => renderEditableChecklist(container, job, dept));
+        renderEditableChecklist(container, job, dept);
+        syncCurrentButtonState(container, job, dept);
+      });
+      quickWrap.appendChild(button);
+    });
+    container.appendChild(quickWrap);
+  }
+
   const addRow = document.createElement('div');
   addRow.className = 'checklist-add';
   addRow.innerHTML = '<input type="text" placeholder="Add item…" /><button>Add</button>';
@@ -167,7 +203,8 @@ function renderEditableChecklist(container, job, dept) {
   const doAdd = () => {
     const text = addInput.value.trim();
     if (!text) return;
-    job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false, doneBy: '', doneAt: '' }];
+    const now = new Date().toISOString();
+    job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false, doneBy: '', doneAt: '', addedBy: currentUser(), addedAt: now }];
     addInput.value = '';
     persist(job, () => renderEditableChecklist(container, job, dept));
     renderEditableChecklist(container, job, dept);
@@ -197,6 +234,7 @@ function renderStaticChecklist(container, items) {
       <span class="checklist-check ${item.done ? 'checked' : ''}"></span>
       <div class="checklist-item-main">
         <span class="checklist-item-text">${escapeHtml(item.text)}</span>
+        ${addedStampHtml(item)}
         ${stampHtml(item)}
       </div>
     `;
@@ -358,6 +396,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
         <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canToggle ? '' : `disabled title="Only ${escapeAttr(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
         <div class="checklist-item-main">
           <span class="checklist-item-text">${escapeHtml(item.text)}</span>
+          ${addedStampHtml(item)}
           ${stampHtml(item)}
         </div>
       `;

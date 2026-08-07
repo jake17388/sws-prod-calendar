@@ -4,6 +4,7 @@ import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
+import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
 import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
@@ -320,6 +321,7 @@ function boot() {
   deptBadge.textContent = department || '';
   deptBadge.hidden = !department || department === 'Viewer';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
+  document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
   applyZoom();
 
@@ -360,9 +362,12 @@ function boot() {
   document.getElementById('settings-signout-btn').addEventListener('click', () => { closeSettings(); signOut(); });
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
+  document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
   initUserManagement();
+  initCommonTaskManagement();
   initDropboxSettings();
+  if (canAssignDepartments()) refreshCommonTasks().catch(() => {});
   document.getElementById('zoom-in-btn').addEventListener('click', () => {
     zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);
     applyZoom();

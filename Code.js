@@ -181,6 +181,68 @@ function saveUsers(users) {
   PropertiesService.getScriptProperties().setProperty('USERS', JSON.stringify(users));
 }
 
+// ── Common task phrases ─────────────────────────────────────────────────────
+// Manager/Admin-created shortcuts shown inside a selected department's task
+// editor. Stored in Script Properties because they are app configuration, not
+// per-job tracking data. Each record is
+// { id, text, allDepartments, departments }.
+function getCommonTasks() {
+  const raw = PropertiesService.getScriptProperties().getProperty('COMMON_TASKS');
+  if (!raw) return [];
+  try {
+    const tasks = JSON.parse(raw);
+    return Array.isArray(tasks) ? tasks : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function saveCommonTasks(actor, data) {
+  if (!canAssignDepartments(actor.department)) return { success: false, error: 'forbidden' };
+  if (!Array.isArray(data.tasks)) return { success: false, error: 'Tasks are required' };
+  if (data.tasks.length > 50) return { success: false, error: 'Up to 50 common tasks are allowed' };
+
+  const tasks = [];
+  for (let i = 0; i < data.tasks.length; i++) {
+    const raw = data.tasks[i] || {};
+    const text = String(raw.text || '').trim();
+    if (!text) return { success: false, error: 'Every common task needs text' };
+    if (text.length > 160) return { success: false, error: 'Common task text must be 160 characters or less' };
+
+    const allDepartments = raw.allDepartments === true;
+    const departments = allDepartments ? [] : [...new Set(
+      (Array.isArray(raw.departments) ? raw.departments : [])
+        .map(String)
+        .filter(dept => JOB_TAGS.indexOf(dept) !== -1),
+    )];
+    if (!allDepartments && !departments.length) {
+      return { success: false, error: 'Choose at least one department or All Departments' };
+    }
+    // Reject rather than silently dropping an unknown department so a stale
+    // or tampered client never makes a phrase appear more narrowly scoped than
+    // the manager intended.
+    const suppliedDepartments = Array.isArray(raw.departments) ? raw.departments.map(String) : [];
+    if (!allDepartments && suppliedDepartments.some(dept => JOB_TAGS.indexOf(dept) === -1)) {
+      return { success: false, error: 'Invalid department' };
+    }
+    tasks.push({
+      id: String(raw.id || Utilities.getUuid()),
+      text,
+      allDepartments,
+      departments,
+    });
+  }
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    PropertiesService.getScriptProperties().setProperty('COMMON_TASKS', JSON.stringify(tasks));
+    return { success: true, tasks };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function validPin(pin) {
   return /^\d{4}$/.test(String(pin || ''));
 }
@@ -536,6 +598,12 @@ function routeGet(e) {
     if (!canAccessUserManagement(actor.department)) return json({ error: 'forbidden' });
     return json({ users: visibleUsersFor(actor) });
   }
+  if (action === 'getCommonTasks') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canAssignDepartments(actor.department)) return json({ error: 'forbidden' });
+    return json({ tasks: getCommonTasks() });
+  }
   // Lets Settings show a user their own PIN without it ever being persisted
   // client-side. It's fetched when the panel opens and lives only in the DOM
   // until it closes — deliberately not part of the login response, which the
@@ -625,6 +693,7 @@ function routePost(e) {
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
   if (data.action === 'updateSelf') return json(updateSelf(actor, data));
+  if (data.action === 'saveCommonTasks') return json(saveCommonTasks(actor, data));
   if (data.action === 'setDropboxCredentials') {
     if (actor.department !== 'Admin') return json({ error: 'forbidden' });
     const props = PropertiesService.getScriptProperties();
@@ -658,9 +727,12 @@ function routePost(e) {
 // completed it. Un-checking clears the stamp, mirroring how the job-level
 // completedAt/completedBy reset on un-complete.
 function stampChecklistItem(nextItem, prevItem, actorName) {
-  if (!nextItem.done) return { ...nextItem, doneBy: '', doneAt: '' };
-  if (prevItem && prevItem.done) return { ...nextItem, doneBy: prevItem.doneBy || actorName, doneAt: prevItem.doneAt || new Date().toISOString() };
-  return { ...nextItem, doneBy: actorName, doneAt: new Date().toISOString() };
+  const addedBy = prevItem ? (prevItem.addedBy || '') : actorName;
+  const addedAt = prevItem ? (prevItem.addedAt || '') : new Date().toISOString();
+  const stamped = { ...nextItem, addedBy, addedAt };
+  if (!nextItem.done) return { ...stamped, doneBy: '', doneAt: '' };
+  if (prevItem && prevItem.done) return { ...stamped, doneBy: prevItem.doneBy || actorName, doneAt: prevItem.doneAt || new Date().toISOString() };
+  return { ...stamped, doneBy: actorName, doneAt: new Date().toISOString() };
 }
 
 // Only Admins and Managers can assign departments to a job. Any
