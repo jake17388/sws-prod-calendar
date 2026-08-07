@@ -3,7 +3,7 @@ import { findJob, patchJob } from '../state.js';
 import { currentUser, isAdmin } from '../auth.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { showToast } from '../toast.js';
-import { addPendingNote, preservePendingNotesInJobs, removePendingNote } from '../optimisticNotes.mjs';
+import { addPendingNote, markNoteDeleting, preservePendingNotesInJobs, removePendingNote, restoreDeletingNote, settleDeletedNote } from '../optimisticNotes.mjs';
 
 // A save may finish after the job panel was closed and reopened. Keep the
 // latest renderer for each note list so that response updates the visible
@@ -56,7 +56,7 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
   listEl.className = 'notes-list';
   container.appendChild(listEl);
 
-  function applyResult(res) {
+  function applyResult(res, settledDeleteId) {
     // Never let an older server response erase a newer note that is still
     // saving locally. Once the server response contains its client-generated
     // id, the saved server version naturally replaces the pending copy.
@@ -65,6 +65,11 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
       [latest],
       [{ ...res, jobKey: job.jobKey }],
     )[0];
+    if (settledDeleteId) {
+      const settled = settleDeletedNote(listFor(latest), settledDeleteId, listFor(merged));
+      if (scope === 'project') merged.notes = settled;
+      else merged.departmentNotes = { ...(merged.departmentNotes || {}), [department]: settled };
+    }
     job.notes = merged.notes;
     job.departmentNotes = merged.departmentNotes;
     job.updatedAt = res.updatedAt;
@@ -74,14 +79,15 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
 
   function renderList() {
     listEl.innerHTML = '';
-    if (!list.length) {
+    const visibleNotes = list.filter(note => !note.deleting);
+    if (!visibleNotes.length) {
       const empty = document.createElement('div');
       empty.className = 'notes-empty';
       empty.textContent = 'No notes yet.';
       listEl.appendChild(empty);
       return;
     }
-    list.forEach(renderNoteRow);
+    visibleNotes.forEach(renderNoteRow);
   }
 
   renderedNoteLists.set(renderKey, () => {
@@ -125,13 +131,23 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
       deleteBtn.className = 'note-action-btn danger';
       deleteBtn.textContent = 'Delete';
       deleteBtn.addEventListener('click', () => {
-        deleteBtn.disabled = true;
+        writeList(markNoteDeleting(readLatestList(), note.id));
+        refreshVisibleList();
         deleteNote(job.jobKey, scope, department, note.id)
           .then(res => {
-            if (!res.success) { showToast(res.error || 'Failed to delete note', 'error'); deleteBtn.disabled = false; return; }
-            applyResult(res);
+            if (!res.success) {
+              writeList(restoreDeletingNote(readLatestList(), note.id));
+              refreshVisibleList();
+              showToast(res.error || 'Failed to delete note', 'error');
+              return;
+            }
+            applyResult(res, note.id);
           })
-          .catch(() => { showToast('Failed to delete note', 'error'); deleteBtn.disabled = false; });
+          .catch(() => {
+            writeList(restoreDeletingNote(readLatestList(), note.id));
+            refreshVisibleList();
+            showToast('Failed to delete note', 'error');
+          });
       });
 
       metaEl.appendChild(editBtn);
