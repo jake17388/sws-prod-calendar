@@ -72,9 +72,9 @@ export const updateJobDepartments = (jobKey, departments, departmentChecklists, 
 export const toggleDepartmentTaskDone = (jobKey, department, itemId, done) =>
   scriptPost({ action: 'toggleDepartmentTaskDone', jobKey, department, itemId, done });
 
-/** @param {string} jobKey @param {'project'|'department'} scope @param {string} department — required when scope is 'department' @param {string} text */
-export const addNote = (jobKey, scope, department, text) =>
-  scriptPost({ action: 'addNote', jobKey, scope, department, text });
+/** @param {string} jobKey @param {'project'|'department'} scope @param {string} department — required when scope is 'department' @param {string} text @param {string} noteId client-generated id used for optimistic reconciliation */
+export const addNote = (jobKey, scope, department, text, noteId) =>
+  scriptPost({ action: 'addNote', jobKey, scope, department, text, noteId });
 
 /** @param {string} jobKey @param {'project'|'department'} scope @param {string} department @param {string} noteId @param {string} text */
 export const updateNote = (jobKey, scope, department, noteId, text) =>

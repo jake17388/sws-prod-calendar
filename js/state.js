@@ -1,10 +1,12 @@
+import { preservePendingNotesInJobs } from './optimisticNotes.mjs';
+
 let jobs = [];
 const subscribers = [];
 
 export const getJobs = () => jobs;
 
 export function setJobs(nextJobs) {
-  jobs = nextJobs;
+  jobs = preservePendingNotesInJobs(jobs, nextJobs);
   subscribers.forEach(fn => fn(jobs));
 }
 

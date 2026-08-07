@@ -1,10 +1,17 @@
 import { addNote, updateNote, deleteNote } from '../api.js';
-import { patchJob } from '../state.js';
+import { findJob, patchJob } from '../state.js';
 import { currentUser, isAdmin } from '../auth.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { showToast } from '../toast.js';
+import { addPendingNote, preservePendingNotesInJobs, removePendingNote } from '../optimisticNotes.mjs';
+
+// A save may finish after the job panel was closed and reopened. Keep the
+// latest renderer for each note list so that response updates the visible
+// list, not the detached DOM created by the earlier panel instance.
+const renderedNoteLists = new Map();
 
 function noteStampText(note) {
+  if (note.pending) return 'Saving…';
   if (!note.author) return 'Unknown';
   return note.createdAt ? `${abbreviateName(note.author)} · ${formatTimestamp(note.createdAt)}` : abbreviateName(note.author);
 }
@@ -24,21 +31,45 @@ function noteStampText(note) {
  */
 export function renderNotes(container, job, scope, department, { canWrite }) {
   container.innerHTML = '';
+  const renderKey = `${job.jobKey}:${scope}:${department}`;
 
-  const readList = () => (scope === 'project' ? (job.notes || []) : ((job.departmentNotes && job.departmentNotes[department]) || []));
+  const listFor = source => (scope === 'project' ? (source.notes || []) : ((source.departmentNotes && source.departmentNotes[department]) || []));
+  const readList = () => listFor(job);
+  const readLatestList = () => listFor(findJob(job.jobKey) || job);
   let list = readList();
+
+  function writeList(nextList) {
+    const latest = findJob(job.jobKey) || job;
+    if (scope === 'project') {
+      job.notes = nextList;
+      job.departmentNotes = latest.departmentNotes;
+      patchJob(job.jobKey, { notes: nextList });
+    } else {
+      job.notes = latest.notes;
+      job.departmentNotes = { ...(latest.departmentNotes || {}), [department]: nextList };
+      patchJob(job.jobKey, { departmentNotes: job.departmentNotes });
+    }
+    list = nextList;
+  }
 
   const listEl = document.createElement('div');
   listEl.className = 'notes-list';
   container.appendChild(listEl);
 
   function applyResult(res) {
-    job.notes = res.notes;
-    job.departmentNotes = res.departmentNotes;
+    // Never let an older server response erase a newer note that is still
+    // saving locally. Once the server response contains its client-generated
+    // id, the saved server version naturally replaces the pending copy.
+    const latest = findJob(job.jobKey) || job;
+    const merged = preservePendingNotesInJobs(
+      [latest],
+      [{ ...res, jobKey: job.jobKey }],
+    )[0];
+    job.notes = merged.notes;
+    job.departmentNotes = merged.departmentNotes;
     job.updatedAt = res.updatedAt;
-    patchJob(job.jobKey, { notes: res.notes, departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
-    list = readList();
-    renderList();
+    patchJob(job.jobKey, { notes: job.notes, departmentNotes: job.departmentNotes, updatedAt: res.updatedAt });
+    refreshVisibleList();
   }
 
   function renderList() {
@@ -53,10 +84,23 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
     list.forEach(renderNoteRow);
   }
 
+  renderedNoteLists.set(renderKey, () => {
+    const latest = findJob(job.jobKey);
+    if (latest) {
+      job.notes = latest.notes;
+      job.departmentNotes = latest.departmentNotes;
+      job.updatedAt = latest.updatedAt;
+    }
+    list = readList();
+    renderList();
+  });
+
+  const refreshVisibleList = () => renderedNoteLists.get(renderKey)?.();
+
   function renderNoteRow(note) {
-    const canEdit = canWrite && (isAdmin() || (note.author && note.author === currentUser()));
+    const canEdit = !note.pending && canWrite && (isAdmin() || (note.author && note.author === currentUser()));
     const row = document.createElement('div');
-    row.className = 'note-item';
+    row.className = `note-item${note.pending ? ' pending' : ''}`;
 
     const textEl = document.createElement('div');
     textEl.className = 'note-item-text';
@@ -114,13 +158,10 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
     textarea.focus();
   }
 
-  // Shared Save/Cancel row for both the edit form and the add form below.
+  // Shared Save/Cancel row for note edits.
   // `onSave` returns the in-flight request promise (or null to no-op on
-  // empty input); `onCancel` restores whatever was showing before;
-  // `onSuccess` (optional) runs after a successful save, for cleanup
-  // specific to the caller (add's form resets to the "+ Add note" button —
-  // edit's doesn't need one, applyResult's renderList() already replaces it).
-  function editFormActions(onCancel, onSave, onSuccess) {
+  // empty input); `onCancel` restores whatever was showing before.
+  function editFormActions(onCancel, onSave) {
     const actions = document.createElement('div');
     actions.className = 'note-edit-actions';
     const saveBtn = document.createElement('button');
@@ -141,7 +182,6 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
         .then(res => {
           if (!res.success) { showToast(res.error || 'Failed to save note', 'error'); saveBtn.disabled = false; return; }
           applyResult(res);
-          if (onSuccess) onSuccess();
         })
         .catch(() => { showToast('Failed to save note', 'error'); saveBtn.disabled = false; });
     });
@@ -166,20 +206,61 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
     addWrap.appendChild(addBtn);
   };
 
+  function addFormActions(textarea) {
+    const actions = document.createElement('div');
+    actions.className = 'note-edit-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'settings-action';
+    cancelBtn.textContent = 'Cancel';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'settings-action primary';
+    saveBtn.textContent = 'Save';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    cancelBtn.addEventListener('click', resetAddForm);
+    saveBtn.addEventListener('click', () => {
+      const text = textarea.value.trim();
+      if (!text) return;
+      const noteId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const pending = {
+        id: noteId,
+        text,
+        author: currentUser(),
+        createdAt: new Date().toISOString(),
+      };
+
+      // Show and persist the local copy before starting the slow Apps Script
+      // request, so closing/reopening the job never makes the note vanish.
+      writeList(addPendingNote(readLatestList(), pending));
+      refreshVisibleList();
+      resetAddForm();
+
+      addNote(job.jobKey, scope, department, text, noteId)
+        .then(res => {
+          if (!res.success) {
+            writeList(removePendingNote(readLatestList(), noteId));
+            refreshVisibleList();
+            showToast(res.error || 'Failed to save note', 'error');
+            return;
+          }
+          applyResult(res);
+        })
+        .catch(() => {
+          writeList(removePendingNote(readLatestList(), noteId));
+          refreshVisibleList();
+          showToast('Failed to save note', 'error');
+        });
+    });
+    return actions;
+  }
+
   addBtn.addEventListener('click', () => {
     addWrap.innerHTML = '';
     const textarea = document.createElement('textarea');
     textarea.className = 'notes-textarea';
     textarea.placeholder = 'Add a note…';
     addWrap.appendChild(textarea);
-    addWrap.appendChild(editFormActions(
-      resetAddForm,
-      () => {
-        const text = textarea.value.trim();
-        return text ? addNote(job.jobKey, scope, department, text) : null;
-      },
-      resetAddForm,
-    ));
+    addWrap.appendChild(addFormActions(textarea));
     textarea.focus();
   });
 }

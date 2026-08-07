@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   addPendingNote,
+  preservePendingNotesInJobs,
   removePendingNote,
   settlePendingNote,
 } from '../js/optimisticNotes.mjs';
@@ -49,4 +50,17 @@ test('a failed save removes only the failed optimistic note', () => {
     { id: 'local-2', text: 'Second', pending: true },
   ];
   assert.deepEqual(removePendingNote(local, 'local-1').map(note => note.id), ['old', 'local-2']);
+});
+
+test('a background job refresh cannot erase a note that is still saving', () => {
+  const current = [{
+    jobKey: 'job-1',
+    notes: [{ id: 'local-1', text: 'Call customer', pending: true }],
+    departmentNotes: { Paint: [{ id: 'local-2', text: 'Match color', pending: true }] },
+  }];
+  const refreshed = [{ jobKey: 'job-1', notes: [], departmentNotes: { Paint: [] } }];
+
+  const merged = preservePendingNotesInJobs(current, refreshed);
+  assert.equal(merged[0].notes[0].id, 'local-1');
+  assert.equal(merged[0].departmentNotes.Paint[0].id, 'local-2');
 });

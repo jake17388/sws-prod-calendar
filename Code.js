@@ -877,11 +877,18 @@ function addNote(actor, data) {
   if (!data.jobKey) return { success: false, error: 'jobKey required' };
   const text = String(data.text || '').trim();
   if (!text) return { success: false, error: 'Note text required' };
+  const requestedId = String(data.noteId || '').trim();
+  if (requestedId.length > 100) return { success: false, error: 'Invalid note id' };
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to add notes' };
-    const note = { id: Utilities.getUuid(), text, author: actor.name, createdAt: new Date().toISOString() };
-    const list = [...getNoteList(current, scope, department), note];
+    const currentList = getNoteList(current, scope, department);
+    const noteId = requestedId || Utilities.getUuid();
+    // A retry with the same client-generated id is idempotent, preventing a
+    // slow first response plus a retry from creating duplicate notes.
+    if (currentList.some(note => note.id === noteId)) return withNoteList(current, scope, department, currentList);
+    const note = { id: noteId, text, author: actor.name, createdAt: new Date().toISOString() };
+    const list = [...currentList, note];
     return withNoteList(current, scope, department, list);
   }, actor.name);
 }
