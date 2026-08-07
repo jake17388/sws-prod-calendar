@@ -6,6 +6,7 @@ import { getDeviceId } from './deviceId.js';
 let auth = readAuth(); // { token, user } — validated server-side on every call
 let pinEntry = '';
 let pinBusy = false;
+let legacySubmitTimer = null;
 
 function readAuth() {
   try {
@@ -99,13 +100,18 @@ function renderDots() {
 }
 
 function pinKey(digit, onLogin) {
-  if (pinBusy || pinEntry.length >= 4) return;
+  if (pinBusy || pinEntry.length >= 6) return;
+  if (legacySubmitTimer) clearTimeout(legacySubmitTimer);
   pinEntry += digit;
   renderDots();
-  if (pinEntry.length === 4) submitPin(onLogin);
+  if (pinEntry.length === 6) submitPin(onLogin);
+  // Existing four-digit PINs remain usable during migration. A short pause
+  // submits four digits; continuing to type reaches the new six-digit format.
+  else if (pinEntry.length === 4) legacySubmitTimer = setTimeout(() => submitPin(onLogin), 500);
 }
 
 function pinDel() {
+  if (legacySubmitTimer) clearTimeout(legacySubmitTimer);
   pinEntry = pinEntry.slice(0, -1);
   renderDots();
 }
@@ -138,7 +144,7 @@ function submitPin(onLogin) {
       // credential sitting in localStorage for any XSS — or anyone holding the
       // device — to read. Settings now asks for a new PIN instead of showing
       // the current one.
-      auth = { token: res.token, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers };
+      auth = { token: res.token, userId: res.userId, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

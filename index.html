@@ -22,7 +22,7 @@
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
-<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.07.31.1" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.07.4" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.07.1" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.1" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
@@ -35,9 +35,10 @@
   <div class="pin-logo"><span>SWS</span> Production Calendar</div>
   <div class="pin-card">
     <h1>Enter PIN</h1>
-    <div class="pin-subtitle">Enter your 4-digit PIN to continue</div>
+    <div class="pin-subtitle">Enter your 6-digit PIN to continue</div>
     <div class="pin-dots">
       <span></span><span></span><span></span><span></span>
+      <span></span><span></span>
     </div>
     <div class="pin-pad">
       <button data-digit="1">1</button>
@@ -137,9 +138,9 @@
   </div>
   <div class="my-account-fields">
     <input type="text" id="my-account-name" placeholder="Name" />
-    <input type="text" id="my-account-pin" placeholder="PIN" inputmode="numeric" maxlength="4" title="Your 4-digit PIN — type a new one to change it" />
+    <input type="password" id="my-account-pin" placeholder="New 6-digit PIN" inputmode="numeric" maxlength="6" title="Type a new 6-digit PIN to change it" autocomplete="new-password" />
   </div>
-  <div class="my-account-note">Type a new 4-digit number to change your PIN.</div>
+  <div class="my-account-note">Type a new 6-digit number to change your PIN. Leave it blank to keep your current PIN.</div>
   <button class="settings-action" id="my-account-save-btn">Save my info</button>
   <div id="my-account-hint" class="notes-save-hint"></div>
   <button class="settings-action" id="settings-check-btn">Check for updates</button>
@@ -254,7 +255,7 @@
       <div class="user-mgmt-add">
         <input type="text" id="user-add-name" placeholder="Name" />
         <select id="user-add-dept"></select>
-        <input type="text" id="user-add-pin" placeholder="PIN" inputmode="numeric" maxlength="4" />
+        <input type="password" id="user-add-pin" placeholder="6-digit PIN" inputmode="numeric" maxlength="6" autocomplete="new-password" />
         <button id="user-add-btn" class="settings-action primary">Add user</button>
         <div id="user-add-hint" class="notes-save-hint"></div>
       </div>
@@ -266,6 +267,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.07.3"></script>
+<script type="module" src="js/app.js?v=2026.08.07.4"></script>
 </body>
 </html>

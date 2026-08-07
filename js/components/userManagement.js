@@ -1,4 +1,4 @@
-import { fetchUsers, addUser as addUserApi, updateUser as updateUserApi, deleteUser as deleteUserApi } from '../api.js';
+import { fetchUsers, addUser as addUserApi, updateUser as updateUserApi, deleteUser as deleteUserApi, revokeUserSessions as revokeUserSessionsApi } from '../api.js';
 import { DEPARTMENTS, PM_BLOCKED_DEPARTMENTS } from '../config.js';
 import { currentDepartment } from '../auth.js';
 import { showToast } from '../toast.js';
@@ -33,22 +33,13 @@ function showRowHint(row, text, isError) {
   if (!isError) setTimeout(() => { hint.textContent = ''; }, 1500);
 }
 
-// Whether this row's PIN is readable. The server decides — it simply omits the
-// `pin` field from any record the viewer isn't allowed to see (canSeePin in
-// Code.js), so the presence of the field IS the permission. Nothing here can
-// reveal a PIN the server didn't send.
-const pinVisible = user => typeof user.pin === 'string' && user.pin.length > 0;
-
 function renderLockedRow(user) {
   const row = document.createElement('div');
   row.className = 'user-row user-row-locked';
-  const pinCell = pinVisible(user)
-    ? `<span class="user-row-pin">${escapeHtml(user.pin)}</span>`
-    : '<span class="user-row-pin user-row-pin-hidden">••••</span>';
   row.innerHTML = `
     <span class="user-row-name">${escapeHtml(user.name)}</span>
     <span class="user-row-dept">${escapeHtml(user.department)}</span>
-    ${pinCell}
+    <span class="user-row-pin user-row-pin-hidden">••••••</span>
     <span class="user-row-lock" title="You don't have permission to edit this account">&#128274;</span>
   `;
   return row;
@@ -57,20 +48,14 @@ function renderLockedRow(user) {
 function renderEditableRow(user, actorDept) {
   const row = document.createElement('div');
   row.className = 'user-row';
-  // Two modes, driven entirely by whether the server sent a PIN:
-  //   readable  — Admins, and your own row: prefilled and editable in place.
-  //   write-only — everyone else: blank with a "••••" placeholder, so a
-  //                Manager can change a production account's PIN without ever
-  //                being able to read it.
-  const canRead = pinVisible(user);
-  const pinInput = canRead
-    ? `<input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="${escapeAttr(user.pin)}" title="4-digit PIN" />`
-    : '<input type="text" class="user-row-pin" inputmode="numeric" maxlength="4" value="" placeholder="••••" title="Enter a new 4-digit PIN to change it" />';
   row.innerHTML = `
     <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" />
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
-    ${pinInput}
-    <button class="user-row-delete" aria-label="Delete user">&times;</button>
+    <input type="password" class="user-row-pin" inputmode="numeric" maxlength="6" value="" placeholder="New PIN" title="Enter a new 6-digit PIN" autocomplete="new-password" />
+    <span class="user-row-actions">
+      <button class="user-row-revoke" type="button">Revoke sessions</button>
+      <button class="user-row-delete" aria-label="Delete user">&times;</button>
+    </span>
     <span class="user-row-hint"></span>
   `;
 
@@ -95,29 +80,28 @@ function renderEditableRow(user, actorDept) {
 
   row.querySelector('.user-row-pin').addEventListener('change', e => {
     const pin = e.target.value.trim();
-    // A blank write-only field means "leave it alone". A blank readable field
-    // is the user clearing it, which isn't a valid PIN — restore what was there.
-    if (!pin) { if (canRead) e.target.value = user.pin; return; }
-    if (!/^\d{4}$/.test(pin)) {
-      showRowHint(row, 'PIN must be 4 digits', true);
-      e.target.value = canRead ? user.pin : '';
+    if (!pin) return;
+    if (!/^\d{6}$/.test(pin)) {
+      showRowHint(row, 'PIN must be 6 digits', true);
+      e.target.value = '';
       return;
     }
     updateUserApi(user.id, { pin }).then(res => {
       if (!res.success) {
         showRowHint(row, res.error || 'Failed to save', true);
-        // Rejected (usually a duplicate PIN) — put the field back to the real
-        // stored value rather than leaving the rejected one looking accepted.
-        e.target.value = canRead ? user.pin : '';
+        e.target.value = '';
         return;
       }
-      // Keep the local copy current so a later revert restores the new PIN,
-      // not the one it replaced.
-      if (res.user && typeof res.user.pin === 'string') user.pin = res.user.pin;
-      else if (canRead) user.pin = pin;
-      if (!canRead) e.target.value = ''; // never leave an unreadable PIN in the DOM
+      e.target.value = '';
       showRowHint(row, 'PIN updated');
-    });
+    }).catch(() => { e.target.value = ''; showRowHint(row, 'Network error — try again', true); });
+  });
+
+  row.querySelector('.user-row-revoke').addEventListener('click', () => {
+    if (!confirm(`Sign ${user.name} out on all devices?`)) return;
+    revokeUserSessionsApi(user.id)
+      .then(res => showRowHint(row, res.success ? 'Sessions revoked' : (res.error || 'Failed to revoke sessions'), !res.success))
+      .catch(() => showRowHint(row, 'Network error — try again', true));
   });
 
   row.querySelector('.user-row-delete').addEventListener('click', () => {
@@ -165,7 +149,7 @@ function handleAddUser() {
   const pin = document.getElementById('user-add-pin').value.trim();
   const hint = document.getElementById('user-add-hint');
   if (!name) { hint.textContent = 'Name is required'; return; }
-  if (!/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
+  if (!/^\d{6}$/.test(pin)) { hint.textContent = 'PIN must be 6 digits'; return; }
   hint.textContent = 'Adding…';
   addUserApi(name, department, pin).then(res => {
     if (!res.success) { hint.textContent = res.error || 'Failed to add user'; showToast(res.error || 'Failed to add user', 'error'); return; }

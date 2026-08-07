@@ -35,13 +35,14 @@ const DROPBOX_ORDERS_PATH = '/Summit West Signs Team Folder/01 Orders';
 const DROPBOX_PROOFS_REFRESH_HOURS = 6;
 
 // ── Users & roles ────────────────────────────────────────────────────────────
-// Each user is { id, name, department, pin } stored as one JSON array in the
+// Each user is { id, name, department, pinSalt, pinHash, authVersion } stored as
+// one JSON array in the
 // USERS Script Property. `id` is the durable identity a session token binds
 // to — name and PIN are both editable from the in-app User Management
 // screen, so auth and attribution can't depend on either staying fixed.
 // Real names/PINs are never committed — see migrateLegacyPins() and
 // defaultUsers() below.
-const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000; // sessions last 30 days
+const TOKEN_TTL_MS = 12 * 3600 * 1000; // one workday; shared devices should not stay signed in for weeks
 
 const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
@@ -102,37 +103,19 @@ function isLastAdmin(users, userId) {
   return admins.length === 1 && admins[0].id === userId;
 }
 
-// Who may see a PIN in cleartext: Admins see everyone's, everyone else sees
-// only their own. Deliberately narrower than the department-management rules —
-// a Manager can add, edit and delete a production account without ever being
-// able to read its PIN.
-//
-// This is the one place a credential is intentionally readable, so it's a
-// single function rather than a check scattered across the handlers. Note the
-// consequence: PINs must stay in plaintext for this to work at all, which rules
-// out hashing them (review item #22). The alternative that survives hashing is
-// letting an Admin RESET a PIN rather than read it.
-function canSeePin(actor, targetUser) {
-  return actor.department === 'Admin' || actor.id === targetUser.id;
-}
-
-function userFor(actor, user) {
-  return canSeePin(actor, user) ? user : publicUser(user);
-}
-
 function visibleUsersFor(actor) {
   const users = getUsers();
   const visible = actor.department === 'Admin'
     ? users
     : users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
-  return visible.map(u => userFor(actor, u));
+  return visible.map(publicUser);
 }
 
 // Placeholder only, mirroring the old DEFAULT_PINS pattern — real users
 // come from migrateLegacyPins() (see getUsers()) or get added through the
 // in-app User Management screen. Never paste real PINs here.
 function defaultUsers() {
-  return [{ id: Utilities.getUuid(), name: 'Replace Me', department: 'Admin', pin: '0000' }];
+  return [withNewPin({ id: Utilities.getUuid(), name: 'Replace Me', department: 'Admin', authVersion: 1 }, '000000')];
 }
 
 // One-time upgrade path from the old flat PINS { pin: name } map: Jake
@@ -157,11 +140,13 @@ function getUsers() {
   const raw = props.getProperty('USERS');
   if (raw) {
     const users = JSON.parse(raw);
-    if (renameLegacyManagerLabel(users)) saveUsers(users);
+    const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users);
+    if (changed) saveUsers(users);
     return users;
   }
   const users = migrateLegacyPins() || defaultUsers();
-  props.setProperty('USERS', JSON.stringify(users));
+  migrateUserCredentials(users);
+  saveUsers(users);
   return users;
 }
 
@@ -178,7 +163,46 @@ function renameLegacyManagerLabel(users) {
 }
 
 function saveUsers(users) {
+  users.forEach(user => { delete user.pin; });
   PropertiesService.getScriptProperties().setProperty('USERS', JSON.stringify(users));
+}
+
+function hashPin(pin, salt) {
+  const bytes = Utilities.computeHmacSha256Signature(String(pin), getAuthSecret() + ':' + salt);
+  return Utilities.base64EncodeWebSafe(bytes);
+}
+
+function withNewPin(user, pin) {
+  const next = { ...user, pinSalt: Utilities.getUuid() };
+  next.pinHash = hashPin(pin, next.pinSalt);
+  delete next.pin;
+  return next;
+}
+
+// Transparently upgrades the old plaintext USERS records on the first read.
+// Four-digit legacy PINs continue to work until the employee chooses a new
+// six-digit PIN, so deploying this change does not lock out the shop floor.
+function migrateUserCredentials(users) {
+  let changed = false;
+  users.forEach(user => {
+    if (!user.authVersion) { user.authVersion = 1; changed = true; }
+    if (user.pin !== undefined) {
+      const secured = withNewPin(user, String(user.pin));
+      user.pinSalt = secured.pinSalt;
+      user.pinHash = secured.pinHash;
+      delete user.pin;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function pinMatches(user, pin) {
+  return !!(user && user.pinSalt && user.pinHash && hashPin(pin, user.pinSalt) === user.pinHash);
+}
+
+function pinAlreadyUsed(users, pin, exceptId) {
+  return users.some(user => user.id !== exceptId && pinMatches(user, pin));
 }
 
 // ── Common task phrases ─────────────────────────────────────────────────────
@@ -244,7 +268,11 @@ function saveCommonTasks(actor, data) {
 }
 
 function validPin(pin) {
-  return /^\d{4}$/.test(String(pin || ''));
+  return /^\d{6}$/.test(String(pin || ''));
+}
+
+function validName(name) {
+  return !!name && name.length <= 80 && !/^[=+\-@]/.test(name) && !/[\u0000-\u001f\u007f]/.test(name);
 }
 
 function addUser(actor, data) {
@@ -252,20 +280,20 @@ function addUser(actor, data) {
   const name = String(data.name || '').trim();
   const department = String(data.department || '');
   const pin = String(data.pin || '');
-  if (!name) return { success: false, error: 'Name is required' };
+  if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
   if (DEPARTMENTS.indexOf(department) === -1) return { success: false, error: 'Invalid department' };
   if (!canManageDepartment(actor.department, department)) return { success: false, error: 'forbidden' };
-  if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
+  if (!validPin(pin)) return { success: false, error: 'PIN must be 6 digits' };
 
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
     const users = getUsers();
-    if (users.some(u => u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
-    const newUser = { id: Utilities.getUuid(), name, department, pin };
+    if (pinAlreadyUsed(users, pin)) return { success: false, error: 'That PIN is already in use' };
+    const newUser = withNewPin({ id: Utilities.getUuid(), name, department, authVersion: 1 }, pin);
     users.push(newUser);
     saveUsers(users);
-    return { success: true, user: userFor(actor, newUser) };
+    return { success: true, user: publicUser(newUser) };
   } finally {
     lock.releaseLock();
   }
@@ -285,7 +313,7 @@ function updateUser(actor, data) {
     const next = { ...target };
     if (data.name !== undefined) {
       const name = String(data.name).trim();
-      if (!name) return { success: false, error: 'Name is required' };
+      if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
       next.name = name;
     }
     if (data.department !== undefined) {
@@ -298,13 +326,14 @@ function updateUser(actor, data) {
     }
     if (data.pin !== undefined) {
       const pin = String(data.pin);
-      if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
-      if (users.some(u => u.id !== target.id && u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
-      next.pin = pin;
+      if (!validPin(pin)) return { success: false, error: 'PIN must be 6 digits' };
+      if (pinAlreadyUsed(users, pin, target.id)) return { success: false, error: 'That PIN is already in use' };
+      Object.assign(next, withNewPin(next, pin));
+      next.authVersion = (+next.authVersion || 1) + 1;
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: userFor(actor, next) };
+    return { success: true, user: publicUser(next) };
   } finally {
     lock.releaseLock();
   }
@@ -342,20 +371,40 @@ function updateSelf(actor, data) {
     const idx = users.findIndex(u => u.id === actor.id);
     if (idx === -1) return { success: false, error: 'User not found' };
     const next = { ...users[idx] };
+    let pinChanged = false;
     if (data.name !== undefined) {
       const name = String(data.name).trim();
-      if (!name) return { success: false, error: 'Name is required' };
+      if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
       next.name = name;
     }
     if (data.pin !== undefined) {
       const pin = String(data.pin);
-      if (!validPin(pin)) return { success: false, error: 'PIN must be 4 digits' };
-      if (users.some(u => u.id !== next.id && u.pin === pin)) return { success: false, error: 'That PIN is already in use' };
-      next.pin = pin;
+      if (!validPin(pin)) return { success: false, error: 'PIN must be 6 digits' };
+      if (pinAlreadyUsed(users, pin, next.id)) return { success: false, error: 'That PIN is already in use' };
+      Object.assign(next, withNewPin(next, pin));
+      next.authVersion = (+next.authVersion || 1) + 1;
+      pinChanged = true;
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: userFor(actor, next) };
+    return { success: true, user: publicUser(next), token: pinChanged ? makeToken(next) : undefined };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function revokeUserSessions(actor, data) {
+  if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    const idx = users.findIndex(user => user.id === String(data.id || ''));
+    if (idx === -1) return { success: false, error: 'User not found' };
+    if (!canManageDepartment(actor.department, users[idx].department)) return { success: false, error: 'forbidden' };
+    users[idx].authVersion = (+users[idx].authVersion || 1) + 1;
+    saveUsers(users);
+    return { success: true };
   } finally {
     lock.releaseLock();
   }
@@ -376,9 +425,9 @@ function signPayload(payload) {
   return Utilities.base64EncodeWebSafe(sig);
 }
 
-function makeToken(userId) {
+function makeToken(user) {
   const payload = Utilities.base64EncodeWebSafe(
-    JSON.stringify({ uid: userId, e: Date.now() + TOKEN_TTL_MS }));
+    JSON.stringify({ uid: user.id, v: +user.authVersion || 1, e: Date.now() + TOKEN_TTL_MS }));
   return payload + '.' + signPayload(payload);
 }
 
@@ -396,16 +445,18 @@ function verifyToken(token) {
     data = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
   } catch (err) { return null; }
   if (!data || !data.uid || !data.e || data.e < Date.now()) return null;
-  return data.uid;
+  return data;
 }
 
 // Resolves a token to the current { id, name, department, pin } record, or
 // null if the token is invalid/expired/unsigned or the account behind it has
 // since been deleted.
 function resolveActor(token) {
-  const uid = verifyToken(token);
-  if (!uid) return null;
-  return getUsers().find(u => u.id === uid) || null;
+  const session = verifyToken(token);
+  if (!session) return null;
+  const user = getUsers().find(u => u.id === session.uid) || null;
+  if (!user || (+user.authVersion || 1) !== (+session.v || 1)) return null;
+  return user;
 }
 
 // ── Login throttling ────────────────────────────────────────────────────────
@@ -473,7 +524,12 @@ function checkPin(pin, deviceId) {
     return { ok: false, locked: true, retryInSeconds: Math.ceil((global.until - now) / 1000) };
   }
 
-  const user = getUsers().find(u => u.pin === String(pin));
+  const candidate = String(pin || '');
+  // Existing four-digit credentials remain login-compatible during migration;
+  // every newly-created or changed PIN is six digits.
+  const user = /^\d{4}$|^\d{6}$/.test(candidate)
+    ? getUsers().find(u => pinMatches(u, candidate))
+    : null;
   if (!user) {
     const nextDeviceCount = device.n + 1;
     writeThrottle(cache, devKey, nextDeviceCount >= PIN_FAILS_PER_DEVICE
@@ -501,7 +557,8 @@ function checkPin(pin, deviceId) {
     ok: true,
     user: user.name,
     department: user.department,
-    token: makeToken(user.id),
+    userId: user.id,
+    token: makeToken(user),
     // Deprecated: the client now derives this from `department` (see
     // canEditDueDates in auth.js). Still sent so a browser running JS cached
     // from before that change doesn't lose the due-date button during the
@@ -519,7 +576,7 @@ function checkPin(pin, deviceId) {
 // Nothing in the client needs a PIN value — it only ever writes new ones.
 function publicUser(user) {
   if (!user) return user;
-  const { pin, ...rest } = user;
+  const { pin, pinHash, pinSalt, ...rest } = user;
   return rest;
 }
 
@@ -529,6 +586,28 @@ function json(obj) {
 }
 
 const UNAUTHORIZED = { error: 'unauthorized' };
+
+function validJobKey(value) {
+  return /^\d{5,6}$/.test(String(value || ''));
+}
+
+function validDateOverride(value) {
+  const text = String(value || '');
+  if (!text) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(text + 'T12:00:00Z');
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
+}
+
+function sanitizeSheetText(value) {
+  const text = String(value == null ? '' : value);
+  return /^[=+\-@]/.test(text) ? "'" + text : text;
+}
+
+function validText(value, maxLength) {
+  const text = String(value == null ? '' : value).trim();
+  return !!text && text.length <= maxLength && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text);
+}
 
 // A single incrementing counter, bumped on every successful tracking write
 // (see setTracking()). Lets clients poll a one-Property read to know
@@ -604,15 +683,6 @@ function routeGet(e) {
     if (!canAssignDepartments(actor.department)) return json({ error: 'forbidden' });
     return json({ tasks: getCommonTasks() });
   }
-  // Lets Settings show a user their own PIN without it ever being persisted
-  // client-side. It's fetched when the panel opens and lives only in the DOM
-  // until it closes — deliberately not part of the login response, which the
-  // client writes to localStorage.
-  if (action === 'getMyPin') {
-    const actor = resolveActor(e.parameter.token);
-    if (!actor) return json(UNAUTHORIZED);
-    return json({ pin: actor.pin || '' });
-  }
   if (action === 'getTrackingVersion') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
@@ -621,7 +691,10 @@ function routeGet(e) {
   if (action === 'getProofFile') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
-    return json(getDropboxProofFile(String(e.parameter.jobNum || '')));
+    const jobNum = String(e.parameter.jobNum || '');
+    if (!validJobKey(jobNum)) return json({ error: 'bad_request', message: 'Invalid job number' });
+    if (!canAccessJobKey(actor, jobNum)) return json({ error: 'forbidden' });
+    return json(getDropboxProofFile(jobNum));
   }
   if (action === 'getDropboxStatus') {
     const actor = resolveActor(e.parameter.token);
@@ -644,6 +717,13 @@ function routeGet(e) {
   // The app itself is hosted on GitHub Pages, not here
   return ContentService.createTextOutput(
     'SWS Production Calendar: https://jake17388.github.io/sws-prod-calendar/');
+}
+
+function canAccessJobKey(actor, jobKey) {
+  if (!actor || !validJobKey(jobKey)) return false;
+  if (JOB_DEPARTMENTS.indexOf(actor.department) === -1) return true;
+  const tracking = getAllTracking()[String(jobKey)];
+  return !!tracking && (tracking.departments || []).indexOf(actor.department) !== -1;
 }
 
 function routePost(e) {
@@ -682,7 +762,9 @@ function routePost(e) {
   }
   if (data.action === 'updateDueDate') {
     if (!canEditDueDates(actor.department)) return json({ error: 'forbidden' });
-    return json(setTracking(data.jobKey, { dueOverride: String(data.dueDate || '') }, user));
+    const dueDate = String(data.dueDate || '');
+    if (!validDateOverride(dueDate)) return json({ success: false, error: 'Invalid due date' });
+    return json(setTracking(data.jobKey, { dueOverride: dueDate }, user));
   }
   if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
   if (data.action === 'toggleDepartmentTaskDone') return json(toggleDepartmentTaskDone(actor, data));
@@ -693,9 +775,13 @@ function routePost(e) {
   if (data.action === 'updateUser') return json(updateUser(actor, data));
   if (data.action === 'deleteUser') return json(deleteUser(actor, data));
   if (data.action === 'updateSelf') return json(updateSelf(actor, data));
+  if (data.action === 'revokeUserSessions') return json(revokeUserSessions(actor, data));
   if (data.action === 'saveCommonTasks') return json(saveCommonTasks(actor, data));
   if (data.action === 'setDropboxCredentials') {
     if (actor.department !== 'Admin') return json({ error: 'forbidden' });
+    if (String(data.appKey || '').length > 200 || String(data.appSecret || '').length > 500) {
+      return json({ success: false, error: 'Dropbox credential value is too long' });
+    }
     const props = PropertiesService.getScriptProperties();
     props.setProperty('DROPBOX_APP_KEY', String(data.appKey || '').trim());
     props.setProperty('DROPBOX_APP_SECRET', String(data.appSecret || '').trim());
@@ -726,13 +812,14 @@ function routePost(e) {
 // unrelated resync of an already-done item shouldn't overwrite who actually
 // completed it. Un-checking clears the stamp, mirroring how the job-level
 // completedAt/completedBy reset on un-complete.
-function stampChecklistItem(nextItem, prevItem, actorName) {
+function stampChecklistItem(nextItem, prevItem, actorName, actorId) {
   const addedBy = prevItem ? (prevItem.addedBy || '') : actorName;
+  const addedById = prevItem ? (prevItem.addedById || '') : (actorId || '');
   const addedAt = prevItem ? (prevItem.addedAt || '') : new Date().toISOString();
-  const stamped = { ...nextItem, addedBy, addedAt };
-  if (!nextItem.done) return { ...stamped, doneBy: '', doneAt: '' };
-  if (prevItem && prevItem.done) return { ...stamped, doneBy: prevItem.doneBy || actorName, doneAt: prevItem.doneAt || new Date().toISOString() };
-  return { ...stamped, doneBy: actorName, doneAt: new Date().toISOString() };
+  const stamped = { ...nextItem, addedBy, addedById, addedAt };
+  if (!nextItem.done) return { ...stamped, doneBy: '', doneById: '', doneAt: '' };
+  if (prevItem && prevItem.done) return { ...stamped, doneBy: prevItem.doneBy || actorName, doneById: prevItem.doneById || actorId || '', doneAt: prevItem.doneAt || new Date().toISOString() };
+  return { ...stamped, doneBy: actorName, doneById: actorId || '', doneAt: new Date().toISOString() };
 }
 
 // Only Admins and Managers can assign departments to a job. Any
@@ -752,14 +839,14 @@ function stampChecklistItem(nextItem, prevItem, actorName) {
 // job complete") to edit departments again.
 function updateJobDepartments(actor, data) {
   if (!canAssignDepartments(actor.department)) return { success: false, error: 'forbidden' };
-  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+  if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
+  if (!Array.isArray(data.departments) || data.departments.length > JOB_TAGS.length) return { success: false, error: 'Invalid departments' };
+  if (data.departments.some(dept => JOB_TAGS.indexOf(String(dept)) === -1)) return { success: false, error: 'Invalid department' };
 
   const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {}, departmentNotes: {} };
   if (existing.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
 
-  const departments = Array.isArray(data.departments)
-    ? data.departments.filter(d => JOB_TAGS.indexOf(d) !== -1)
-    : [];
+  const departments = [...new Set(data.departments.map(String))];
   const rawCurrentDepartments = Array.isArray(data.currentDepartments)
     ? data.currentDepartments.filter(d => departments.indexOf(d) !== -1)
     : [];
@@ -773,6 +860,13 @@ function updateJobDepartments(actor, data) {
 
   const departmentChecklists = {};
   const rawChecklists = (data.departmentChecklists && typeof data.departmentChecklists === 'object') ? data.departmentChecklists : {};
+  for (let d = 0; d < departments.length; d++) {
+    const supplied = Array.isArray(rawChecklists[departments[d]]) ? rawChecklists[departments[d]] : [];
+    if (supplied.length > 100) return { success: false, error: 'Up to 100 tasks are allowed per department' };
+    if (supplied.some(item => !validText(item && item.text, 300) || String((item && item.id) || '').length > 100)) {
+      return { success: false, error: 'Each task must be 1–300 characters' };
+    }
+  }
   departments.forEach(dept => {
     const items = Array.isArray(rawChecklists[dept]) ? rawChecklists[dept] : [];
     const oldItems = existing.departmentChecklists[dept] || [];
@@ -783,7 +877,7 @@ function updateJobDepartments(actor, data) {
         const text = String((i && i.text) || '').trim();
         const done = !!(i && i.done);
         const oldItem = oldItems.find(o => o.id === id);
-        const built = stampChecklistItem({ id, text, done }, oldItem, actor.name);
+        const built = stampChecklistItem({ id, text, done }, oldItem, actor.name, actor.id);
         incomingById.set(id, built);
         return built;
       })
@@ -845,17 +939,25 @@ function canWriteNote(actor, scope, department) {
   return actor.department === 'Admin' || actor.department === 'Manager' || actor.department === department;
 }
 
+function canWriteDepartmentNote(actor, tracking, department) {
+  return JOB_TAGS.indexOf(department) !== -1
+    && (tracking.departments || []).indexOf(department) !== -1
+    && canWriteNote(actor, 'department', department);
+}
+
 // Only the person who wrote a note can edit or delete it — an Admin is the
 // one exception, who can touch any note. Mirrors the checklist-task
 // completion rule, but simpler: there's no "if you wrote it" carve-out for
 // Managers here the way there is for un-checking a task — a Manager can
 // edit/delete only their own notes, full stop.
 function canEditNote(actor, note) {
-  return actor.department === 'Admin' || note.author === actor.name;
+  if (actor.department === 'Admin') return true;
+  if (note.authorId) return note.authorId === actor.id;
+  return note.author === actor.name; // legacy notes created before immutable attribution
 }
 
 function noteScopeAndDept(data) {
-  const scope = data.scope === 'department' ? 'department' : 'project';
+  const scope = data.scope === 'department' ? 'department' : (data.scope === 'project' ? 'project' : '');
   const department = scope === 'department' ? String(data.department || '') : '';
   return { scope, department };
 }
@@ -872,22 +974,25 @@ function withNoteList(tracking, scope, department, list) {
 
 function addNote(actor, data) {
   const { scope, department } = noteScopeAndDept(data);
-  if (scope === 'department' && JOB_TAGS.indexOf(department) === -1) return { success: false, error: 'forbidden' };
-  if (!canWriteNote(actor, scope, department)) return { success: false, error: 'forbidden' };
-  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+  if (!scope) return { success: false, error: 'Invalid note scope' };
+  if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
   const text = String(data.text || '').trim();
-  if (!text) return { success: false, error: 'Note text required' };
+  if (!validText(text, 2000)) return { success: false, error: 'Note must be 1–2000 characters' };
   const requestedId = String(data.noteId || '').trim();
-  if (requestedId.length > 100) return { success: false, error: 'Invalid note id' };
+  if (requestedId.length > 100 || /[^A-Za-z0-9_-]/.test(requestedId)) return { success: false, error: 'Invalid note id' };
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to add notes' };
+    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) {
+      return { error: 'forbidden' };
+    }
     const currentList = getNoteList(current, scope, department);
+    if (currentList.length >= 200) return { error: 'This note list has reached its 200-note limit' };
     const noteId = requestedId || Utilities.getUuid();
     // A retry with the same client-generated id is idempotent, preventing a
     // slow first response plus a retry from creating duplicate notes.
     if (currentList.some(note => note.id === noteId)) return withNoteList(current, scope, department, currentList);
-    const note = { id: noteId, text, author: actor.name, createdAt: new Date().toISOString() };
+    const note = { id: noteId, text, author: actor.name, authorId: actor.id, createdAt: new Date().toISOString() };
     const list = [...currentList, note];
     return withNoteList(current, scope, department, list);
   }, actor.name);
@@ -895,12 +1000,15 @@ function addNote(actor, data) {
 
 function updateNote(actor, data) {
   const { scope, department } = noteScopeAndDept(data);
-  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+  if (!scope) return { success: false, error: 'Invalid note scope' };
+  if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
   const text = String(data.text || '').trim();
-  if (!text) return { success: false, error: 'Note text required' };
+  if (!validText(text, 2000)) return { success: false, error: 'Note must be 1–2000 characters' };
+  if (!data.noteId || String(data.noteId).length > 100) return { success: false, error: 'Invalid note id' };
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to edit notes' };
+    if (scope === 'department' && (current.departments || []).indexOf(department) === -1) return { error: 'forbidden' };
     const list = getNoteList(current, scope, department);
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
@@ -912,10 +1020,13 @@ function updateNote(actor, data) {
 
 function deleteNote(actor, data) {
   const { scope, department } = noteScopeAndDept(data);
-  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+  if (!scope) return { success: false, error: 'Invalid note scope' };
+  if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
+  if (!data.noteId || String(data.noteId).length > 100) return { success: false, error: 'Invalid note id' };
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to delete notes' };
+    if (scope === 'department' && (current.departments || []).indexOf(department) === -1) return { error: 'forbidden' };
     const list = getNoteList(current, scope, department);
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
@@ -942,7 +1053,7 @@ function toggleDepartmentTaskDone(actor, data) {
   if (JOB_DEPARTMENTS.indexOf(department) === -1 || actor.department !== department) {
     return { success: false, error: 'forbidden' };
   }
-  if (!data.jobKey) return { success: false, error: 'jobKey required' };
+  if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
 
   const tracking = getAllTracking();
   const current = tracking[String(data.jobKey)] || { completed: false, departments: [], departmentChecklists: {}, currentDepartments: [] };
@@ -955,11 +1066,11 @@ function toggleDepartmentTaskDone(actor, data) {
   if (!prevItem) return { success: false, error: 'Task not found' };
 
   const requestedDone = !!data.done;
-  if (prevItem.done && !requestedDone && prevItem.doneBy !== actor.name) {
+  if (prevItem.done && !requestedDone && (prevItem.doneById ? prevItem.doneById !== actor.id : prevItem.doneBy !== actor.name)) {
     return { success: false, error: 'Only the person who completed this task can un-check it' };
   }
 
-  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: requestedDone }, prevItem, actor.name) : i));
+  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: requestedDone }, prevItem, actor.name, actor.id) : i));
   const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
 
   // Checking off the last open task hands the department back — it's no
@@ -1342,7 +1453,7 @@ function dedupeTrackingSheet() {
 // Returning `{ error }` from the function rejects the write without ever
 // touching the sheet.
 function setTracking(jobKey, patch, user, expectedUpdatedAt) {
-  if (!jobKey) return { success: false, error: 'jobKey required' };
+  if (!validJobKey(jobKey)) return { success: false, error: 'Invalid job key' };
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -1384,7 +1495,17 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       next.completedBy = resolvedPatch.completed ? user : '';
     }
     next.updatedAt = new Date().toISOString();
-    const row = [jobKey, next.completed, JSON.stringify(next.notes), JSON.stringify(next.checklist), next.updatedAt, user, next.completedAt, next.completedBy, next.dueOverride, JSON.stringify(next.departments), JSON.stringify(next.departmentChecklists), JSON.stringify(next.currentDepartments), JSON.stringify(next.departmentNotes)];
+    if (!validDateOverride(next.dueOverride)) return { success: false, error: 'Invalid due date' };
+    const notesJson = JSON.stringify(next.notes);
+    const checklistJson = JSON.stringify(next.checklist);
+    const departmentsJson = JSON.stringify(next.departments);
+    const departmentChecklistsJson = JSON.stringify(next.departmentChecklists);
+    const currentDepartmentsJson = JSON.stringify(next.currentDepartments);
+    const departmentNotesJson = JSON.stringify(next.departmentNotes);
+    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson].some(value => value.length > 45000)) {
+      return { success: false, error: 'Job data is too large to save' };
+    }
+    const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {

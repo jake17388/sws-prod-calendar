@@ -13,7 +13,10 @@ function scriptGet(action, extraParams = {}) {
 /** @param {Record<string, unknown>} body @returns {Promise<any>} */
 export function scriptPost(body) {
   const auth = getAuth();
-  const payload = body.action === 'login' ? body : { ...body, token: auth ? auth.token : '' };
+  const requestId = globalThis.crypto && globalThis.crypto.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const payload = body.action === 'login' ? body : { requestId, ...body, token: auth ? auth.token : '' };
   return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(checkAuthError);
@@ -48,8 +51,6 @@ export const saveCommonTasks = tasks =>
   scriptPost({ action: 'saveCommonTasks', tasks });
 
 /** The signed-in user's own PIN. Fetched on demand so it's never persisted client-side. @returns {Promise<string>} */
-export const fetchMyPin = () => scriptGet('getMyPin').then(d => d.pin || '');
-
 export const addUser = (name, department, pin) =>
   scriptPost({ action: 'addUser', name, department, pin });
 
@@ -59,6 +60,9 @@ export const updateUser = (id, patch) =>
 
 export const deleteUser = id =>
   scriptPost({ action: 'deleteUser', id });
+
+export const revokeUserSessions = id =>
+  scriptPost({ action: 'revokeUserSessions', id });
 
 /** @param {{name?: string, pin?: string}} patch — updates the signed-in user's own name/PIN */
 export const updateSelf = patch =>

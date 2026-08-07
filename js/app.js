@@ -1,4 +1,4 @@
-import { fetchProductionJobs, fetchTrackingVersion, updateSelf, fetchMyPin } from './api.js';
+import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
 import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
@@ -259,20 +259,8 @@ function openSettings() {
   // localStorage the way it used to be.
   const pinField = document.getElementById('my-account-pin');
   pinField.value = '';
-  pinField.placeholder = 'Loading…';
-  const token = ++settingsOpenToken;
-  fetchMyPin()
-    .then(pin => {
-      if (token !== settingsOpenToken) return;
-      pinField.value = pin;
-      pinField.placeholder = 'PIN';
-    })
-    .catch(() => {
-      if (token !== settingsOpenToken) return;
-      // Falls back to the write-only behaviour: you can still set a new PIN,
-      // you just can't see the current one.
-      pinField.placeholder = 'New PIN';
-    });
+  pinField.placeholder = 'New 6-digit PIN';
+  settingsOpenToken++;
 
   refreshDropboxSettingsUI();
 }
@@ -295,17 +283,15 @@ function saveMyAccount() {
   // blank only happens if the user cleared it — or if the fetch that fills it
   // failed, in which case treating blank as "keep" is what lets the panel still
   // work at all.
-  if (pin && !/^\d{4}$/.test(pin)) { hint.textContent = 'PIN must be 4 digits'; return; }
+  if (pin && !/^\d{6}$/.test(pin)) { hint.textContent = 'PIN must be 6 digits'; return; }
   hint.textContent = 'Saving…';
   updateSelf(pin ? { name, pin } : { name })
     .then(res => {
       if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
       // Reflect what was actually stored, so a rejected PIN doesn't linger in
       // the field looking accepted.
-      if (res.user && typeof res.user.pin === 'string') {
-        document.getElementById('my-account-pin').value = res.user.pin;
-      }
-      updateAuthProfile({ user: res.user.name });
+      document.getElementById('my-account-pin').value = '';
+      updateAuthProfile({ user: res.user.name, ...(res.token ? { token: res.token } : {}) });
       document.getElementById('user-badge').textContent = res.user.name;
       hint.textContent = 'Saved';
       showToast('Account details saved');

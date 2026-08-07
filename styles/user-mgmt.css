@@ -133,6 +133,18 @@
   transition: color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
 }
 .user-row-delete:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
+.user-row-actions { display: flex; align-items: center; gap: var(--space-1); }
+.user-row-revoke {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2xs);
+  background: var(--surface-card);
+  color: var(--ink-secondary);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+.user-row-revoke:hover { color: var(--accent-solid); border-color: var(--accent-solid); }
 .user-row-hint {
   grid-column: 1 / -1;
   font-size: var(--text-xs);
