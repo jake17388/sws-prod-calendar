@@ -104,6 +104,30 @@ test('revoking a user invalidates their existing signed sessions', () => {
   assert.equal(context.resolveActor(login.token), null);
 });
 
+test('any role can change its own PIN without losing the current session during token handoff', () => {
+  const original = [{ id: 'worker', name: 'Pat', department: 'Paint', pin: '123456', authVersion: 1 }];
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+  });
+  const login = context.checkPin('123456', 'ipad-1');
+  const actor = context.resolveActor(login.token);
+  const changed = context.updateSelf(actor, { name: 'Pat', pin: '654321' });
+
+  assert.equal(changed.success, true);
+  assert.equal(context.resolveActor(changed.token).department, 'Paint');
+  assert.equal(context.resolveActor(login.token).id, 'worker');
+  assert.equal(context.checkPin('123456', 'ipad-1').ok, false);
+  assert.equal(context.checkPin('654321', 'ipad-1').ok, true);
+});
+
+test('four-digit PINs cannot authenticate', () => {
+  const { context } = loadBackend({ TRAINING_PIN_BATCH: '2026-08-07-six-digit' });
+  const legacy = context.withNewPin({ id: 'u1', name: 'Pat', department: 'Viewer', authVersion: 1 }, '1234');
+  context.saveUsers([legacy]);
+  assert.equal(context.checkPin('1234', 'ipad-1').ok, false);
+});
+
 test('note ownership uses immutable user ids and department notes require assignment', () => {
   const { context } = loadBackend();
   const actor = { id: 'u1', name: 'Renamed Pat', department: 'Paint' };

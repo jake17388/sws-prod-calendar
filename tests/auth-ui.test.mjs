@@ -33,3 +33,9 @@ test('user management reveals PINs to Admins and puts session revocation in a us
   assert.match(users, /currentDepartment\(\) === 'Admin'/);
   assert.match(users, /user\.pin/);
 });
+
+test('My Account submits a PIN from the keyboard and preserves the replacement session token', () => {
+  const app = read('js/app.js');
+  assert.match(app, /my-account-pin'[\s\S]*keydown[\s\S]*saveMyAccount/);
+  assert.match(app, /updateAuthProfile\(\{ user: res\.user\.name,[\s\S]*token: res\.token/);
+});
