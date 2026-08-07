@@ -69,3 +69,22 @@ test('common task phrases require text and at least one department unless assign
   assert.equal(context.saveCommonTasks(actor, { tasks: [{ text: 'Prep hardware', departments: [] }] }).success, false);
   assert.equal(context.saveCommonTasks(actor, { tasks: [{ text: 'Prep hardware', departments: ['Unknown'] }] }).success, false);
 });
+
+test('new checklist tasks receive an immutable added-by timestamp', () => {
+  const { context } = loadBackend();
+  const first = context.stampChecklistItem(
+    { id: 'task-1', text: 'Prep hardware', done: false },
+    null,
+    'Morgan Manager',
+  );
+  assert.equal(first.addedBy, 'Morgan Manager');
+  assert.match(first.addedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+  const edited = context.stampChecklistItem(
+    { id: 'task-1', text: 'Prep all hardware', done: false },
+    first,
+    'Another Manager',
+  );
+  assert.equal(edited.addedBy, first.addedBy);
+  assert.equal(edited.addedAt, first.addedAt);
+});
