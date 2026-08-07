@@ -48,10 +48,13 @@ function renderLockedRow(user) {
 function renderEditableRow(user, actorDept) {
   const row = document.createElement('div');
   row.className = 'user-row';
+  const adminCanSeePins = currentDepartment() === 'Admin';
+  const currentPin = adminCanSeePins && typeof user.pin === 'string' ? user.pin : '';
+  const pinType = adminCanSeePins ? 'text' : 'password';
   row.innerHTML = `
     <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" />
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
-    <input type="password" class="user-row-pin" inputmode="numeric" maxlength="6" value="" placeholder="New PIN" title="Enter a new 6-digit PIN" autocomplete="new-password" />
+    <input type="${pinType}" class="user-row-pin" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
     <span class="user-row-actions">
       <button class="user-row-revoke" type="button">Revoke sessions</button>
       <button class="user-row-delete" aria-label="Delete user">&times;</button>
@@ -83,7 +86,8 @@ function renderEditableRow(user, actorDept) {
     if (!pin) return;
     if (!/^\d{6}$/.test(pin)) {
       showRowHint(row, 'PIN must be 6 digits', true);
-      e.target.value = '';
+      e.target.value = adminCanSeePins ? pin : '';
+      if (adminCanSeePins) user.pin = pin;
       return;
     }
     updateUserApi(user.id, { pin }).then(res => {

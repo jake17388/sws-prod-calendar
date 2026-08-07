@@ -63,7 +63,7 @@ or CSS — the version bump forces a real fetch instead of a cached hit.
 
 Users live entirely in Script Properties as one `USERS` JSON array of records
 containing an immutable ID, display name, department, hashed PIN credential,
-and session-revocation version — never in git. Each user has a
+an Admin-visible PIN copy, and session-revocation version — never in git. Each user has a
 department: `Admin`, `Manager`, `Viewer`, or one of the production
 departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 `Routing`).
@@ -79,10 +79,13 @@ Day to day, all of this is self-service: anyone in Admin or Manager sees a
 PIN) can be added, edited, or removed. There's no Apps Script editor step
 for routine changes.
 
-PINs are write-only after creation: nobody, including an Admin, can retrieve an
-existing PIN. Managers/Admins reset a PIN instead. Sessions expire after 12
-hours, shared browsers sign out after two hours without activity, and changing a
-PIN invalidates the account's other sessions.
+Admins can view every current PIN in User Management. Managers can reset PINs
+for production accounts they manage but cannot read them. A PIN migrated by the
+previous hashed-only release becomes visible after it is recovered from the
+legacy PIN map or after that employee's next successful login; an Admin can
+reset it immediately if needed. Sessions expire after 12 hours, shared browsers
+sign out after two hours without activity, and changing a PIN invalidates the
+account's other sessions.
 
 The one-time bootstrap is automatic: the first request after this feature's
 initial deploy finds no `USERS` property yet, migrates the old flat `PINS`

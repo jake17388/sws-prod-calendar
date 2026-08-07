@@ -108,7 +108,13 @@ function visibleUsersFor(actor) {
   const visible = actor.department === 'Admin'
     ? users
     : users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
-  return visible.map(publicUser);
+  return visible.map(user => userFor(actor, user));
+}
+
+function userFor(actor, user) {
+  const visible = publicUser(user);
+  if (actor.department === 'Admin' && user.adminPin) visible.pin = user.adminPin;
+  return visible;
 }
 
 // Placeholder only, mirroring the old DEFAULT_PINS pattern — real users
@@ -140,7 +146,7 @@ function getUsers() {
   const raw = props.getProperty('USERS');
   if (raw) {
     const users = JSON.parse(raw);
-    const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users);
+    const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users) | recoverLegacyAdminPins(users);
     if (changed) saveUsers(users);
     return users;
   }
@@ -173,7 +179,7 @@ function hashPin(pin, salt) {
 }
 
 function withNewPin(user, pin) {
-  const next = { ...user, pinSalt: Utilities.getUuid() };
+  const next = { ...user, pinSalt: Utilities.getUuid(), adminPin: String(pin) };
   next.pinHash = hashPin(pin, next.pinSalt);
   delete next.pin;
   return next;
@@ -190,9 +196,24 @@ function migrateUserCredentials(users) {
       const secured = withNewPin(user, String(user.pin));
       user.pinSalt = secured.pinSalt;
       user.pinHash = secured.pinHash;
+      user.adminPin = secured.adminPin;
       delete user.pin;
       changed = true;
     }
+  });
+  return changed;
+}
+
+function recoverLegacyAdminPins(users) {
+  const raw = PropertiesService.getScriptProperties().getProperty('PINS');
+  if (!raw) return false;
+  let legacy;
+  try { legacy = JSON.parse(raw); } catch (err) { return false; }
+  let changed = false;
+  users.forEach(user => {
+    if (user.adminPin) return;
+    const recovered = Object.keys(legacy).find(pin => pinMatches(user, pin));
+    if (recovered) { user.adminPin = recovered; changed = true; }
   });
   return changed;
 }
@@ -295,7 +316,7 @@ function addUser(actor, data) {
     const newUser = withNewPin({ id: Utilities.getUuid(), name, department, authVersion: 1 }, pin);
     users.push(newUser);
     saveUsers(users);
-    return { success: true, user: publicUser(newUser) };
+    return { success: true, user: userFor(actor, newUser) };
   } finally {
     lock.releaseLock();
   }
@@ -338,7 +359,7 @@ function updateUser(actor, data) {
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: publicUser(next), token: pinChanged && target.id === actor.id ? makeToken(next) : undefined };
+    return { success: true, user: userFor(actor, next), token: pinChanged && target.id === actor.id ? makeToken(next) : undefined };
   } finally {
     lock.releaseLock();
   }
@@ -533,9 +554,7 @@ function checkPin(pin, deviceId) {
   const candidate = String(pin || '');
   // Existing four-digit credentials remain login-compatible during migration;
   // every newly-created or changed PIN is six digits.
-  const user = /^\d{4}$|^\d{6}$/.test(candidate)
-    ? getUsers().find(u => pinMatches(u, candidate))
-    : null;
+  const user = /^\d{4}$|^\d{6}$/.test(candidate) ? authenticatePin(candidate) : null;
   if (!user) {
     const nextDeviceCount = device.n + 1;
     writeThrottle(cache, devKey, nextDeviceCount >= PIN_FAILS_PER_DEVICE
@@ -575,6 +594,22 @@ function checkPin(pin, deviceId) {
   };
 }
 
+function authenticatePin(pin) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const users = getUsers();
+    const user = users.find(candidate => pinMatches(candidate, pin)) || null;
+    if (user && user.adminPin !== pin) {
+      user.adminPin = pin;
+      saveUsers(users);
+    }
+    return user;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // Strips the PIN off a user record before it ever leaves the server. PINs are
 // credentials: they were previously returned by getUsers (and echoed back by
 // addUser/updateUser/updateSelf) and rendered into visible inputs in User
@@ -582,7 +617,7 @@ function checkPin(pin, deviceId) {
 // Nothing in the client needs a PIN value — it only ever writes new ones.
 function publicUser(user) {
   if (!user) return user;
-  const { pin, pinHash, pinSalt, ...rest } = user;
+  const { pin, adminPin, pinHash, pinSalt, ...rest } = user;
   return rest;
 }
 
