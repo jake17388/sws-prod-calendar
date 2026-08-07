@@ -290,16 +290,16 @@ function closeSettings() {
 
 function saveMyAccount() {
   const hint = document.getElementById('my-account-hint');
+  const saveButton = document.getElementById('my-account-save-btn');
   const name = document.getElementById('my-account-name').value.trim();
   const pin = document.getElementById('my-account-pin').value.trim();
   if (!name) { hint.textContent = 'Name is required'; return; }
-  // A blank PIN means "leave mine alone". The field is normally prefilled, so
-  // blank only happens if the user cleared it — or if the fetch that fills it
-  // failed, in which case treating blank as "keep" is what lets the panel still
-  // work at all.
+  // A blank PIN means "leave mine alone"; current credentials are never
+  // prefilled or stored in the browser.
   if (pin && !/^\d{6}$/.test(pin)) { hint.textContent = 'PIN must be 6 digits'; return; }
   hint.textContent = 'Saving…';
-  updateSelf(pin ? { name, pin } : { name })
+  saveButton.disabled = true;
+  return updateSelf(pin ? { name, pin } : { name })
     .then(res => {
       if (!res.success) { hint.textContent = res.error || 'Failed to save'; return; }
       // Reflect what was actually stored, so a rejected PIN doesn't linger in
@@ -307,11 +307,12 @@ function saveMyAccount() {
       document.getElementById('my-account-pin').value = '';
       updateAuthProfile({ user: res.user.name, ...(res.token ? { token: res.token } : {}) });
       document.getElementById('user-badge').textContent = res.user.name;
-      hint.textContent = 'Saved';
-      showToast('Account details saved');
+      hint.textContent = pin ? 'PIN updated' : 'Saved';
+      showToast(pin ? 'Your PIN was updated' : 'Account details saved');
       setTimeout(() => { hint.textContent = ''; }, 1500);
     })
-    .catch(() => { hint.textContent = 'Network error — try again'; });
+    .catch(() => { hint.textContent = 'Network error — try again'; })
+    .finally(() => { saveButton.disabled = false; });
 }
 
 function boot() {
@@ -364,6 +365,9 @@ function boot() {
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
+  document.getElementById('my-account-pin').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveMyAccount();
+  });
   initUserManagement();
   initCommonTaskManagement();
   initDropboxSettings();

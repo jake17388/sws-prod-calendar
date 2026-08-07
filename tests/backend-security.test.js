@@ -64,7 +64,8 @@ test('all accounts receive unique six-digit temporary PINs in alphabetical order
 test('public user records never expose credential material', () => {
   const { context } = loadBackend();
   const publicRecord = context.publicUser({
-    id: 'u1', name: 'Pat', department: 'Paint', pin: '123456', adminPin: '123456', pinHash: 'hash', pinSalt: 'salt', authVersion: 2,
+    id: 'u1', name: 'Pat', department: 'Paint', pin: '123456', adminPin: '123456', pinHash: 'hash', pinSalt: 'salt',
+    authVersion: 2, previousAuthVersion: 1, previousAuthExpiresAt: Date.now() + 30000,
   });
   assert.deepEqual(JSON.parse(JSON.stringify(publicRecord)), {
     id: 'u1', name: 'Pat', department: 'Paint', authVersion: 2,
@@ -106,7 +107,7 @@ test('revoking a user invalidates their existing signed sessions', () => {
 
 test('any role can change its own PIN without losing the current session during token handoff', () => {
   const original = [{ id: 'worker', name: 'Pat', department: 'Paint', pin: '123456', authVersion: 1 }];
-  const { context } = loadBackend({
+  const { context, values } = loadBackend({
     USERS: JSON.stringify(original),
     TRAINING_PIN_BATCH: '2026-08-07-six-digit',
   });
@@ -119,6 +120,11 @@ test('any role can change its own PIN without losing the current session during 
   assert.equal(context.resolveActor(login.token).id, 'worker');
   assert.equal(context.checkPin('123456', 'ipad-1').ok, false);
   assert.equal(context.checkPin('654321', 'ipad-1').ok, true);
+
+  const stored = JSON.parse(values.USERS);
+  stored[0].previousAuthExpiresAt = Date.now() - 1;
+  values.USERS = JSON.stringify(stored);
+  assert.equal(context.resolveActor(login.token), null);
 });
 
 test('four-digit PINs cannot authenticate', () => {
