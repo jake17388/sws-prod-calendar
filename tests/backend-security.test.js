@@ -41,17 +41,24 @@ function loadBackend(initialProperties = {}) {
   return { context, values };
 }
 
-test('new PINs require six digits while existing four-digit PINs migrate without locking users out', () => {
-  const original = [{ id: 'u1', name: 'Pat', department: 'Paint', pin: '1234' }];
+test('all accounts receive unique six-digit temporary PINs in alphabetical order', () => {
+  const original = [
+    { id: 'u2', name: 'Zoe', department: 'Paint', pin: '2222', authVersion: 1 },
+    { id: 'u1', name: 'Aaron', department: 'Admin', pin: '1111', authVersion: 1 },
+  ];
   const { context, values } = loadBackend({ USERS: JSON.stringify(original) });
 
   assert.equal(context.validPin('123456'), true);
   assert.equal(context.validPin('1234'), false);
   const users = context.getUsers();
-  assert.equal(users[0].pin, undefined);
-  assert.equal(typeof users[0].pinHash, 'string');
-  assert.equal(JSON.parse(values.USERS)[0].pin, undefined);
-  assert.equal(context.checkPin('1234', 'ipad-1').ok, true);
+  assert.deepEqual(
+    users.map(user => [user.name, user.adminPin]),
+    [['Aaron', '000001'], ['Lionel Gonzalez', '000002'], ['Zoe', '000003']],
+  );
+  assert.equal(context.checkPin('1111', 'ipad-1').ok, false);
+  assert.equal(context.checkPin('000001', 'ipad-1').ok, true);
+  assert.equal(JSON.parse(values.USERS).every(user => /^\d{6}$/.test(user.adminPin)), true);
+  assert.equal(values.TRAINING_PIN_BATCH, '2026-08-07-six-digit');
 });
 
 test('public user records never expose credential material', () => {
@@ -71,29 +78,15 @@ test('only Admins receive recoverable PINs in user management', () => {
   assert.equal(context.userFor({ department: 'Manager' }, user).pin, undefined);
 });
 
-test('a successful login captures a migrated PIN for future Admin display', () => {
-  const original = [{ id: 'u1', name: 'Pat', department: 'Paint', pin: '1234' }];
+test('the temporary PIN migration runs only once and keeps later PIN changes', () => {
+  const original = [{ id: 'u1', name: 'Aaron', department: 'Admin', pin: '1111', authVersion: 1 }];
   const { context, values } = loadBackend({ USERS: JSON.stringify(original) });
   context.getUsers();
   const migrated = JSON.parse(values.USERS);
-  delete migrated[0].adminPin; // represents an account migrated by the previous release
+  migrated[0] = context.withNewPin(migrated[0], '654321');
   values.USERS = JSON.stringify(migrated);
 
-  assert.equal(context.checkPin('1234', 'ipad-1').ok, true);
-  assert.equal(JSON.parse(values.USERS)[0].adminPin, '1234');
-});
-
-test('opening user management as an Admin recovers existing four-digit hashed PINs', () => {
-  const original = [{ id: 'u1', name: 'Pat', department: 'Paint', pin: '0007' }];
-  const { context, values } = loadBackend({ USERS: JSON.stringify(original) });
-  context.getUsers();
-  const migrated = JSON.parse(values.USERS);
-  delete migrated[0].adminPin;
-  values.USERS = JSON.stringify(migrated);
-
-  const visible = context.visibleUsersFor({ id: 'admin', department: 'Admin' });
-  assert.equal(visible[0].pin, '0007');
-  assert.equal(JSON.parse(values.USERS)[0].adminPin, '0007');
+  assert.equal(context.getUsers()[0].adminPin, '654321');
 });
 
 test('revoking a user invalidates their existing signed sessions', () => {
