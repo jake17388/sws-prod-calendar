@@ -94,7 +94,10 @@ test('revoking a user invalidates their existing signed sessions', () => {
     { id: 'admin', name: 'Admin', department: 'Admin', pin: '123456' },
     { id: 'worker', name: 'Pat', department: 'Paint', pin: '654321' },
   ];
-  const { context } = loadBackend({ USERS: JSON.stringify(original) });
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+  });
   const login = context.checkPin('654321', 'ipad-1');
   assert.equal(context.resolveActor(login.token).id, 'worker');
   assert.equal(context.revokeUserSessions({ id: 'admin', department: 'Admin' }, { id: 'worker' }).success, true);

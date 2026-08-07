@@ -22,7 +22,7 @@
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
-<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.07.4" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.07.7" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.07.1" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.1" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
@@ -35,7 +35,7 @@
   <div class="pin-logo"><span>SWS</span> Production Calendar</div>
   <div class="pin-card">
     <h1>Enter PIN</h1>
-    <div class="pin-subtitle">Enter your 6-digit PIN to continue. Existing 4-digit PINs submit after a short pause.</div>
+    <div class="pin-subtitle">Enter your 6-digit PIN to continue.</div>
     <div class="pin-dots">
       <span></span><span></span><span></span><span></span>
       <span></span><span></span>
@@ -268,6 +268,16 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.07.6"></script>
+<div id="user-actions-dialog" class="user-actions-dialog" role="dialog" aria-modal="true" aria-labelledby="user-actions-title" hidden>
+  <div class="user-actions-card">
+    <h3 id="user-actions-title"></h3>
+    <p id="user-actions-department"></p>
+    <button id="user-actions-revoke" class="settings-action danger" type="button">Revoke all sessions</button>
+    <button id="user-actions-cancel" class="settings-action" type="button">Cancel</button>
+    <div id="user-actions-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js?v=2026.08.07.7"></script>
 </body>
 </html>

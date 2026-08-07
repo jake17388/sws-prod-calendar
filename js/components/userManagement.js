@@ -6,6 +6,9 @@ import { setHeaderDimmed } from '../headerDim.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
 
 let users = [];
+let selectedUser = null;
+let selectedRow = null;
+let userActionsTrigger = null;
 
 // Mirrors Code.js's canManageDepartment — the server is the source of truth
 // for what's actually allowed; this only decides whether a row renders
@@ -48,6 +51,9 @@ function renderLockedRow(user) {
 function renderEditableRow(user, actorDept) {
   const row = document.createElement('div');
   row.className = 'user-row';
+  row.tabIndex = 0;
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', `${user.name}, ${user.department}. Open user options.`);
   const adminCanSeePins = currentDepartment() === 'Admin';
   const currentPin = adminCanSeePins && typeof user.pin === 'string' ? user.pin : '';
   const pinType = adminCanSeePins ? 'text' : 'password';
@@ -56,7 +62,7 @@ function renderEditableRow(user, actorDept) {
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
     <input type="${pinType}" class="user-row-pin" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
     <span class="user-row-actions">
-      <button class="user-row-revoke" type="button">Revoke sessions</button>
+      <button class="user-row-open" type="button" aria-label="Open options for ${escapeAttr(user.name)}">•••</button>
       <button class="user-row-delete" aria-label="Delete user">&times;</button>
     </span>
     <span class="user-row-hint"></span>
@@ -96,17 +102,26 @@ function renderEditableRow(user, actorDept) {
         e.target.value = '';
         return;
       }
-      e.target.value = '';
+      if (adminCanSeePins && res.user && res.user.pin) {
+        user.pin = res.user.pin;
+        e.target.value = res.user.pin;
+      } else {
+        e.target.value = '';
+      }
       if (res.token) updateAuthProfile({ token: res.token });
       showRowHint(row, 'PIN updated');
     }).catch(() => { e.target.value = ''; showRowHint(row, 'Network error — try again', true); });
   });
 
-  row.querySelector('.user-row-revoke').addEventListener('click', () => {
-    if (!confirm(`Sign ${user.name} out on all devices?`)) return;
-    revokeUserSessionsApi(user.id)
-      .then(res => showRowHint(row, res.success ? 'Sessions revoked' : (res.error || 'Failed to revoke sessions'), !res.success))
-      .catch(() => showRowHint(row, 'Network error — try again', true));
+  row.querySelector('.user-row-open').addEventListener('click', e => openUserActions(user, row, e.currentTarget));
+  row.addEventListener('click', e => {
+    if (e.target.closest('input, select, button')) return;
+    openUserActions(user, row, row);
+  });
+  row.addEventListener('keydown', e => {
+    if (e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    openUserActions(user, row, row);
   });
 
   row.querySelector('.user-row-delete').addEventListener('click', () => {
@@ -120,6 +135,48 @@ function renderEditableRow(user, actorDept) {
   });
 
   return row;
+}
+
+function openUserActions(user, row, trigger) {
+  selectedUser = user;
+  selectedRow = row;
+  userActionsTrigger = trigger;
+  document.getElementById('user-actions-title').textContent = user.name;
+  document.getElementById('user-actions-department').textContent = user.department;
+  document.getElementById('user-actions-hint').textContent = '';
+  const dialog = document.getElementById('user-actions-dialog');
+  dialog.hidden = false;
+  document.getElementById('user-actions-revoke').focus();
+}
+
+function closeUserActions() {
+  document.getElementById('user-actions-dialog').hidden = true;
+  selectedUser = null;
+  selectedRow = null;
+  if (userActionsTrigger && document.contains(userActionsTrigger)) userActionsTrigger.focus();
+  userActionsTrigger = null;
+}
+
+function handleRevokeSessions() {
+  if (!selectedUser) return;
+  const user = selectedUser;
+  const row = selectedRow;
+  const button = document.getElementById('user-actions-revoke');
+  const hint = document.getElementById('user-actions-hint');
+  button.disabled = true;
+  hint.textContent = 'Revoking…';
+  revokeUserSessionsApi(user.id)
+    .then(res => {
+      if (!res.success) {
+        hint.textContent = res.error || 'Failed to revoke sessions';
+        return;
+      }
+      closeUserActions();
+      if (row) showRowHint(row, 'Sessions revoked');
+      showToast(`${user.name} signed out on all devices`);
+    })
+    .catch(() => { hint.textContent = 'Network error — try again'; })
+    .finally(() => { button.disabled = false; });
 }
 
 function renderList() {
@@ -176,6 +233,7 @@ export function openUserManagement() {
 }
 
 export function closeUserManagement() {
+  if (!document.getElementById('user-actions-dialog').hidden) closeUserActions();
   document.getElementById('user-mgmt-overlay').classList.remove('open');
   setHeaderDimmed(false);
 }
@@ -187,4 +245,12 @@ export function initUserManagement() {
   });
   document.getElementById('user-add-btn').addEventListener('click', handleAddUser);
   document.getElementById('user-add-pin').addEventListener('keydown', e => { if (e.key === 'Enter') handleAddUser(); });
+  document.getElementById('user-actions-revoke').addEventListener('click', handleRevokeSessions);
+  document.getElementById('user-actions-cancel').addEventListener('click', closeUserActions);
+  document.getElementById('user-actions-dialog').addEventListener('click', e => {
+    if (e.target.id === 'user-actions-dialog') closeUserActions();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('user-actions-dialog').hidden) closeUserActions();
+  });
 }

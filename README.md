@@ -16,9 +16,8 @@ job's install start date — pulled from the `SWS - Install` and
   (multi-day jobs use the earliest day)
 - **Completion/notes/checklist** are stored in a Google Sheet
   ("SWS Production Tracking"), created automatically on first use
-- **Authentication** is a PIN-only account. New or changed PINs are six digits;
-  existing four-digit PINs remain usable until changed and are automatically
-  migrated from plaintext to non-readable hashes.
+- **Authentication** is a PIN-only account. Every PIN is exactly six digits and
+  stored as a salted hash, with an Admin-visible copy for account support.
 - **Hosted** on GitHub Pages — every push to `main` deploys automatically
 - **System of record** remains Squarecoil. This app is an operational shop-floor
   coordination tool, not the authoritative retention or audit system.
@@ -80,12 +79,10 @@ PIN) can be added, edited, or removed. There's no Apps Script editor step
 for routine changes.
 
 Admins can view every current PIN in User Management. Managers can reset PINs
-for production accounts they manage but cannot read them. A four-digit PIN
-migrated by the previous hashed-only release is recovered automatically the next
-time an Admin opens User Management; a missing six-digit PIN can be reset
-immediately if needed. Sessions expire after 12 hours, shared browsers sign out
-after two hours without activity, and changing a PIN invalidates the account's
-other sessions.
+for production accounts they manage but cannot read them. Clicking a user's row
+opens account actions, including revoking all of that user's sessions. Sessions
+expire after 12 hours, shared browsers sign out after two hours without activity,
+and changing a PIN invalidates the account's other sessions.
 
 The one-time bootstrap is automatic: the first request after this feature's
 initial deploy finds no `USERS` property yet, migrates the old flat `PINS`

@@ -7,7 +7,6 @@ const INACTIVITY_TTL_MS = 2 * 60 * 60 * 1000;
 let auth = readAuth(); // { token, user } — validated server-side on every call
 let pinEntry = '';
 let pinBusy = false;
-let legacySubmitTimer = null;
 let lastActivityWrite = 0;
 
 function readAuth() {
@@ -131,17 +130,12 @@ function renderDots() {
 
 function pinKey(digit, onLogin) {
   if (pinBusy || pinEntry.length >= 6) return;
-  if (legacySubmitTimer) clearTimeout(legacySubmitTimer);
   pinEntry += digit;
   renderDots();
   if (pinEntry.length === 6) submitPin(onLogin);
-  // Existing four-digit PINs remain usable during migration. A short pause
-  // submits four digits; continuing to type reaches the new six-digit format.
-  else if (pinEntry.length === 4) legacySubmitTimer = setTimeout(() => submitPin(onLogin), 1200);
 }
 
 function pinDel() {
-  if (legacySubmitTimer) clearTimeout(legacySubmitTimer);
   pinEntry = pinEntry.slice(0, -1);
   renderDots();
 }
