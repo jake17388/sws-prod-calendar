@@ -120,11 +120,16 @@ export function closeCommonTaskManagement() {
   setHeaderDimmed(false);
 }
 
+function returnToSettings() {
+  closeCommonTaskManagement();
+  window.dispatchEvent(new CustomEvent('open-settings'));
+}
+
 export function initCommonTaskManagement() {
-  document.getElementById('common-task-close').addEventListener('click', closeCommonTaskManagement);
-  document.getElementById('common-task-overlay').addEventListener('click', event => {
-    if (event.target.id === 'common-task-overlay') closeCommonTaskManagement();
-  });
+  document.getElementById('common-task-back').addEventListener('click', returnToSettings);
   document.getElementById('common-task-add').addEventListener('click', addTaskRow);
   document.getElementById('common-task-save').addEventListener('click', saveChanges);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.getElementById('common-task-overlay').classList.contains('open')) returnToSettings();
+  });
 }

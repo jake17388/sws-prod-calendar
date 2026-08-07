@@ -2,166 +2,146 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(8, 10, 16, 0.55);
   z-index: var(--z-panel);
-  align-items: stretch;
-  justify-content: flex-end;
+  overflow-y: auto;
+  background: var(--surface-canvas);
 }
-#user-mgmt-overlay.open { display: flex; }
+#user-mgmt-overlay.open { display: block; }
 
 .user-mgmt-panel {
-  width: min(600px, 100%);
-  background: var(--surface-overlay);
-  border-left: 1px solid var(--border-default);
-  box-shadow: var(--shadow-4);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  transform: translateX(100%);
-  transition: transform var(--duration-normal) var(--ease-out-expo);
+  width: 100%;
+  max-width: 1400px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--space-7) clamp(var(--space-4), 4vw, var(--space-8));
 }
-#user-mgmt-overlay.open .user-mgmt-panel { transform: translateX(0); }
 
 .user-mgmt-header {
-  padding: var(--space-5) var(--space-5);
-  border-bottom: 1px solid var(--border-default);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  gap: var(--space-3);
-  background: var(--surface-card);
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
 }
 .user-mgmt-header h2 {
-  font-size: var(--text-lg);
+  margin: 0;
+  color: var(--ink-primary);
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-tight);
-  color: var(--ink-primary);
-  margin: 0;
 }
-.user-mgmt-header .job-detail-close { margin-left: auto; }
-
+.user-mgmt-header p {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+}
 .user-mgmt-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  display: grid;
+  grid-template-columns: minmax(280px, 0.75fr) minmax(560px, 1.8fr);
+  align-items: start;
+  gap: var(--space-5);
 }
+.user-mgmt-body .settings-card { margin: 0; }
 
 .user-mgmt-add {
   display: grid;
-  grid-template-columns: 1.4fr 1.4fr 0.8fr auto;
-  gap: var(--space-2);
-  align-items: center;
-  padding: var(--space-4);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-card);
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
 }
 .user-mgmt-add input,
 .user-mgmt-add select {
-  background: var(--surface-sunken);
+  min-height: 42px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-2sm);
+  background: var(--surface-sunken);
   color: var(--ink-primary);
-  padding: var(--space-2) var(--space-3);
   font-family: inherit;
   font-size: var(--text-sm);
-  width: 100%;
   transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
 .user-mgmt-add input:focus,
 .user-mgmt-add select:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
-.user-mgmt-add .settings-action { margin-top: 0; width: auto; white-space: nowrap; }
+.user-mgmt-add .settings-action { margin-top: 0; }
 .user-mgmt-add #user-add-hint {
-  grid-column: 1 / -1;
-  font-size: var(--text-xs);
-  color: var(--ink-tertiary);
   min-height: 1.2em;
+  color: var(--ink-tertiary);
+  font-size: var(--text-xs);
 }
 
 .user-mgmt-list-header,
 .user-row {
   display: grid;
-  grid-template-columns: 1.4fr 1.4fr 0.8fr auto;
-  gap: var(--space-2);
+  grid-template-columns: minmax(150px, 1.35fr) minmax(140px, 1.15fr) minmax(110px, 0.75fr) minmax(72px, auto);
   align-items: center;
+  gap: var(--space-3);
 }
 .user-mgmt-list-header {
+  padding: 0 var(--space-3) var(--space-2);
+  color: var(--ink-tertiary);
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-wider);
-  color: var(--ink-tertiary);
-  padding: 0 var(--space-3);
+  text-transform: uppercase;
 }
-.user-mgmt-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+.user-mgmt-list { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .user-row {
   padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
   border-radius: var(--radius-2sm);
+  background: var(--surface-sunken);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out-expo);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
-.user-row:hover { background: var(--surface-card); }
+.user-row:hover { border-color: var(--border-default); background: var(--surface-card); }
 .user-row:focus { outline: none; box-shadow: var(--shadow-focus); }
-
 .user-row input,
 .user-row select {
-  background: var(--surface-sunken);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-2xs);
+  background: var(--surface-card);
   color: var(--ink-primary);
-  padding: var(--space-1) var(--space-2);
   font-family: inherit;
   font-size: var(--text-sm);
-  width: 100%;
   transition: border-color var(--duration-fast) var(--ease-out-expo);
 }
 .user-row input:focus,
 .user-row select:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
-.user-row-delete {
-  background: none;
-  border: none;
-  color: var(--ink-disabled);
-  font-size: var(--text-lg);
-  line-height: 1;
-  padding: 4px var(--space-1);
-  border-radius: var(--radius-2xs);
-  transition: color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
-}
-.user-row-delete:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
-.user-row-actions { display: flex; align-items: center; gap: var(--space-1); }
+.user-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
 .user-row-open {
+  min-width: 36px;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-2xs);
   background: var(--surface-card);
   color: var(--ink-secondary);
-  padding: var(--space-1) var(--space-2);
   font: inherit;
   font-size: var(--text-sm);
   line-height: 1;
-  white-space: nowrap;
 }
 .user-row-open:hover { color: var(--accent-solid); border-color: var(--accent-solid); }
-.user-row-hint {
-  grid-column: 1 / -1;
-  font-size: var(--text-xs);
-  color: var(--ink-tertiary);
+.user-row-delete {
+  min-width: 36px;
+  min-height: 36px;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-2xs);
+  background: transparent;
+  color: var(--ink-disabled);
+  font-size: var(--text-lg);
+  line-height: 1;
 }
+.user-row-delete:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
+.user-row-hint { grid-column: 1 / -1; color: var(--ink-tertiary); font-size: var(--text-xs); }
 .user-row-hint.error { color: var(--status-critical-solid); }
-
-.user-row-locked {
-  color: var(--ink-secondary);
-  font-size: var(--text-sm);
-  padding: var(--space-2) var(--space-3);
-}
+.user-row-locked { color: var(--ink-secondary); font-size: var(--text-sm); }
 .user-row-lock { text-align: right; opacity: 0.6; }
-/* PINs are never sent to the client — this is a placeholder, not a value. */
 .user-row-pin-hidden { opacity: 0.45; letter-spacing: 0.15em; }
 
 .user-actions-dialog[hidden] { display: none; }
@@ -183,60 +163,31 @@
   background: var(--surface-overlay);
   box-shadow: var(--shadow-4);
 }
-.user-actions-card h3 {
-  margin: 0;
-  color: var(--ink-primary);
-  font-size: var(--text-lg);
-}
-.user-actions-card p {
-  margin: var(--space-1) 0 var(--space-4);
-  color: var(--ink-secondary);
-  font-size: var(--text-sm);
-}
+.user-actions-card h3 { margin: 0; color: var(--ink-primary); font-size: var(--text-lg); }
+.user-actions-card p { margin: var(--space-1) 0 var(--space-4); color: var(--ink-secondary); font-size: var(--text-sm); }
 .user-actions-card .settings-action { width: 100%; }
 .user-actions-card .notes-save-hint { margin-top: var(--space-2); }
+.user-mgmt-empty { padding: var(--space-6) 0; color: var(--ink-tertiary); font-size: var(--text-sm); text-align: center; }
 
-.user-mgmt-empty {
-  color: var(--ink-tertiary);
-  font-size: var(--text-sm);
-  padding: var(--space-5) 0;
-  text-align: center;
+@media (max-width: 900px) {
+  .user-mgmt-body { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
-  #user-mgmt-overlay { align-items: flex-end; justify-content: center; }
-  .user-mgmt-panel {
-    width: 100%;
-    height: auto;
-    max-height: 85vh;
-    border-radius: var(--radius-2lg) var(--radius-2lg) 0 0;
-    border-left: none;
-    transform: translateY(110%);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  #user-mgmt-overlay.open .user-mgmt-panel { transform: translateY(0); }
-
-  .user-mgmt-add,
-  .user-mgmt-list-header,
-  .user-row {
-    grid-template-columns: 1fr;
-  }
+  .user-mgmt-panel { padding: var(--space-5) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
+  .user-mgmt-header { grid-template-columns: 1fr; gap: var(--space-3); }
+  .settings-subpage-back { justify-self: start; }
   .user-mgmt-list-header { display: none; }
-  .user-row {
-    padding: var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-2sm);
-  }
+  .user-row { grid-template-columns: 1fr; padding: var(--space-3); }
+  .user-row-actions { justify-content: flex-start; }
+  .user-row-lock { text-align: left; }
 }
 
-/* Tablets (iPad, etc.) — see job-card.css for why this is gated on
-   pointer:coarse rather than a device check. */
-@media (min-width: 641px) and (pointer: coarse) {
-  .user-mgmt-panel { width: min(660px, 100%); }
-  .user-row-delete { font-size: var(--text-2xl); padding: var(--space-2); }
-  .user-mgmt-add input, .user-mgmt-add select,
-  .user-row input, .user-row select {
-    padding-top: var(--space-3);
-    padding-bottom: var(--space-3);
-  }
+@media (pointer: coarse) {
+  .user-mgmt-add input,
+  .user-mgmt-add select,
+  .user-row input,
+  .user-row select,
+  .user-row-open,
+  .user-row-delete { min-height: 44px; }
 }

@@ -18,13 +18,13 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.08.07.9" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.08.07.10" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.07.16.10" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.07.27.4" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.07.27.3" />
-<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.07.7" />
+<link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.07.10" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.07.1" />
-<link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.1" />
+<link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.10" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
 <link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
 </head>
@@ -217,20 +217,30 @@
   </div>
 </div>
 
-<div id="common-task-overlay">
-  <section class="common-task-panel" aria-label="Common task buttons">
+<div id="common-task-overlay" class="settings-subpage" role="dialog" aria-modal="true" aria-labelledby="common-task-title">
+  <section class="common-task-panel settings-subpage-shell" aria-label="Common task buttons">
     <div class="common-task-header">
+      <button id="common-task-back" class="settings-subpage-back" aria-label="Back to Settings"><span aria-hidden="true">←</span> Settings</button>
       <div>
-        <h2>Common Task Buttons</h2>
-        <p>Create shortcuts for tasks assigned frequently.</p>
+        <h2 id="common-task-title">Common Task Buttons</h2>
+        <p>Create reusable shortcuts and choose which departments can use them.</p>
       </div>
-      <button id="common-task-close" class="job-detail-close" aria-label="Close">&times;</button>
     </div>
     <div class="common-task-body">
-      <div id="common-task-list" class="common-task-list"></div>
-      <button id="common-task-add" class="settings-action">+ Add button phrase</button>
-      <button id="common-task-save" class="settings-action primary">Save changes</button>
-      <div id="common-task-hint" class="notes-save-hint"></div>
+      <section class="settings-card common-task-editor" aria-labelledby="common-task-editor-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="common-task-editor-heading">Button phrases</h3>
+            <p>Buttons appear after a manager or admin selects a department on a job.</p>
+          </div>
+        </div>
+        <div id="common-task-list" class="common-task-list"></div>
+        <div class="common-task-actions">
+          <button id="common-task-add" class="settings-action">+ Add button phrase</button>
+          <button id="common-task-save" class="settings-action primary">Save changes</button>
+        </div>
+        <div id="common-task-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+      </section>
     </div>
   </section>
 </div>
@@ -292,24 +302,43 @@
   <div id="proof-viewer-pages" class="proof-viewer-pages"></div>
 </div>
 
-<div id="user-mgmt-overlay">
-  <section class="user-mgmt-panel" aria-label="User management">
+<div id="user-mgmt-overlay" class="settings-subpage" role="dialog" aria-modal="true" aria-labelledby="user-mgmt-title">
+  <section class="user-mgmt-panel settings-subpage-shell" aria-label="User management">
     <div class="user-mgmt-header">
-      <h2>User Management</h2>
-      <button id="user-mgmt-close" class="job-detail-close" aria-label="Close">&times;</button>
+      <button id="user-mgmt-back" class="settings-subpage-back" aria-label="Back to Settings"><span aria-hidden="true">←</span> Settings</button>
+      <div>
+        <h2 id="user-mgmt-title">User Management</h2>
+        <p>Add accounts, assign roles, update PINs, and manage sessions.</p>
+      </div>
     </div>
     <div class="user-mgmt-body">
-      <div class="user-mgmt-add">
-        <input type="text" id="user-add-name" placeholder="Name" />
-        <select id="user-add-dept"></select>
-        <input type="password" id="user-add-pin" placeholder="6-digit PIN" inputmode="numeric" maxlength="6" autocomplete="new-password" />
-        <button id="user-add-btn" class="settings-action primary">Add user</button>
-        <div id="user-add-hint" class="notes-save-hint"></div>
-      </div>
-      <div class="user-mgmt-list-header">
-        <span>Name</span><span>Department</span><span>PIN</span><span></span>
-      </div>
-      <div id="user-mgmt-list" class="user-mgmt-list"></div>
+      <section class="settings-card user-mgmt-add-card" aria-labelledby="user-add-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="user-add-heading">Add a user</h3>
+            <p>Create a six-digit PIN account and assign its access level.</p>
+          </div>
+        </div>
+        <div class="user-mgmt-add">
+          <input type="text" id="user-add-name" placeholder="Name" aria-label="Name" />
+          <select id="user-add-dept" aria-label="Department"></select>
+          <input type="password" id="user-add-pin" placeholder="6-digit PIN" aria-label="6-digit PIN" inputmode="numeric" maxlength="6" autocomplete="new-password" />
+          <button id="user-add-btn" class="settings-action primary">Add user</button>
+          <div id="user-add-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+      <section class="settings-card user-mgmt-directory" aria-labelledby="user-directory-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="user-directory-heading">People</h3>
+            <p>Changes save when you leave a field. Select a row for account actions.</p>
+          </div>
+        </div>
+        <div class="user-mgmt-list-header">
+          <span>Name</span><span>Department</span><span>PIN</span><span>Actions</span>
+        </div>
+        <div id="user-mgmt-list" class="user-mgmt-list"></div>
+      </section>
     </div>
   </section>
 </div>
@@ -324,6 +353,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.07.9"></script>
+<script type="module" src="js/app.js?v=2026.08.07.10"></script>
 </body>
 </html>

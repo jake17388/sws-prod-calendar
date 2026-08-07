@@ -363,6 +363,7 @@ function boot() {
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
+  window.addEventListener('open-settings', openSettings);
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
   document.getElementById('my-account-pin').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveMyAccount();

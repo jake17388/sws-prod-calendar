@@ -363,6 +363,29 @@ main.view-area {
   padding: calc(var(--space-6) + env(safe-area-inset-top)) clamp(var(--space-4), 4vw, var(--space-7)) calc(var(--space-6) + env(safe-area-inset-bottom));
 }
 
+.settings-subpage-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  background: var(--surface-card);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
+}
+.settings-subpage-back:hover {
+  border-color: var(--accent-solid);
+  background: var(--accent-subtle);
+  color: var(--accent-solid);
+}
+.settings-subpage-back:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
 .settings-header {
   display: flex;
   align-items: center;

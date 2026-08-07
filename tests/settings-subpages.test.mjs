@@ -17,8 +17,8 @@ test('management tools use full-width Settings subpages instead of side panels',
   assert.match(html, /class="common-task-panel settings-subpage-shell"/);
   assert.match(userCss, /\.user-mgmt-panel[\s\S]*max-width:\s*1400px/);
   assert.match(taskCss, /\.common-task-panel[\s\S]*max-width:\s*1400px/);
-  assert.doesNotMatch(userCss, /translate[XY]\(|justify-content:\s*flex-end/);
-  assert.doesNotMatch(taskCss, /justify-content:\s*flex-end/);
+  assert.doesNotMatch(userCss, /translate[XY]\(|#user-mgmt-overlay\s*\{[^}]*justify-content:\s*flex-end/);
+  assert.doesNotMatch(taskCss, /#common-task-overlay\s*\{[^}]*justify-content:\s*flex-end/);
 });
 
 test('management subpages provide a clear route back to Settings', () => {

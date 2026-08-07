@@ -241,11 +241,13 @@ export function closeUserManagement() {
   setHeaderDimmed(false);
 }
 
+function returnToSettings() {
+  closeUserManagement();
+  window.dispatchEvent(new CustomEvent('open-settings'));
+}
+
 export function initUserManagement() {
-  document.getElementById('user-mgmt-close').addEventListener('click', closeUserManagement);
-  document.getElementById('user-mgmt-overlay').addEventListener('click', e => {
-    if (e.target.id === 'user-mgmt-overlay') closeUserManagement();
-  });
+  document.getElementById('user-mgmt-back').addEventListener('click', returnToSettings);
   document.getElementById('user-add-btn').addEventListener('click', handleAddUser);
   document.getElementById('user-add-pin').addEventListener('keydown', e => { if (e.key === 'Enter') handleAddUser(); });
   document.getElementById('user-actions-revoke').addEventListener('click', handleRevokeSessions);
@@ -255,5 +257,6 @@ export function initUserManagement() {
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !document.getElementById('user-actions-dialog').hidden) closeUserActions();
+    else if (e.key === 'Escape' && document.getElementById('user-mgmt-overlay').classList.contains('open')) returnToSettings();
   });
 }
