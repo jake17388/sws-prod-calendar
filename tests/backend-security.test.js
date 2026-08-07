@@ -94,3 +94,15 @@ test('tracking inputs reject malformed keys and dates and neutralize spreadsheet
   assert.equal(context.sanitizeSheetText('=2+2'), "'=2+2");
   assert.equal(context.sanitizeSheetText('Normal note'), 'Normal note');
 });
+
+test('authenticated mutations are idempotent when a request is retried', () => {
+  const { context } = loadBackend();
+  const actor = { id: 'u1', department: 'Manager' };
+  const data = { action: 'addNote', requestId: 'request-12345678' };
+  let calls = 0;
+  const first = context.runMutationOnce(actor, data, () => ({ success: true, sequence: ++calls }));
+  const retry = context.runMutationOnce(actor, data, () => ({ success: true, sequence: ++calls }));
+  assert.deepEqual(JSON.parse(JSON.stringify(retry)), JSON.parse(JSON.stringify(first)));
+  assert.equal(calls, 1);
+  assert.equal(context.runMutationOnce(actor, { ...data, requestId: 'bad id' }, () => ({ success: true })).error, 'Invalid request id');
+});
