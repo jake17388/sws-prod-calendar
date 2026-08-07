@@ -29,6 +29,9 @@ test('CI and both deployment workflows run checks and smoke tests on Node 24', (
     assert.match(workflow, /npm run check/);
   }
   assert.match(pages, /Smoke test deployed frontend/);
+  assert.match(pages, /actions\/configure-pages@v6/);
+  assert.match(pages, /actions\/upload-pages-artifact@v4/);
+  assert.match(pages, /actions\/deploy-pages@v5/);
   assert.match(backend, /Smoke test live backend/);
   assert.match(backend, /actions\/github-script@v8/);
 });
