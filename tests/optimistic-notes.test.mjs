@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   addPendingNote,
+  markNoteDeleting,
   preservePendingNotesInJobs,
   removePendingNote,
+  restoreDeletingNote,
+  settleDeletedNote,
   settlePendingNote,
 } from '../js/optimisticNotes.mjs';
 
@@ -63,4 +66,30 @@ test('a background job refresh cannot erase a note that is still saving', () => 
   const merged = preservePendingNotesInJobs(current, refreshed);
   assert.equal(merged[0].notes[0].id, 'local-1');
   assert.equal(merged[0].departmentNotes.Paint[0].id, 'local-2');
+});
+
+test('deleting a note hides it immediately and a refresh cannot bring it back', () => {
+  const original = [{ id: 'note-1', text: 'Remove me' }];
+  const deleting = markNoteDeleting(original, 'note-1');
+  assert.equal(original[0].deleting, undefined);
+  assert.equal(deleting[0].deleting, true);
+
+  const merged = preservePendingNotesInJobs(
+    [{ jobKey: 'job-1', notes: deleting, departmentNotes: {} }],
+    [{ jobKey: 'job-1', notes: original, departmentNotes: {} }],
+  );
+  assert.deepEqual(merged[0].notes.filter(note => !note.deleting), []);
+  assert.equal(merged[0].notes[0].deleting, true);
+});
+
+test('a failed delete restores the note while a successful delete settles its tombstone', () => {
+  const deleting = [
+    { id: 'note-1', text: 'Remove me', deleting: true },
+    { id: 'local-2', text: 'Still saving', pending: true },
+  ];
+  assert.deepEqual(restoreDeletingNote(deleting, 'note-1')[0], { id: 'note-1', text: 'Remove me' });
+
+  const settled = settleDeletedNote(deleting, 'note-1', []);
+  assert.deepEqual(settled.map(note => note.id), ['local-2']);
+  assert.equal(settled[0].pending, true);
 });
