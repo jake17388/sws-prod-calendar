@@ -19,10 +19,11 @@ test('the UI treats PINs as write-only six-digit credentials', () => {
   assert.match(html, /6-digit PIN/);
 });
 
-test('managers can request session revocation without seeing a PIN', () => {
+test('user management reveals PINs only when the server marks them Admin-visible', () => {
   const api = read('js/api.js');
   const users = read('js/components/userManagement.js');
   assert.match(api, /revokeUserSessions/);
   assert.match(users, /Revoke sessions/);
-  assert.doesNotMatch(users, /user\.pin/);
+  assert.match(users, /currentDepartment\(\) === 'Admin'/);
+  assert.match(users, /user\.pin/);
 });

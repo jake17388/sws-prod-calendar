@@ -57,11 +57,30 @@ test('new PINs require six digits while existing four-digit PINs migrate without
 test('public user records never expose credential material', () => {
   const { context } = loadBackend();
   const publicRecord = context.publicUser({
-    id: 'u1', name: 'Pat', department: 'Paint', pin: '123456', pinHash: 'hash', pinSalt: 'salt', authVersion: 2,
+    id: 'u1', name: 'Pat', department: 'Paint', pin: '123456', adminPin: '123456', pinHash: 'hash', pinSalt: 'salt', authVersion: 2,
   });
   assert.deepEqual(JSON.parse(JSON.stringify(publicRecord)), {
     id: 'u1', name: 'Pat', department: 'Paint', authVersion: 2,
   });
+});
+
+test('only Admins receive recoverable PINs in user management', () => {
+  const { context } = loadBackend();
+  const user = { id: 'u1', name: 'Pat', department: 'Paint', adminPin: '123456', pinHash: 'hash', pinSalt: 'salt', authVersion: 1 };
+  assert.equal(context.userFor({ department: 'Admin' }, user).pin, '123456');
+  assert.equal(context.userFor({ department: 'Manager' }, user).pin, undefined);
+});
+
+test('a successful login captures a migrated PIN for future Admin display', () => {
+  const original = [{ id: 'u1', name: 'Pat', department: 'Paint', pin: '1234' }];
+  const { context, values } = loadBackend({ USERS: JSON.stringify(original) });
+  context.getUsers();
+  const migrated = JSON.parse(values.USERS);
+  delete migrated[0].adminPin; // represents an account migrated by the previous release
+  values.USERS = JSON.stringify(migrated);
+
+  assert.equal(context.checkPin('1234', 'ipad-1').ok, true);
+  assert.equal(JSON.parse(values.USERS)[0].adminPin, '1234');
 });
 
 test('revoking a user invalidates their existing signed sessions', () => {
