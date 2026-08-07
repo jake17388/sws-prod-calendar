@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, '..');
 test('GitHub Pages publishes a curated frontend artifact', () => {
   const workflow = fs.readFileSync(path.join(root, '.github/workflows/pages.yml'), 'utf8');
   assert.match(workflow, /npm run build:pages/);
-  assert.match(workflow, /path:\s*['"]?_site['"]?/);
+  assert.match(workflow, /(?:path:\s*['"]?_site['"]?|--directory "_site")/);
   assert.doesNotMatch(workflow, /path:\s*['"]?\.['"]?/);
 });
 
