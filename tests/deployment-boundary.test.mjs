@@ -19,3 +19,23 @@ test('the Pages build includes runtime assets and excludes backend source and co
   }
   assert.doesNotMatch(buildScript, /Code\.js|appsscript\.json|\.clasp\.json/);
 });
+
+test('CI and both deployment workflows run checks and smoke tests on Node 24', () => {
+  const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  const pages = fs.readFileSync(path.join(root, '.github/workflows/pages.yml'), 'utf8');
+  const backend = fs.readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  for (const workflow of [ci, pages, backend]) {
+    assert.match(workflow, /node-version:\s*['"]24['"]/);
+    assert.match(workflow, /npm run check/);
+  }
+  assert.match(pages, /Smoke test deployed frontend/);
+  assert.match(backend, /Smoke test live backend/);
+  assert.match(backend, /actions\/github-script@v8/);
+});
+
+test('a rollback runbook identifies the prior frontend and backend release procedures', () => {
+  const runbook = fs.readFileSync(path.join(root, 'docs/ROLLBACK.md'), 'utf8');
+  assert.match(runbook, /Apps Script/i);
+  assert.match(runbook, /GitHub Pages/i);
+  assert.match(runbook, /clasp deploy -i/);
+});
