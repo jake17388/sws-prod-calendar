@@ -22,16 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '24'
+          package-manager-cache: false
 
       - name: Test and build public artifact
         run: |
-          npm test
+          npm run check
           npm run build:pages
 
       - name: Setup Pages
@@ -48,3 +49,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Smoke test deployed frontend
+        run: |
+          curl --fail --location --silent --show-error --retry 4 --retry-delay 3 \
+            "${{ steps.deployment.outputs.page_url }}" | grep -q "SWS Production Calendar"

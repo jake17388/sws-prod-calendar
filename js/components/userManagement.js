@@ -1,6 +1,6 @@
 import { fetchUsers, addUser as addUserApi, updateUser as updateUserApi, deleteUser as deleteUserApi, revokeUserSessions as revokeUserSessionsApi } from '../api.js';
 import { DEPARTMENTS, PM_BLOCKED_DEPARTMENTS } from '../config.js';
-import { currentDepartment } from '../auth.js';
+import { currentDepartment, updateAuthProfile } from '../auth.js';
 import { showToast } from '../toast.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
@@ -66,7 +66,7 @@ function renderEditableRow(user, actorDept) {
       if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); e.target.value = user.name; return; }
       user.name = res.user.name;
       showRowHint(row, 'Saved');
-    });
+    }).catch(() => { e.target.value = user.name; showRowHint(row, 'Network error — try again', true); });
   });
 
   row.querySelector('.user-row-dept').addEventListener('change', e => {
@@ -75,7 +75,7 @@ function renderEditableRow(user, actorDept) {
       if (!res.success) { showRowHint(row, res.error || 'Failed to save', true); e.target.value = user.department; return; }
       user.department = res.user.department;
       renderList();
-    });
+    }).catch(() => { e.target.value = user.department; showRowHint(row, 'Network error — try again', true); });
   });
 
   row.querySelector('.user-row-pin').addEventListener('change', e => {
@@ -93,6 +93,7 @@ function renderEditableRow(user, actorDept) {
         return;
       }
       e.target.value = '';
+      if (res.token) updateAuthProfile({ token: res.token });
       showRowHint(row, 'PIN updated');
     }).catch(() => { e.target.value = ''; showRowHint(row, 'Network error — try again', true); });
   });
@@ -111,7 +112,7 @@ function renderEditableRow(user, actorDept) {
       users = users.filter(u => u.id !== user.id);
       renderList();
       showToast(`${user.name} removed`);
-    });
+    }).catch(() => showRowHint(row, 'Network error — try again', true));
   });
 
   return row;
@@ -157,7 +158,7 @@ function handleAddUser() {
     resetAddForm();
     renderList();
     showToast(`${res.user.name} added`);
-  });
+  }).catch(() => { hint.textContent = 'Network error — try again'; showToast('Failed to add user', 'error'); });
 }
 
 export function openUserManagement() {

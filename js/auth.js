@@ -3,26 +3,44 @@ import { scriptPost } from './api.js';
 import { clearCachedJobs } from './jobsCache.js';
 import { getDeviceId } from './deviceId.js';
 
+const INACTIVITY_TTL_MS = 2 * 60 * 60 * 1000;
 let auth = readAuth(); // { token, user } — validated server-side on every call
 let pinEntry = '';
 let pinBusy = false;
 let legacySubmitTimer = null;
+let lastActivityWrite = 0;
 
 function readAuth() {
   try {
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return null;
-    const stored = JSON.parse(raw);
+    let stored = JSON.parse(raw);
+    if (stored && stored.lastActiveAt && Date.now() - stored.lastActiveAt > INACTIVITY_TTL_MS) {
+      localStorage.removeItem(AUTH_KEY);
+      return null;
+    }
     // Sessions written before PINs were removed from the session object still
     // have one sitting in localStorage. Strip it on first read and rewrite, so
     // existing installs stop carrying a live credential without needing anyone
     // to sign out and back in.
     if (stored && stored.pin !== undefined) {
       const { pin, isDueDateEditor, ...rest } = stored;
-      localStorage.setItem(AUTH_KEY, JSON.stringify(rest));
-      return rest;
+      stored = rest;
     }
+    if (stored && !stored.userId) stored.userId = userIdFromToken(stored.token);
+    if (stored && !stored.lastActiveAt) stored.lastActiveAt = Date.now();
+    if (stored) localStorage.setItem(AUTH_KEY, JSON.stringify(stored));
     return stored;
+  } catch (err) {
+    return null;
+  }
+}
+
+function userIdFromToken(token) {
+  try {
+    let encoded = String(token || '').split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    encoded += '='.repeat((4 - encoded.length % 4) % 4);
+    return JSON.parse(atob(encoded)).uid || null;
   } catch (err) {
     return null;
   }
@@ -30,6 +48,7 @@ function readAuth() {
 
 export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
+export const currentUserId = () => auth ? auth.userId : null;
 export const currentDepartment = () => auth ? auth.department : null;
 // Derived from department, matching canEditDueDates() in Code.js. This used to
 // read a name-based `isDueDateEditor` flag baked into the session at login —
@@ -55,6 +74,13 @@ export const canSeeDepartmentBadges = () => !!auth;
 export function updateAuthProfile(patch) {
   if (!auth) return;
   auth = { ...auth, ...patch };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+}
+
+function touchSession() {
+  if (!auth || Date.now() - lastActivityWrite < 60000) return;
+  lastActivityWrite = Date.now();
+  auth = { ...auth, lastActiveAt: lastActivityWrite };
   localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
 }
 
@@ -84,6 +110,10 @@ export function initAuth(onLogin) {
     if (e.key >= '0' && e.key <= '9') pinKey(e.key, onLogin);
     if (e.key === 'Backspace') pinDel();
   });
+  ['pointerdown', 'keydown'].forEach(eventName => document.addEventListener(eventName, touchSession, { passive: true }));
+  setInterval(() => {
+    if (auth && auth.lastActiveAt && Date.now() - auth.lastActiveAt > INACTIVITY_TTL_MS) signOut();
+  }, 60000);
 
   if (auth) {
     document.getElementById('pin-screen').style.display = 'none';
@@ -107,7 +137,7 @@ function pinKey(digit, onLogin) {
   if (pinEntry.length === 6) submitPin(onLogin);
   // Existing four-digit PINs remain usable during migration. A short pause
   // submits four digits; continuing to type reaches the new six-digit format.
-  else if (pinEntry.length === 4) legacySubmitTimer = setTimeout(() => submitPin(onLogin), 500);
+  else if (pinEntry.length === 4) legacySubmitTimer = setTimeout(() => submitPin(onLogin), 1200);
 }
 
 function pinDel() {
@@ -144,7 +174,7 @@ function submitPin(onLogin) {
       // credential sitting in localStorage for any XSS — or anyone holding the
       // device — to read. Settings now asks for a new PIN instead of showing
       // the current one.
-      auth = { token: res.token, userId: res.userId, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers };
+      auth = { token: res.token, userId: res.userId, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers, lastActiveAt: Date.now() };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

@@ -1,6 +1,6 @@
 import { addNote, updateNote, deleteNote } from '../api.js';
 import { findJob, patchJob } from '../state.js';
-import { currentUser, isAdmin } from '../auth.js';
+import { currentUser, currentUserId, isAdmin } from '../auth.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { showToast } from '../toast.js';
 import { addPendingNote, markNoteDeleting, preservePendingNotesInJobs, removePendingNote, restoreDeletingNote, settleDeletedNote } from '../optimisticNotes.mjs';
@@ -104,7 +104,8 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
   const refreshVisibleList = () => renderedNoteLists.get(renderKey)?.();
 
   function renderNoteRow(note) {
-    const canEdit = !note.pending && canWrite && (isAdmin() || (note.author && note.author === currentUser()));
+    const ownsNote = note.authorId ? note.authorId === currentUserId() : (note.author && note.author === currentUser());
+    const canEdit = !note.pending && canWrite && (isAdmin() || ownsNote);
     const row = document.createElement('div');
     row.className = `note-item${note.pending ? ' pending' : ''}`;
 
@@ -242,6 +243,7 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
         id: noteId,
         text,
         author: currentUser(),
+        authorId: currentUserId(),
         createdAt: new Date().toISOString(),
       };
 

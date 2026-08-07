@@ -241,6 +241,7 @@ export function openJobDetail(jobKey) {
         patchJob(job.jobKey, { completed: prevCompleted });
         renderCompletedInfo(job);
         renderDepartmentSection(job);
+        showToast('Failed to update job — check your connection', 'error');
       });
   } : null;
 

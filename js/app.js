@@ -15,6 +15,7 @@ import { showToast } from './toast.js';
 import { setHeaderDimmed } from './headerDim.js';
 import { loadCachedJobs, saveCachedJobs } from './jobsCache.js';
 import { reportSyncSuccess, reportSyncFailure, setOnFirstFailure } from './syncStatus.js';
+import { hasPendingWrites, subscribePendingWrites } from './pendingWrites.mjs';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -22,6 +23,19 @@ const VIEWS = {
   schedule: { render: renderSchedule, label: () => 'Schedule', step: (d, dir) => addDays(d, dir * 30) },
   assign: { render: renderJobsToAssign, label: jobsToAssignRangeLabel, step: (d, dir) => addDays(d, dir * 30) },
 };
+
+subscribePendingWrites(pending => {
+  const status = document.getElementById('save-status');
+  if (!status) return;
+  status.hidden = !pending;
+  status.textContent = pending ? 'Saving…' : '';
+});
+
+window.addEventListener('beforeunload', event => {
+  if (!hasPendingWrites()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 let activeView = 'week';
 let refDate = new Date();

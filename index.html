@@ -35,7 +35,7 @@
   <div class="pin-logo"><span>SWS</span> Production Calendar</div>
   <div class="pin-card">
     <h1>Enter PIN</h1>
-    <div class="pin-subtitle">Enter your 6-digit PIN to continue</div>
+    <div class="pin-subtitle">Enter your 6-digit PIN to continue. Existing 4-digit PINs submit after a short pause.</div>
     <div class="pin-dots">
       <span></span><span></span><span></span><span></span>
       <span></span><span></span>
@@ -79,6 +79,7 @@
         <button class="hdr-btn" id="refresh-btn"><span class="refresh-icon">↻</span> Refresh</button>
         <span id="last-updated"></span>
         <span id="sync-status" class="sync-status" role="status" hidden></span>
+        <span id="save-status" class="sync-status" role="status" aria-live="polite" hidden></span>
         <span id="header-count"></span>
       </div>
       <button class="hdr-btn" id="view-btn-assign" hidden>Jobs to Assign</button>
@@ -267,6 +268,6 @@
   </section>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.07.4"></script>
+<script type="module" src="js/app.js?v=2026.08.07.5"></script>
 </body>
 </html>

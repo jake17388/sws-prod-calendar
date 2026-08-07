@@ -6,6 +6,7 @@ import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { JOB_TAGS } from '../config.js';
 import { escapeHtml } from '../lib/html.js';
+import { showToast } from '../toast.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -91,11 +92,17 @@ function handleCheckboxToggle(job) {
   toggleComplete(job.jobKey, nextCompleted)
     .then(res => {
       if (!isLatestRequest(requestKey, token)) return;
-      if (res.success) patchJob(job.jobKey, { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy });
+      if (res.success) {
+        patchJob(job.jobKey, { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy });
+      } else {
+        patchJob(job.jobKey, { completed: prevCompleted });
+        showToast(res.error || 'Failed to update job', 'error');
+      }
     })
     .catch(() => {
       if (!isLatestRequest(requestKey, token)) return;
       patchJob(job.jobKey, { completed: prevCompleted }); // revert on failure
+      showToast('Failed to update job — check your connection', 'error');
     });
 }
 

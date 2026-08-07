@@ -249,8 +249,10 @@ function saveCommonTasks(actor, data) {
     if (!allDepartments && suppliedDepartments.some(dept => JOB_TAGS.indexOf(dept) === -1)) {
       return { success: false, error: 'Invalid department' };
     }
+    const id = String(raw.id || Utilities.getUuid());
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return { success: false, error: 'Invalid common task id' };
     tasks.push({
-      id: String(raw.id || Utilities.getUuid()),
+      id,
       text,
       allDepartments,
       departments,
@@ -301,6 +303,7 @@ function addUser(actor, data) {
 
 function updateUser(actor, data) {
   if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(data.id || ''))) return { success: false, error: 'Invalid user id' };
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -311,6 +314,7 @@ function updateUser(actor, data) {
     if (!canManageDepartment(actor.department, target.department)) return { success: false, error: 'forbidden' };
 
     const next = { ...target };
+    let pinChanged = false;
     if (data.name !== undefined) {
       const name = String(data.name).trim();
       if (!validName(name)) return { success: false, error: 'Name must be 1–80 characters' };
@@ -330,10 +334,11 @@ function updateUser(actor, data) {
       if (pinAlreadyUsed(users, pin, target.id)) return { success: false, error: 'That PIN is already in use' };
       Object.assign(next, withNewPin(next, pin));
       next.authVersion = (+next.authVersion || 1) + 1;
+      pinChanged = true;
     }
     users[idx] = next;
     saveUsers(users);
-    return { success: true, user: publicUser(next) };
+    return { success: true, user: publicUser(next), token: pinChanged && target.id === actor.id ? makeToken(next) : undefined };
   } finally {
     lock.releaseLock();
   }
@@ -341,6 +346,7 @@ function updateUser(actor, data) {
 
 function deleteUser(actor, data) {
   if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(data.id || ''))) return { success: false, error: 'Invalid user id' };
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -395,6 +401,7 @@ function updateSelf(actor, data) {
 
 function revokeUserSessions(actor, data) {
   if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(data.id || ''))) return { success: false, error: 'Invalid user id' };
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -473,11 +480,10 @@ function resolveActor(token) {
 // breaker, since Apps Script never exposes the client IP and a determined
 // attacker can just rotate device ids.
 //
-// This is a mitigation, not a fix. A 4-digit PIN is still the entire identity
-// space (checkPin looks users up BY PIN), so ~10k guesses enumerates every
-// account. The real fix is review item #22: identify-then-authenticate, hashed
-// PINs, and per-account limits. Until then the global breaker is what bounds
-// how fast an attacker can work.
+// PINs are hashed and newly-issued credentials use six digits. Device and
+// global limits remain necessary because the PIN itself identifies the account,
+// so Apps Script cannot apply an account-specific failure counter until a
+// correct PIN has identified that account.
 const PIN_FAILS_PER_DEVICE = 8;
 const DEVICE_LOCKOUT_MS = 10 * 60 * 1000;
 const GLOBAL_FAILS_LIMIT = 60;          // across all devices, per window
@@ -609,6 +615,28 @@ function validText(value, maxLength) {
   return !!text && text.length <= maxLength && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text);
 }
 
+function runMutationOnce(actor, data, operation) {
+  const requestId = String((data && data.requestId) || '');
+  // Compatibility for a browser tab that loaded immediately before this
+  // deployment. Current clients always send a request id.
+  if (!requestId) return operation();
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) return { success: false, error: 'Invalid request id' };
+  const key = ['mutation', actor.id, String(data.action || ''), requestId].join('_');
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(key);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* recompute below */ }
+  }
+  const result = operation();
+  try {
+    const encoded = JSON.stringify(result);
+    if (encoded.length < 90000) cache.put(key, encoded, 600);
+  } catch (err) {
+    console.warn('Could not cache mutation response for %s: %s', data.action, err && err.message);
+  }
+  return result;
+}
+
 // A single incrementing counter, bumped on every successful tracking write
 // (see setTracking()). Lets clients poll a one-Property read to know
 // whether anything changed, instead of re-fetching the full job list (which
@@ -636,7 +664,7 @@ function doGet(e) {
     return routeGet(e);
   } catch (err) {
     console.error('doGet failed: %s\n%s', err && err.message, err && err.stack);
-    return json({ error: 'internal', message: String((err && err.message) || err) });
+    return json({ error: 'internal', message: 'Unexpected server error' });
   }
 }
 
@@ -645,7 +673,7 @@ function doPost(e) {
     return routePost(e);
   } catch (err) {
     console.error('doPost failed: %s\n%s', err && err.message, err && err.stack);
-    return json({ error: 'internal', message: String((err && err.message) || err) });
+    return json({ error: 'internal', message: 'Unexpected server error' });
   }
 }
 
@@ -669,6 +697,9 @@ function routeGet(e) {
   if (action === 'getProductionJobs') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
+    if ((params.from && !validDateOverride(params.from)) || (params.to && !validDateOverride(params.to))) {
+      return json({ error: 'bad_request', message: 'Invalid date range' });
+    }
     return json(getProductionJobs(e, actor));
   }
   if (action === 'getUsers') {
@@ -711,7 +742,9 @@ function routeGet(e) {
   if (action === 'debugDropboxProof') {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
-    return json(debugFindLatestProof(String(e.parameter.jobNum || '')));
+    const jobNum = String(e.parameter.jobNum || '');
+    if (!validJobKey(jobNum)) return json({ error: 'bad_request', message: 'Invalid job number' });
+    return json(debugFindLatestProof(jobNum));
   }
 
   // The app itself is hosted on GitHub Pages, not here
@@ -730,6 +763,9 @@ function routePost(e) {
   if (!e || !e.postData || !e.postData.contents) {
     return json({ error: 'bad_request', message: 'Missing request body' });
   }
+  if (e.postData.contents.length > 250000) {
+    return json({ error: 'bad_request', message: 'Request body is too large' });
+  }
   let data;
   try {
     data = JSON.parse(e.postData.contents);
@@ -747,62 +783,63 @@ function routePost(e) {
   const actor = resolveActor(data.token);
   if (!actor) return json(UNAUTHORIZED);
   const user = actor.name;
+  const respond = operation => json(runMutationOnce(actor, data, operation));
 
   if (data.action === 'toggleComplete') {
-    if (!canMarkJobComplete(actor.department)) return json({ error: 'forbidden' });
-    const result = setTracking(data.jobKey, { completed: !!data.completed }, user);
-    // Completed jobs don't need to stay instantly available for a dozen
-    // people at once — drop the pre-fetched copy the moment it's marked
-    // done so storage doesn't accumulate; the proof still works, it just
-    // falls back to a live Dropbox fetch (see getDropboxProofFile).
-    if (result.success && data.completed && isDropboxConnected()) {
-      try { evictProofCache(data.jobKey); } catch (err) { /* best-effort */ }
-    }
-    return json(result);
+    return respond(() => {
+      if (!canMarkJobComplete(actor.department)) return { error: 'forbidden' };
+      const result = setTracking(data.jobKey, { completed: !!data.completed }, user);
+      if (result.success && data.completed && isDropboxConnected()) {
+        try { evictProofCache(data.jobKey); } catch (err) { /* best-effort */ }
+      }
+      return result;
+    });
   }
   if (data.action === 'updateDueDate') {
-    if (!canEditDueDates(actor.department)) return json({ error: 'forbidden' });
-    const dueDate = String(data.dueDate || '');
-    if (!validDateOverride(dueDate)) return json({ success: false, error: 'Invalid due date' });
-    return json(setTracking(data.jobKey, { dueOverride: dueDate }, user));
+    return respond(() => {
+      if (!canEditDueDates(actor.department)) return { error: 'forbidden' };
+      const dueDate = String(data.dueDate || '');
+      if (!validDateOverride(dueDate)) return { success: false, error: 'Invalid due date' };
+      return setTracking(data.jobKey, { dueOverride: dueDate }, user);
+    });
   }
-  if (data.action === 'updateJobDepartments') return json(updateJobDepartments(actor, data));
-  if (data.action === 'toggleDepartmentTaskDone') return json(toggleDepartmentTaskDone(actor, data));
-  if (data.action === 'addNote') return json(addNote(actor, data));
-  if (data.action === 'updateNote') return json(updateNote(actor, data));
-  if (data.action === 'deleteNote') return json(deleteNote(actor, data));
-  if (data.action === 'addUser') return json(addUser(actor, data));
-  if (data.action === 'updateUser') return json(updateUser(actor, data));
-  if (data.action === 'deleteUser') return json(deleteUser(actor, data));
-  if (data.action === 'updateSelf') return json(updateSelf(actor, data));
-  if (data.action === 'revokeUserSessions') return json(revokeUserSessions(actor, data));
-  if (data.action === 'saveCommonTasks') return json(saveCommonTasks(actor, data));
+  if (data.action === 'updateJobDepartments') return respond(() => updateJobDepartments(actor, data));
+  if (data.action === 'toggleDepartmentTaskDone') return respond(() => toggleDepartmentTaskDone(actor, data));
+  if (data.action === 'addNote') return respond(() => addNote(actor, data));
+  if (data.action === 'updateNote') return respond(() => updateNote(actor, data));
+  if (data.action === 'deleteNote') return respond(() => deleteNote(actor, data));
+  if (data.action === 'addUser') return respond(() => addUser(actor, data));
+  if (data.action === 'updateUser') return respond(() => updateUser(actor, data));
+  if (data.action === 'deleteUser') return respond(() => deleteUser(actor, data));
+  if (data.action === 'updateSelf') return respond(() => updateSelf(actor, data));
+  if (data.action === 'revokeUserSessions') return respond(() => revokeUserSessions(actor, data));
+  if (data.action === 'saveCommonTasks') return respond(() => saveCommonTasks(actor, data));
   if (data.action === 'setDropboxCredentials') {
-    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
-    if (String(data.appKey || '').length > 200 || String(data.appSecret || '').length > 500) {
-      return json({ success: false, error: 'Dropbox credential value is too long' });
-    }
-    const props = PropertiesService.getScriptProperties();
-    props.setProperty('DROPBOX_APP_KEY', String(data.appKey || '').trim());
-    props.setProperty('DROPBOX_APP_SECRET', String(data.appSecret || '').trim());
-    return json({ success: true });
+    return respond(() => {
+      if (actor.department !== 'Admin') return { error: 'forbidden' };
+      if (String(data.appKey || '').length > 200 || String(data.appSecret || '').length > 500) return { success: false, error: 'Dropbox credential value is too long' };
+      const props = PropertiesService.getScriptProperties();
+      props.setProperty('DROPBOX_APP_KEY', String(data.appKey || '').trim());
+      props.setProperty('DROPBOX_APP_SECRET', String(data.appSecret || '').trim());
+      return { success: true };
+    });
   }
   if (data.action === 'disconnectDropbox') {
-    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
-    const props = PropertiesService.getScriptProperties();
-    props.deleteProperty('DROPBOX_REFRESH_TOKEN');
-    CacheService.getScriptCache().remove('dropbox_access_token');
-    return json({ success: true });
+    return respond(() => {
+      if (actor.department !== 'Admin') return { error: 'forbidden' };
+      const props = PropertiesService.getScriptProperties();
+      props.deleteProperty('DROPBOX_REFRESH_TOKEN');
+      CacheService.getScriptCache().remove('dropbox_access_token');
+      return { success: true };
+    });
   }
   if (data.action === 'refreshDropboxProofsNow') {
-    if (actor.department !== 'Admin') return json({ error: 'forbidden' });
-    if (!isDropboxConnected()) return json({ success: false, error: 'Dropbox not connected' });
-    try {
-      refreshDropboxProofs();
-    } catch (err) {
-      return json({ success: false, error: err.message });
-    }
-    return json({ success: true });
+    return respond(() => {
+      if (actor.department !== 'Admin') return { error: 'forbidden' };
+      if (!isDropboxConnected()) return { success: false, error: 'Dropbox not connected' };
+      try { refreshDropboxProofs(); } catch (err) { return { success: false, error: err.message }; }
+      return { success: true };
+    });
   }
   return json({ error: 'unknown action' });
 }
@@ -1008,7 +1045,7 @@ function updateNote(actor, data) {
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to edit notes' };
-    if (scope === 'department' && (current.departments || []).indexOf(department) === -1) return { error: 'forbidden' };
+    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) return { error: 'forbidden' };
     const list = getNoteList(current, scope, department);
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
@@ -1026,7 +1063,7 @@ function deleteNote(actor, data) {
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to delete notes' };
-    if (scope === 'department' && (current.departments || []).indexOf(department) === -1) return { error: 'forbidden' };
+    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) return { error: 'forbidden' };
     const list = getNoteList(current, scope, department);
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
@@ -1514,7 +1551,8 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     bumpTrackingVersion();
     return { success: true, ...next };
   } catch (err) {
-    return { success: false, error: err.message };
+    console.error('setTracking failed for job %s: %s\n%s', jobKey, err && err.message, err && err.stack);
+    return { success: false, error: 'Save failed — try again' };
   } finally {
     lock.releaseLock();
   }

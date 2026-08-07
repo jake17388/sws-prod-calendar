@@ -1,6 +1,6 @@
 import { updateJobDepartments, toggleDepartmentTaskDone } from '../api.js';
 import { patchJob } from '../state.js';
-import { currentUser, isAdmin } from '../auth.js';
+import { currentUser, currentUserId, isAdmin } from '../auth.js';
 import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
@@ -146,6 +146,7 @@ function renderEditableChecklist(container, job, dept) {
       row.querySelector('.checklist-check').addEventListener('click', () => {
         item.done = !item.done;
         item.doneBy = item.done ? currentUser() : '';
+        item.doneById = item.done ? currentUserId() : '';
         item.doneAt = item.done ? new Date().toISOString() : '';
         persist(job, () => renderEditableChecklist(container, job, dept));
         renderEditableChecklist(container, job, dept);
@@ -183,8 +184,10 @@ function renderEditableChecklist(container, job, dept) {
           text: task.text,
           done: false,
           doneBy: '',
+          doneById: '',
           doneAt: '',
           addedBy: currentUser(),
+          addedById: currentUserId(),
           addedAt: now,
         }];
         persist(job, () => renderEditableChecklist(container, job, dept));
@@ -204,7 +207,7 @@ function renderEditableChecklist(container, job, dept) {
     const text = addInput.value.trim();
     if (!text) return;
     const now = new Date().toISOString();
-    job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false, doneBy: '', doneAt: '', addedBy: currentUser(), addedAt: now }];
+    job.departmentChecklists[dept] = [...(job.departmentChecklists[dept] || []), { id: `${Date.now()}`, text, done: false, doneBy: '', doneById: '', doneAt: '', addedBy: currentUser(), addedById: currentUserId(), addedAt: now }];
     addInput.value = '';
     persist(job, () => renderEditableChecklist(container, job, dept));
     renderEditableChecklist(container, job, dept);
@@ -389,7 +392,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
       // for whoever completed it — otherwise a teammate could erase your
       // completed record (or vice versa). Mirrored server-side in
       // toggleDepartmentTaskDone as the actual enforcement.
-      const canToggle = !item.done || item.doneBy === currentUser();
+      const canToggle = !item.done || (item.doneById ? item.doneById === currentUserId() : item.doneBy === currentUser());
       const row = document.createElement('div');
       row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
       row.innerHTML = `
@@ -404,6 +407,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
       row.querySelector('.checklist-check').addEventListener('click', () => {
         const nextDone = !item.done;
         const prevDoneBy = item.doneBy;
+        const prevDoneById = item.doneById;
         const prevDoneAt = item.doneAt;
         // Rapid clicks fire overlapping requests whose responses can
         // resolve out of order — only the most recently fired toggle for
@@ -413,6 +417,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
         const token = beginRequest(requestKey);
         item.done = nextDone;
         item.doneBy = nextDone ? currentUser() : '';
+        item.doneById = nextDone ? currentUserId() : '';
         item.doneAt = nextDone ? new Date().toISOString() : '';
         patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
         renderOwnDepartmentTasks(container, job, department);
@@ -422,6 +427,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
             if (res.success) { job.departmentChecklists = res.departmentChecklists; return; }
             item.done = !nextDone;
             item.doneBy = prevDoneBy;
+            item.doneById = prevDoneById;
             item.doneAt = prevDoneAt;
             patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
             renderOwnDepartmentTasks(container, job, department);
@@ -430,6 +436,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
             if (!isLatestRequest(requestKey, token)) return;
             item.done = !nextDone;
             item.doneBy = prevDoneBy;
+            item.doneById = prevDoneById;
             item.doneAt = prevDoneAt;
             patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
             renderOwnDepartmentTasks(container, job, department);

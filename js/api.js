@@ -1,5 +1,6 @@
 import { SCRIPT_URL } from './config.js';
 import { getAuth, signOut } from './auth.js';
+import { beginWrite, endWrite } from './pendingWrites.mjs';
 
 /** @param {string} action @returns {Promise<any>} */
 function scriptGet(action, extraParams = {}) {
@@ -17,9 +18,12 @@ export function scriptPost(body) {
     ? globalThis.crypto.randomUUID()
     : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const payload = body.action === 'login' ? body : { requestId, ...body, token: auth ? auth.token : '' };
+  const tracksPendingWrite = body.action !== 'login';
+  if (tracksPendingWrite) beginWrite();
   return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(checkAuthError);
+    .then(checkAuthError)
+    .finally(() => { if (tracksPendingWrite) endWrite(); });
 }
 
 function checkAuthError(data) {
