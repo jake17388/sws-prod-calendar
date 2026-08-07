@@ -80,12 +80,12 @@ PIN) can be added, edited, or removed. There's no Apps Script editor step
 for routine changes.
 
 Admins can view every current PIN in User Management. Managers can reset PINs
-for production accounts they manage but cannot read them. A PIN migrated by the
-previous hashed-only release becomes visible after it is recovered from the
-legacy PIN map or after that employee's next successful login; an Admin can
-reset it immediately if needed. Sessions expire after 12 hours, shared browsers
-sign out after two hours without activity, and changing a PIN invalidates the
-account's other sessions.
+for production accounts they manage but cannot read them. A four-digit PIN
+migrated by the previous hashed-only release is recovered automatically the next
+time an Admin opens User Management; a missing six-digit PIN can be reset
+immediately if needed. Sessions expire after 12 hours, shared browsers sign out
+after two hours without activity, and changing a PIN invalidates the account's
+other sessions.
 
 The one-time bootstrap is automatic: the first request after this feature's
 initial deploy finds no `USERS` property yet, migrates the old flat `PINS`

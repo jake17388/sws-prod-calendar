@@ -104,11 +104,50 @@ function isLastAdmin(users, userId) {
 }
 
 function visibleUsersFor(actor) {
-  const users = getUsers();
+  let users = getUsers();
+  if (actor.department === 'Admin') users = recoverMissingFourDigitPins(users);
   const visible = actor.department === 'Admin'
     ? users
     : users.filter(u => PM_HIDDEN_DEPARTMENTS.indexOf(u.department) === -1);
   return visible.map(user => userFor(actor, user));
+}
+
+// The hashed-only release removed the last readable copy of existing PINs.
+// Those accounts were all four digits, so an Admin opening User Management can
+// recover them once by checking the small 0000–9999 space against each stored
+// salted hash. Newly-created/changed PINs already carry adminPin and skip this.
+function recoverMissingFourDigitPins(users) {
+  const missing = users.filter(user => !user.adminPin && !user.pinRecoveryAttempted);
+  if (!missing.length) return users;
+
+  const recoveredById = {};
+  missing.forEach(user => {
+    for (let value = 0; value <= 9999; value++) {
+      const candidate = String(value).padStart(4, '0');
+      if (pinMatches(user, candidate)) {
+        recoveredById[user.id] = candidate;
+        break;
+      }
+    }
+  });
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const fresh = getUsers();
+    let changed = false;
+    fresh.forEach(user => {
+      if (user.adminPin || user.pinRecoveryAttempted) return;
+      const recovered = recoveredById[user.id];
+      if (recovered && pinMatches(user, recovered)) user.adminPin = recovered;
+      user.pinRecoveryAttempted = true;
+      changed = true;
+    });
+    if (changed) saveUsers(fresh);
+    return fresh;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function userFor(actor, user) {
@@ -617,7 +656,7 @@ function authenticatePin(pin) {
 // Nothing in the client needs a PIN value — it only ever writes new ones.
 function publicUser(user) {
   if (!user) return user;
-  const { pin, adminPin, pinHash, pinSalt, ...rest } = user;
+  const { pin, adminPin, pinHash, pinSalt, pinRecoveryAttempted, ...rest } = user;
   return rest;
 }
 
