@@ -184,7 +184,7 @@
 }
 
 @media (max-width: 640px) {
-  .user-mgmt-panel { padding: var(--space-5) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
+  .user-mgmt-panel { padding: calc(var(--space-5) + env(safe-area-inset-top)) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
   .user-mgmt-header { grid-template-columns: 1fr; gap: var(--space-3); }
   .settings-subpage-back { justify-self: start; }
   .user-mgmt-list-header { display: none; }

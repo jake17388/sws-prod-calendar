@@ -94,7 +94,7 @@
 }
 
 @media (max-width: 640px) {
-  .common-task-panel { padding: var(--space-5) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
+  .common-task-panel { padding: calc(var(--space-5) + env(safe-area-inset-top)) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
   .common-task-header { grid-template-columns: 1fr; gap: var(--space-3); }
   .common-task-actions { flex-direction: column; }
   .common-task-actions .settings-action { width: 100%; }
