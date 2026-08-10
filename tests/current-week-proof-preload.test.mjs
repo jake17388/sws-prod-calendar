@@ -11,6 +11,7 @@ test('current-week preloading selects Sunday through Saturday jobs once each', a
     { jobNum: 'after', dueDate: '2026-08-16' },
     { jobNum: 'mon', dueDate: '2026-08-10' },
     { dueDate: '2026-08-12' },
+    { jobNum: 'no-date' },
   ];
 
   assert.deepEqual(
@@ -91,4 +92,24 @@ test('prefetched bytes are stored on disk with expiration metadata', async () =>
   assert.equal(stored.name, proof.name);
   assert.equal(stored.mimeType, proof.mimeType);
   assert.deepEqual(Array.from(stored.bytes), [4, 5, 6]);
+});
+
+test('expired weeks are removed from disk before another preload', async () => {
+  const { pruneStoredProofs, storeProof, STORED_PROOF_TTL_MS } = await import('../js/proofDiskCache.mjs');
+  const responses = new Map();
+  const cache = {
+    put: async (request, response) => responses.set(request.url, response.clone()),
+    match: async request => responses.get(request.url)?.clone() || null,
+    delete: async request => responses.delete(request.url),
+    keys: async () => Array.from(responses.keys(), url => new Request(url)),
+  };
+  const cacheStorage = { open: async () => cache };
+  const proof = { name: 'proof.pdf', mimeType: 'application/pdf', bytes: new Uint8Array([1]) };
+
+  await storeProof('old-week', proof, 1000, cacheStorage);
+  await storeProof('current-week', proof, 1000 + STORED_PROOF_TTL_MS, cacheStorage);
+  const removed = await pruneStoredProofs(1000 + STORED_PROOF_TTL_MS + 1, cacheStorage);
+
+  assert.equal(removed, 1);
+  assert.equal(responses.size, 1);
 });

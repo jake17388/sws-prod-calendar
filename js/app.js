@@ -3,6 +3,7 @@ import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepa
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
+import { preloadCurrentWeekProofs } from './currentWeekProofPreload.mjs';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
 import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
@@ -103,6 +104,18 @@ function switchView(view) {
 // when it's actually stale, so idle tabs cost one cheap Property read per
 // poll tick instead of a full refetch.
 let lastKnownVersion = 0;
+let proofPreloadTimer = null;
+
+function queueCurrentWeekProofPreload(jobs) {
+  if (proofPreloadTimer) clearTimeout(proofPreloadTimer);
+  // Stagger browser sessions so the shop's iPads do not all hit Apps Script
+  // at the same instant at the start of a shift.
+  const delay = 1000 + Math.floor(Math.random() * 4000);
+  proofPreloadTimer = setTimeout(() => {
+    proofPreloadTimer = null;
+    preloadCurrentWeekProofs(jobs).catch(() => {});
+  }, delay);
+}
 
 /**
  * @param {boolean} [userInitiated] true when the Refresh button was pressed —
@@ -119,6 +132,7 @@ function refreshJobs(userInitiated = false) {
     .then(({ jobs, version }) => {
       setJobs(jobs);
       saveCachedJobs(currentDepartment(), jobs);
+      queueCurrentWeekProofPreload(jobs);
       lastKnownVersion = version;
       document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
       document.getElementById('last-updated').textContent =

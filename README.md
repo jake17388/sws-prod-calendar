@@ -137,6 +137,12 @@ choosing or dragging them into the project. Everyone who can view the project
 can download those files and see who added each one and when. Only Admins can
 delete them; that permission is enforced by the backend.
 
+After each fresh job-list load, the browser preloads Production Files for jobs
+due in the current Sunday-through-Saturday week. Downloads run two at a time
+after a short stagger and are kept in browser disk cache for six hours; only an
+opened file is promoted into the small in-memory viewer cache. Expired weeks are
+removed automatically so iPads do not retain an ever-growing file collection.
+
 ## Validation and permissions
 
 All permissions are enforced in `Code.js`; hidden frontend controls are only a

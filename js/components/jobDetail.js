@@ -10,6 +10,8 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { renderPdfPages } from '../pdfViewer.js';
 import { cacheProofFile, getCachedProofFile } from '../proofCache.mjs';
+import { productionProofCacheKey } from '../currentWeekProofPreload.mjs';
+import { readStoredProof, storeProof } from '../proofDiskCache.mjs';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
@@ -173,27 +175,41 @@ function renderProofSection(job) {
   empty.textContent = 'Loading production file…';
 
   const token = ++proofRequestToken;
-  const cached = getCachedProofFile(job.jobNum);
-  if (cached) {
-    currentProofBytes = cached.bytes;
+  const cacheKey = productionProofCacheKey(job.jobNum);
+  const showProof = proof => {
+    currentProofBytes = proof.bytes;
+    cacheProofFile(cacheKey, proof);
     empty.hidden = true;
     openBtn.hidden = false;
     openBtn.onclick = () => openProofViewer(job, currentProofBytes);
+  };
+  const cached = getCachedProofFile(cacheKey);
+  if (cached) {
+    showProof(cached);
     return;
   }
 
-  fetchProofFile(job.jobNum)
-    .then(res => {
+  readStoredProof(cacheKey)
+    .then(stored => {
+      if (stored) return stored;
+      return fetchProofFile(job.jobNum).then(res => {
+        if (!res || !res.available || !res.base64) return null;
+        const proof = {
+          name: res.name || job.title,
+          mimeType: 'application/pdf',
+          bytes: base64ToBytes(res.base64),
+        };
+        storeProof(cacheKey, proof);
+        return proof;
+      });
+    })
+    .then(proof => {
       if (token !== proofRequestToken) return; // a newer job was opened before this resolved
-      if (!res || !res.available) {
+      if (!proof) {
         empty.textContent = 'No File Available';
         return;
       }
-      currentProofBytes = base64ToBytes(res.base64);
-      cacheProofFile(job.jobNum, { name: res.name || job.title, bytes: currentProofBytes });
-      empty.hidden = true;
-      openBtn.hidden = false;
-      openBtn.onclick = () => openProofViewer(job, currentProofBytes);
+      showProof(proof);
     })
     .catch(() => {
       if (token !== proofRequestToken) return;
