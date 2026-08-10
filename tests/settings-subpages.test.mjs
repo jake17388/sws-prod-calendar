@@ -33,3 +33,11 @@ test('management subpages provide a clear route back to Settings', () => {
   assert.match(users, /new CustomEvent\('open-settings'\)/);
   assert.match(tasks, /new CustomEvent\('open-settings'\)/);
 });
+
+test('mobile management back buttons sit below the iPhone safe area', () => {
+  const userCss = read('styles/user-mgmt.css');
+  const taskCss = read('styles/common-tasks.css');
+
+  assert.match(userCss, /@media \(max-width: 640px\)[\s\S]*\.user-mgmt-panel\s*\{[^}]*padding:\s*calc\(var\(--space-5\) \+ env\(safe-area-inset-top\)\)/);
+  assert.match(taskCss, /@media \(max-width: 640px\)[\s\S]*\.common-task-panel\s*\{[^}]*padding:\s*calc\(var\(--space-5\) \+ env\(safe-area-inset-top\)\)/);
+});
