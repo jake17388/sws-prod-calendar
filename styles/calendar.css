@@ -243,6 +243,66 @@
   gap: var(--space-2);
 }
 
+.schedule-open-empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--ink-tertiary);
+  text-align: center;
+  font-size: var(--text-sm);
+}
+
+.schedule-completed-section {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.schedule-completed-toggle {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  color: var(--ink-secondary);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.schedule-completed-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-card-hover);
+}
+.schedule-completed-toggle:focus-visible {
+  outline: 3px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+.schedule-completed-label { flex: 1; text-align: left; }
+.schedule-completed-count {
+  min-width: 28px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--ink-tertiary);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+.schedule-completed-chevron {
+  font-size: var(--text-lg);
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+.schedule-completed-section.is-expanded .schedule-completed-chevron {
+  transform: rotate(180deg);
+}
+.schedule-completed-list {
+  padding-top: var(--space-5);
+}
+.schedule-completed-list[hidden] { display: none; }
+.schedule-completed-list .schedule-day-group:last-child { margin-bottom: 0; }
+
 .empty-state {
   display: flex;
   flex-direction: column;

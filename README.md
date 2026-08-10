@@ -121,6 +121,14 @@ Completing Paint's final open task automatically assigns the job to Assembly
 and marks Assembly current. If Assembly has no open work, the app creates a
 `Prep for Install` task attributed to the painter at the same completion time.
 
+Completed jobs are collapsed under **Completed jobs** in Schedule view. The
+normal app window includes calendar jobs from 14 days in the past through 90
+days ahead, based on the install-calendar date (not the date the job was marked
+complete). Leaving that window only removes a job from the app's normal views;
+it does not delete its tracking record. Tracking history remains indefinitely
+in the `SWS Production Tracking` Google Sheet unless an administrator removes
+it manually. There is currently no separate archive browser or automatic purge.
+
 ## Validation and permissions
 
 All permissions are enforced in `Code.js`; hidden frontend controls are only a

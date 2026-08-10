@@ -1,5 +1,8 @@
 import { parseISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { renderJobCard } from '../components/jobCard.js';
+import { partitionScheduleJobs } from './scheduleGroups.mjs';
+
+let completedExpanded = false;
 
 /**
  * The due date of the oldest job that still isn't done — an overdue one if
@@ -17,16 +20,46 @@ function firstOpenDueDate(jobs) {
   }, null);
 }
 
+/**
+ * @param {HTMLElement} parent
+ * @param {object[]} jobs
+ * @param {Date} refDate
+ * @param {Date} today
+ * @param {{ includeAnchors?: boolean, openIso?: string|null }} options
+ */
+function appendDayGroups(parent, jobs, refDate, today, { includeAnchors = false, openIso = null } = {}) {
+  const grouped = groupByDueDate(jobs);
+
+  Object.keys(grouped).sort().forEach(iso => {
+    const date = parseISO(iso);
+    const group = document.createElement('div');
+    group.className = 'schedule-day-group';
+    if (includeAnchors && iso === openIso) group.dataset.openAnchor = 'true';
+    if (includeAnchors && isSameDay(date, refDate)) group.dataset.dateAnchor = 'true';
+
+    const heading = document.createElement('div');
+    heading.className = `schedule-day-heading ${isSameDay(date, today) ? 'is-today' : ''}`.trim();
+    heading.innerHTML = `<span class="num">${date.getDate()}</span><span>${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}</span><span class="dow">${DAY_NAMES[date.getDay()]}</span>`;
+    group.appendChild(heading);
+
+    const jobsWrap = document.createElement('div');
+    jobsWrap.className = 'schedule-day-jobs';
+    grouped[iso].forEach(job => jobsWrap.appendChild(renderJobCard(job)));
+    group.appendChild(jobsWrap);
+
+    parent.appendChild(group);
+  });
+}
+
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
 export function renderSchedule(container, refDate, jobs) {
   const today = new Date();
-  const grouped = groupByDueDate(jobs);
-  const dueDates = Object.keys(grouped).sort();
-  const openIso = firstOpenDueDate(jobs);
+  const { open, completed } = partitionScheduleJobs(jobs);
+  const openIso = firstOpenDueDate(open);
 
   container.innerHTML = '';
 
-  if (!dueDates.length) {
+  if (!jobs.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.innerHTML = `
@@ -41,29 +74,46 @@ export function renderSchedule(container, refDate, jobs) {
   const list = document.createElement('div');
   list.className = 'schedule-list';
 
-  dueDates.forEach(iso => {
-    const date = parseISO(iso);
-    const group = document.createElement('div');
-    group.className = 'schedule-day-group';
-    // Two independent anchors, so app.js can choose which one a given render
-    // should scroll to: entering the view (and "Today") goes to the oldest open
-    // job; the prev/next arrows still step by date. They're separate attributes
-    // rather than one, because the same day is often both.
-    if (iso === openIso) group.dataset.openAnchor = 'true';
-    if (isSameDay(date, refDate)) group.dataset.dateAnchor = 'true';
+  // Anchors only belong to active work. A collapsed completed job must never
+  // become an invisible scroll target when entering or paging the schedule.
+  appendDayGroups(list, open, refDate, today, { includeAnchors: true, openIso });
 
-    const heading = document.createElement('div');
-    heading.className = `schedule-day-heading ${isSameDay(date, today) ? 'is-today' : ''}`.trim();
-    heading.innerHTML = `<span class="num">${date.getDate()}</span><span>${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}</span><span class="dow">${DAY_NAMES[date.getDay()]}</span>`;
-    group.appendChild(heading);
+  if (!open.length) {
+    const allDone = document.createElement('div');
+    allDone.className = 'schedule-open-empty';
+    allDone.textContent = 'No open production jobs in range.';
+    list.appendChild(allDone);
+  }
 
-    const jobsWrap = document.createElement('div');
-    jobsWrap.className = 'schedule-day-jobs';
-    grouped[iso].forEach(job => jobsWrap.appendChild(renderJobCard(job)));
-    group.appendChild(jobsWrap);
+  if (completed.length) {
+    const section = document.createElement('section');
+    section.className = `schedule-completed-section ${completedExpanded ? 'is-expanded' : ''}`.trim();
 
-    list.appendChild(group);
-  });
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'schedule-completed-toggle';
+    toggle.setAttribute('aria-expanded', String(completedExpanded));
+    toggle.innerHTML = `
+      <span class="schedule-completed-label">Completed jobs</span>
+      <span class="schedule-completed-count">${completed.length}</span>
+      <span class="schedule-completed-chevron" aria-hidden="true">⌄</span>
+    `;
+
+    const completedList = document.createElement('div');
+    completedList.className = 'schedule-completed-list';
+    completedList.hidden = !completedExpanded;
+    appendDayGroups(completedList, completed, refDate, today);
+
+    toggle.addEventListener('click', () => {
+      completedExpanded = !completedExpanded;
+      toggle.setAttribute('aria-expanded', String(completedExpanded));
+      completedList.hidden = !completedExpanded;
+      section.classList.toggle('is-expanded', completedExpanded);
+    });
+
+    section.append(toggle, completedList);
+    list.appendChild(section);
+  }
 
   container.appendChild(list);
 }
