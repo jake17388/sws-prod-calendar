@@ -31,6 +31,13 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin' }
       body = { version: 1 };
     } else if (action === 'getProofFile') {
       body = { available: false };
+    } else if (action === 'getAdditionalFile') {
+      body = {
+        available: true,
+        name: 'install-photo.jpg',
+        mimeType: 'image/png',
+        base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      };
     } else if (action === 'getCommonTasks') {
       body = { tasks: [] };
     } else if (action === 'getDropboxStatus') {
@@ -110,6 +117,10 @@ test('a Viewer can add an additional file with visible attribution but cannot de
   await expect(page.getByText('install-photo.jpg')).toBeVisible();
   await expect(page.locator('.additional-file-meta').filter({ hasText: 'Test User' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'View File' }).click();
+  await expect(page.locator('#proof-viewer-overlay')).toBeVisible();
+  await expect(page.locator('#proof-viewer-title')).toContainText('install-photo.jpg');
+  await expect(page.locator('.file-viewer-image')).toBeVisible();
 });
 
 test('a temporary PIN forces My Account until the user replaces it', async ({ page }) => {
