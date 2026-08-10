@@ -2,6 +2,7 @@
   "name": "sws-production-calendar",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build:pages": "node scripts/build-pages.mjs",
     "check": "npm run check:syntax && npm run test:coverage",
@@ -12,7 +13,8 @@
     "test:load": "node scripts/load-simulation.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1"
+    "@playwright/test": "^1.62.1",
+    "pdfjs-dist": "^4.7.76"
   },
   "engines": {
     "node": ">=22"

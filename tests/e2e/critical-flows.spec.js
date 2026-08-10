@@ -9,7 +9,26 @@ const job = {
   departmentChecklists: {}, additionalFiles: [], updatedAt: '2026-08-10T12:00:00.000Z',
 };
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin' } = {}) {
+function onePagePdfBase64() {
+  const objects = [
+    '1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n',
+    '2 0 obj\n<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n',
+    '3 0 obj\n<</Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]>>\nendobj\n',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += object;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<</Size ${objects.length + 1} /Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf).toString('base64');
+}
+
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null } = {}) {
   let currentJob = structuredClone(job);
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
@@ -30,7 +49,9 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin' }
     } else if (action === 'getTrackingVersion') {
       body = { version: 1 };
     } else if (action === 'getProofFile') {
-      body = { available: false };
+      body = productionPdf
+        ? { available: true, name: '260001-production.pdf', base64: productionPdf }
+        : { available: false };
     } else if (action === 'getAdditionalFile') {
       body = {
         available: true,
@@ -91,6 +112,17 @@ test('an Admin can sign in, open a job, and add a note immediately', async ({ pa
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Ready for production')).toBeVisible();
   await expect(page.getByText('Saving…')).toHaveCount(0);
+});
+
+test('a production PDF opens from original bytes and can be re-rendered at higher zoom', async ({ page }) => {
+  await mockBackend(page, { productionPdf: onePagePdfBase64() });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await page.getByRole('button', { name: 'View Production File' }).click();
+  await expect(page.locator('.proof-viewer-page')).toBeVisible();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.locator('#proof-viewer-zoom-label')).toHaveText('125%');
+  await expect(page.locator('#proof-viewer-open-original')).toHaveAttribute('href', /^blob:/);
 });
 
 test('a Viewer can add to the same project notes timeline', async ({ page }) => {

@@ -8,15 +8,16 @@ import { renderNotes } from './notes.js';
 import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
-import { renderPdfPages } from '../pdfViewer.js';
-import { cacheProofFile, getCachedProofFile } from '../proofCache.mjs';
+import { looksLikePdfBytes, renderPdfPages, resetPdfViewerEngine } from '../pdfViewer.js';
+import { cacheProofFile, deleteCachedProofFile, getCachedProofFile } from '../proofCache.mjs';
 import { productionProofCacheKey } from '../currentWeekProofPreload.mjs';
-import { readStoredProof, storeProof } from '../proofDiskCache.mjs';
+import { deleteStoredProof, readStoredProof, storeProof } from '../proofDiskCache.mjs';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
 let viewerObjectUrl = null;
+let viewerRenderController = null;
 let activeJobKey = null;
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
 
@@ -38,7 +39,49 @@ function setViewportZoomable(zoomable) {
   if (meta) meta.setAttribute('content', zoomable ? ZOOMABLE_VIEWPORT_CONTENT : DEFAULT_VIEWPORT_CONTENT);
 }
 
+async function retryFileRequest(request, attempts = 2) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return await request(); } catch (err) { lastError = err; }
+    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, 350 * attempt));
+  }
+  throw lastError;
+}
+
+function destroyViewerDocument() {
+  if (viewerRenderController) viewerRenderController.destroy();
+  viewerRenderController = null;
+}
+
+function attachOriginalFile(bytes, mimeType, name) {
+  if (viewerObjectUrl) URL.revokeObjectURL(viewerObjectUrl);
+  viewerObjectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  const original = document.getElementById('proof-viewer-open-original');
+  original.href = viewerObjectUrl;
+  original.removeAttribute('download');
+  return viewerObjectUrl;
+}
+
+function updateZoomControls(enabled, zoom = 1) {
+  document.getElementById('proof-viewer-zoom-out').disabled = !enabled;
+  document.getElementById('proof-viewer-zoom-in').disabled = !enabled;
+  document.getElementById('proof-viewer-fit').disabled = !enabled;
+  document.getElementById('proof-viewer-zoom-label').textContent = `${Math.round(zoom * 100)}%`;
+}
+
+async function applyViewerZoom(nextZoom) {
+  if (!viewerRenderController) return;
+  updateZoomControls(false, viewerRenderController.zoom);
+  try {
+    const zoom = await viewerRenderController.setZoom(nextZoom);
+    updateZoomControls(true, zoom);
+  } catch (err) {
+    updateZoomControls(true, viewerRenderController.zoom);
+  }
+}
+
 function prepareFileViewer(job, title) {
+  destroyViewerDocument();
   if (viewerObjectUrl) {
     URL.revokeObjectURL(viewerObjectUrl);
     viewerObjectUrl = null;
@@ -50,22 +93,78 @@ function prepareFileViewer(job, title) {
   loading.hidden = false;
   loading.textContent = 'Loading…';
   document.getElementById('proof-viewer-overlay').classList.add('open');
+  updateZoomControls(false, 1);
+  document.getElementById('proof-viewer-zoom-out').onclick = () => applyViewerZoom((viewerRenderController?.zoom || 1) - 0.25);
+  document.getElementById('proof-viewer-zoom-in').onclick = () => applyViewerZoom((viewerRenderController?.zoom || 1) + 0.25);
+  document.getElementById('proof-viewer-fit').onclick = () => applyViewerZoom(1);
   setViewportZoomable(true);
 
   return { pages, loading, token: ++viewerRequestToken };
 }
 
-function openProofViewer(job, bytes) {
-  const { pages, loading, token } = prepareFileViewer(job, job.title);
+function showPdfFailure(pages, retry) {
+  pages.replaceChildren();
+  const error = document.createElement('div');
+  error.className = 'proof-viewer-error';
+  const message = document.createElement('div');
+  message.textContent = 'This PDF could not be displayed.';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'settings-action primary';
+  button.textContent = 'Try again';
+  button.onclick = retry;
+  error.append(message, button);
+  pages.appendChild(error);
+}
 
-  renderPdfPages(
-    pages,
-    bytes,
-    () => token !== viewerRequestToken,
-    () => { if (token === viewerRequestToken) loading.hidden = true; },
-  )
-    .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
-    .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
+function openProofViewer(job, bytes, name, repair, title = job.title) {
+  const { pages, loading, token } = prepareFileViewer(job, title);
+  let activeBytes = bytes;
+
+  const render = async allowRepair => {
+    if (token !== viewerRequestToken) return;
+    destroyViewerDocument();
+    loading.hidden = false;
+    loading.textContent = allowRepair ? 'Loading…' : 'Loading fresh copy…';
+    attachOriginalFile(activeBytes, 'application/pdf', name || 'Production File.pdf');
+    try {
+      const controller = await renderPdfPages(
+        pages,
+        activeBytes,
+        () => token !== viewerRequestToken,
+        () => { if (token === viewerRequestToken) loading.hidden = true; },
+      );
+      if (token !== viewerRequestToken) {
+        if (controller) await controller.destroy();
+        return;
+      }
+      viewerRenderController = controller;
+      if (viewerRenderController) {
+        loading.hidden = true;
+        updateZoomControls(true, viewerRenderController.zoom);
+      }
+    } catch (err) {
+      console.error('PDF viewer failed:', err);
+      resetPdfViewerEngine();
+      if (allowRepair && repair) {
+        try {
+          loading.textContent = 'Refreshing original file…';
+          const fresh = await repair();
+          activeBytes = fresh.bytes;
+          name = fresh.name || name;
+          await render(false);
+          return;
+        } catch (repairError) {
+          console.error('PDF repair failed:', repairError);
+        }
+      }
+      if (token !== viewerRequestToken) return;
+      loading.hidden = true;
+      showPdfFailure(pages, () => render(true));
+    }
+  };
+
+  render(true);
 }
 
 function addDownloadFallback(pages, url, name, message = 'This file type cannot be previewed in the browser.') {
@@ -82,25 +181,18 @@ function addDownloadFallback(pages, url, name, message = 'This file type cannot 
   pages.appendChild(fallback);
 }
 
-function openAdditionalFileViewer(job, file, response, bytes) {
+function openAdditionalFileViewer(job, file, response, bytes, repair) {
   const name = response.name || file.name || 'Additional File';
   const mimeType = response.mimeType || file.mimeType || 'application/octet-stream';
-  const { pages, loading, token } = prepareFileViewer(job, name);
 
   if (mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) {
-    renderPdfPages(
-      pages,
-      bytes,
-      () => token !== viewerRequestToken,
-      () => { if (token === viewerRequestToken) loading.hidden = true; },
-    )
-      .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
-      .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
+    openProofViewer(job, bytes, name, repair, name);
     return;
   }
 
-  viewerObjectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-  const url = viewerObjectUrl;
+  const { pages, loading, token } = prepareFileViewer(job, name);
+
+  const url = attachOriginalFile(bytes, mimeType, name);
 
   if (mimeType.startsWith('image/')) {
     const image = document.createElement('img');
@@ -150,6 +242,7 @@ function openAdditionalFileViewer(job, file, response, bytes) {
 
 export function closeProofViewer() {
   viewerRequestToken++; // stop any in-flight page rendering
+  destroyViewerDocument();
   document.getElementById('proof-viewer-overlay').classList.remove('open');
   document.getElementById('proof-viewer-pages').innerHTML = '';
   if (viewerObjectUrl) {
@@ -176,12 +269,33 @@ function renderProofSection(job) {
 
   const token = ++proofRequestToken;
   const cacheKey = productionProofCacheKey(job.jobNum);
+  const downloadProof = async () => {
+    const res = await retryFileRequest(() => fetchProofFile(job.jobNum));
+    if (!res || !res.available || !res.base64) return null;
+    const proof = {
+      name: res.name || `${job.jobNum}.pdf`,
+      mimeType: 'application/pdf',
+      bytes: base64ToBytes(res.base64),
+    };
+    if (!looksLikePdfBytes(proof.bytes)) throw new Error('Invalid PDF response');
+    return proof;
+  };
+  const repairProof = async () => {
+    deleteCachedProofFile(cacheKey);
+    await deleteStoredProof(cacheKey);
+    const proof = await downloadProof();
+    if (!proof) throw new Error('Production file unavailable');
+    await storeProof(cacheKey, proof);
+    cacheProofFile(cacheKey, proof);
+    currentProofBytes = proof.bytes;
+    return proof;
+  };
   const showProof = proof => {
     currentProofBytes = proof.bytes;
     cacheProofFile(cacheKey, proof);
     empty.hidden = true;
     openBtn.hidden = false;
-    openBtn.onclick = () => openProofViewer(job, currentProofBytes);
+    openBtn.onclick = () => openProofViewer(job, currentProofBytes, proof.name, repairProof);
   };
   const cached = getCachedProofFile(cacheKey);
   if (cached) {
@@ -192,14 +306,8 @@ function renderProofSection(job) {
   readStoredProof(cacheKey)
     .then(stored => {
       if (stored) return stored;
-      return fetchProofFile(job.jobNum).then(res => {
-        if (!res || !res.available || !res.base64) return null;
-        const proof = {
-          name: res.name || job.title,
-          mimeType: 'application/pdf',
-          bytes: base64ToBytes(res.base64),
-        };
-        storeProof(cacheKey, proof);
+      return downloadProof().then(proof => {
+        if (proof) storeProof(cacheKey, proof);
         return proof;
       });
     })
@@ -238,16 +346,28 @@ async function viewAdditionalFile(job, file, button) {
   button.textContent = 'Loading…';
   try {
     const cacheKey = `additional:${job.jobKey}:${file.id}`;
+    const fetchFresh = async () => {
+      deleteCachedProofFile(cacheKey);
+      const res = await retryFileRequest(() => fetchAdditionalFile(job.jobKey, file.id));
+      if (!res || !res.available || !res.base64) throw new Error(res && (res.message || res.error));
+      const proof = {
+        name: res.name || file.name,
+        mimeType: res.mimeType || file.mimeType,
+        bytes: base64ToBytes(res.base64),
+      };
+      if ((proof.mimeType === 'application/pdf' || proof.name.toLowerCase().endsWith('.pdf')) && !looksLikePdfBytes(proof.bytes)) {
+        throw new Error('Invalid PDF response');
+      }
+      cacheProofFile(cacheKey, proof);
+      return proof;
+    };
     const cached = getCachedProofFile(cacheKey);
     if (cached) {
-      openAdditionalFileViewer(job, file, cached, cached.bytes);
+      openAdditionalFileViewer(job, file, cached, cached.bytes, fetchFresh);
       return;
     }
-    const res = await fetchAdditionalFile(job.jobKey, file.id);
-    if (!res || !res.available || !res.base64) throw new Error(res && (res.message || res.error));
-    const bytes = base64ToBytes(res.base64);
-    cacheProofFile(cacheKey, { name: res.name || file.name, mimeType: res.mimeType || file.mimeType, bytes });
-    openAdditionalFileViewer(job, file, res, bytes);
+    const proof = await fetchFresh();
+    openAdditionalFileViewer(job, file, proof, proof.bytes, fetchFresh);
   } catch (err) {
     showToast('Could not open file — try again', 'error');
   } finally {

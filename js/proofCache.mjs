@@ -26,6 +26,10 @@ export function getCachedProofFile(jobNum, now = Date.now()) {
   return entry.proof;
 }
 
+export function deleteCachedProofFile(jobNum) {
+  return proofFiles.delete(String(jobNum));
+}
+
 export function clearProofFileCache() {
   proofFiles.clear();
 }

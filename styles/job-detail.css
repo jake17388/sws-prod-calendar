@@ -455,6 +455,34 @@
   font-size: var(--text-sm);
 }
 .proof-viewer-loading[hidden] { display: none; }
+.proof-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.proof-viewer-toolbar button,
+.proof-viewer-toolbar a {
+  min-height: 38px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--ink-primary);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.proof-viewer-toolbar button:disabled { opacity: 0.45; cursor: wait; }
+#proof-viewer-zoom-label { min-width: 50px; text-align: center; font-variant-numeric: tabular-nums; }
+#proof-viewer-open-original { color: var(--accent-solid); }
 
 /* Pages render as plain block content (one canvas per page) in a scrolling
    column — deliberately not an iframe: mobile Safari's native PDF-in-iframe
@@ -466,7 +494,7 @@
   flex: 1;
   width: 100%;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   background: var(--surface-sunken);
   display: flex;
@@ -476,10 +504,37 @@
   padding: var(--space-3) var(--space-3) calc(var(--space-3) + env(safe-area-inset-bottom));
 }
 .proof-viewer-page {
-  max-width: 100%;
+  max-width: none;
   height: auto;
+  flex-shrink: 0;
   background: #fff;
   box-shadow: var(--shadow-2);
+}
+.proof-viewer-page-placeholder {
+  flex-shrink: 0;
+  max-width: none;
+  background: var(--surface-card);
+  box-shadow: var(--shadow-2);
+}
+.proof-viewer-page-placeholder.failed {
+  display: grid;
+  place-items: center;
+  color: var(--ink-tertiary);
+}
+.proof-viewer-error {
+  margin: auto;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  color: var(--ink-secondary);
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .proof-viewer-toolbar { justify-content: flex-start; overflow-x: auto; }
+  .proof-viewer-toolbar button,
+  .proof-viewer-toolbar a { white-space: nowrap; }
 }
 .file-viewer-image,
 .file-viewer-media {

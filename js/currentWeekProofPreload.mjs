@@ -1,5 +1,6 @@
 import { getCachedProofFile } from './proofCache.mjs';
-import { pruneStoredProofs, readStoredProof, storeProof } from './proofDiskCache.mjs';
+import { deleteStoredProof, pruneStoredProofs, readStoredProof, storeProof } from './proofDiskCache.mjs';
+import { validatePdfBytes } from './pdfViewer.js';
 
 const inFlight = new Set();
 
@@ -43,7 +44,10 @@ async function preloadProofTargets(targets, options, concurrency) {
   const readStored = options.readStored || readStoredProof;
   const fetchProof = options.fetchProof || defaultFetchProof;
   const writeStored = options.storeProof || storeProof;
+  const removeStored = options.deleteStored || deleteStoredProof;
   const hasMemory = options.hasMemory || (key => !!getCachedProofFile(key));
+  const validateProof = options.validateProof || (proof => validatePdfBytes(proof.bytes));
+  const retryDelay = options.retryDelay || (attempt => new Promise(resolve => setTimeout(resolve, 350 * attempt)));
   const result = { total: targets.length, cached: 0, stored: 0, unavailable: 0, failed: 0 };
   let nextIndex = 0;
 
@@ -54,20 +58,46 @@ async function preloadProofTargets(targets, options, concurrency) {
       if (inFlight.has(key)) { result.cached++; continue; }
       inFlight.add(key);
       try {
-        if (hasMemory(key) || await readStored(key)) {
+        if (hasMemory(key)) {
           result.cached++;
           continue;
         }
-        const response = await fetchProof(job.jobNum);
-        if (!response || !response.available || !response.base64) {
+        const stored = await readStored(key);
+        if (stored) {
+          if (await validateProof(stored)) {
+            result.cached++;
+            continue;
+          }
+          await removeStored(key);
+        }
+
+        let proof = null;
+        let unavailable = false;
+        let lastError = null;
+        for (let attempt = 1; attempt <= 2 && !proof; attempt++) {
+          try {
+            const response = await fetchProof(job.jobNum);
+            if (!response || !response.available || !response.base64) {
+              unavailable = true;
+              break;
+            }
+            const candidate = {
+              name: response.name || `${job.jobNum}.pdf`,
+              mimeType: 'application/pdf',
+              bytes: base64ToBytes(response.base64),
+            };
+            if (await validateProof(candidate)) proof = candidate;
+            else lastError = new Error('Invalid PDF data');
+          } catch (err) {
+            lastError = err;
+          }
+          if (!proof && attempt < 2) await retryDelay(attempt);
+        }
+        if (unavailable) {
           result.unavailable++;
           continue;
         }
-        const proof = {
-          name: response.name || `${job.jobNum}.pdf`,
-          mimeType: 'application/pdf',
-          bytes: base64ToBytes(response.base64),
-        };
+        if (!proof) throw lastError || new Error('Could not validate PDF');
         const didStore = await writeStored(key, proof);
         if (didStore === false) result.failed++;
         else result.stored++;

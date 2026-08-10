@@ -145,6 +145,13 @@ cache for six hours, while only an opened file is promoted into the small
 in-memory viewer cache. Expired files are removed automatically so iPads do not
 retain an ever-growing collection.
 
+The PDF.js engine is pinned and served with the app rather than loaded from a
+third-party CDN. Preloaded bytes are parsed before being accepted into cache;
+temporary failures retry, and a bad cached copy is evicted and fetched again
+automatically. The viewer renders page one immediately, lazily renders later
+pages, and re-renders from the original vector PDF at each zoom level. **Open
+Original** remains available on every device as a native full-quality fallback.
+
 ## Validation and permissions
 
 All permissions are enforced in `Code.js`; hidden frontend controls are only a

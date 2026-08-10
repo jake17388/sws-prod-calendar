@@ -21,7 +21,7 @@
 <link rel="stylesheet" href="styles/layout.css?v=2026.08.10.1" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.08.10.3" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.08.10.1" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.08.10.5" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.08.10.9" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.10.1" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.10.2" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.07.10" />
@@ -331,6 +331,13 @@
     <span id="proof-viewer-title"></span>
     <button id="proof-viewer-close" class="job-detail-close" aria-label="Close">&times;</button>
   </div>
+  <div class="proof-viewer-toolbar" aria-label="PDF viewing controls">
+    <button id="proof-viewer-zoom-out" type="button" aria-label="Zoom out">−</button>
+    <span id="proof-viewer-zoom-label" aria-live="polite">100%</span>
+    <button id="proof-viewer-zoom-in" type="button" aria-label="Zoom in">+</button>
+    <button id="proof-viewer-fit" type="button">Fit width</button>
+    <a id="proof-viewer-open-original" target="_blank" rel="noopener">Open Original</a>
+  </div>
   <div id="proof-viewer-loading" class="proof-viewer-loading" hidden></div>
   <div id="proof-viewer-pages" class="proof-viewer-pages"></div>
 </div>
@@ -386,6 +393,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.10.8"></script>
+<script type="module" src="js/app.js?v=2026.08.10.9"></script>
 </body>
 </html>
