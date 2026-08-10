@@ -916,14 +916,62 @@ function routePost(e) {
 // unrelated resync of an already-done item shouldn't overwrite who actually
 // completed it. Un-checking clears the stamp, mirroring how the job-level
 // completedAt/completedBy reset on un-complete.
-function stampChecklistItem(nextItem, prevItem, actorName, actorId) {
+function stampChecklistItem(nextItem, prevItem, actorName, actorId, eventAt) {
+  const timestamp = eventAt || new Date().toISOString();
   const addedBy = prevItem ? (prevItem.addedBy || '') : actorName;
   const addedById = prevItem ? (prevItem.addedById || '') : (actorId || '');
-  const addedAt = prevItem ? (prevItem.addedAt || '') : new Date().toISOString();
+  const addedAt = prevItem ? (prevItem.addedAt || '') : timestamp;
   const stamped = { ...nextItem, addedBy, addedById, addedAt };
   if (!nextItem.done) return { ...stamped, doneBy: '', doneById: '', doneAt: '' };
-  if (prevItem && prevItem.done) return { ...stamped, doneBy: prevItem.doneBy || actorName, doneById: prevItem.doneById || actorId || '', doneAt: prevItem.doneAt || new Date().toISOString() };
-  return { ...stamped, doneBy: actorName, doneById: actorId || '', doneAt: new Date().toISOString() };
+  if (prevItem && prevItem.done) return { ...stamped, doneBy: prevItem.doneBy || actorName, doneById: prevItem.doneById || actorId || '', doneAt: prevItem.doneAt || timestamp };
+  return { ...stamped, doneBy: actorName, doneById: actorId || '', doneAt: timestamp };
+}
+
+// When Paint moves from having open work to all tasks complete, Assembly
+// automatically receives the job. An open Assembly task is reused; otherwise
+// a Prep for Install task is created with the same attribution and exact
+// timestamp as the painter's final completion.
+function advancePaintToAssembly(state, previousPaintItems, actor, eventAt) {
+  const paintItems = (state.departmentChecklists && state.departmentChecklists.Paint) || [];
+  const previous = Array.isArray(previousPaintItems) ? previousPaintItems : [];
+  const paintWasOpen = previous.some(item => !item.done);
+  const paintIsComplete = paintItems.length > 0 && paintItems.every(item => item.done);
+  if (!paintWasOpen || !paintIsComplete) return state;
+
+  const previousById = new Map(previous.map(item => [item.id, item]));
+  const finalPaintItem = paintItems.find(item => item.done && !(previousById.get(item.id) || {}).done) || paintItems[paintItems.length - 1];
+  const handoffAt = finalPaintItem.doneAt || eventAt || new Date().toISOString();
+  const handoffBy = finalPaintItem.doneBy || actor.name;
+  const handoffById = finalPaintItem.doneById || actor.id || '';
+  const assemblyItems = [...((state.departmentChecklists && state.departmentChecklists.Assembly) || [])];
+
+  if (!assemblyItems.some(item => !item.done)) {
+    assemblyItems.push({
+      id: Utilities.getUuid(),
+      text: 'Prep for Install',
+      done: false,
+      doneBy: '',
+      doneById: '',
+      doneAt: '',
+      addedBy: handoffBy,
+      addedById: handoffById,
+      addedAt: handoffAt,
+    });
+  }
+
+  const departments = state.departments.indexOf('Assembly') === -1
+    ? [...state.departments, 'Assembly']
+    : [...state.departments];
+  const currentDepartments = state.currentDepartments
+    .filter(department => department !== 'Paint' && department !== 'Assembly');
+  currentDepartments.push('Assembly');
+
+  return {
+    ...state,
+    departments,
+    currentDepartments,
+    departmentChecklists: { ...state.departmentChecklists, Assembly: assemblyItems },
+  };
 }
 
 // Only Admins and Managers can assign departments to a job. Any
@@ -962,6 +1010,7 @@ function updateJobDepartments(actor, data) {
   // option), but enforced here as the actual source of truth.
   const isAdmin = actor.department === 'Admin';
 
+  const transitionAt = new Date().toISOString();
   const departmentChecklists = {};
   const rawChecklists = (data.departmentChecklists && typeof data.departmentChecklists === 'object') ? data.departmentChecklists : {};
   for (let d = 0; d < departments.length; d++) {
@@ -981,7 +1030,7 @@ function updateJobDepartments(actor, data) {
         const text = String((i && i.text) || '').trim();
         const done = !!(i && i.done);
         const oldItem = oldItems.find(o => o.id === id);
-        const built = stampChecklistItem({ id, text, done }, oldItem, actor.name, actor.id);
+        const built = stampChecklistItem({ id, text, done }, oldItem, actor.name, actor.id, transitionAt);
         incomingById.set(id, built);
         return built;
       })
@@ -1008,13 +1057,18 @@ function updateJobDepartments(actor, data) {
   // checklist-driven workflow of its own (see renderDepartmentEditor's
   // self-heal comment). This both rejects a client trying to mark a
   // department current with no open tasks, and auto-drops a department the
-  // moment its last open task on this very save gets checked off — a
-  // Manager/Admin has to hand it back with a fresh task, rather than it
-  // silently sitting "current" forever with nothing left to do.
+  // moment its last open task on this very save gets checked off. Paint is
+  // then handed directly to Assembly by advancePaintToAssembly below.
   const currentDepartments = rawCurrentDepartments.filter(dept =>
     dept === 'Ship-In' || (departmentChecklists[dept] || []).some(i => !i.done));
 
-  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments }, actor.name, data.expectedUpdatedAt);
+  const nextState = advancePaintToAssembly(
+    { departments, departmentChecklists, currentDepartments },
+    existing.departmentChecklists.Paint || [],
+    actor,
+    transitionAt,
+  );
+  return setTracking(data.jobKey, nextState, actor.name, data.expectedUpdatedAt);
 }
 
 // ── Shared project notes ────────────────────────────────────────────────────
@@ -1138,17 +1192,29 @@ function toggleDepartmentTaskDone(actor, data) {
     return { success: false, error: 'Only the person who completed this task can un-check it' };
   }
 
-  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: requestedDone }, prevItem, actor.name, actor.id) : i));
+  const transitionAt = new Date().toISOString();
+  const updatedItems = items.map(i => (i.id === itemId ? stampChecklistItem({ ...i, done: requestedDone }, prevItem, actor.name, actor.id, transitionAt) : i));
   const departmentChecklists = { ...current.departmentChecklists, [department]: updatedItems };
 
   // Checking off the last open task hands the department back — it's no
-  // longer "currently" holding the job, so a Manager/Admin has to reassign
-  // it once there's a new open task rather than it silently sitting
-  // "current" forever with nothing left to do. Same rule
-  // updateJobDepartments enforces for the Admin/Manager editor.
+  // longer "currently" holding the job. Paint is the workflow exception: its
+  // final completion immediately hands the job to Assembly below. Same base
+  // rule updateJobDepartments enforces for the Admin/Manager editor.
   const patch = { departmentChecklists };
   if (updatedItems.length && updatedItems.every(i => i.done)) {
     patch.currentDepartments = current.currentDepartments.filter(d => d !== department);
+  }
+
+  if (department === 'Paint') {
+    const advanced = advancePaintToAssembly(
+      { ...current, ...patch },
+      items,
+      actor,
+      transitionAt,
+    );
+    patch.departments = advanced.departments;
+    patch.departmentChecklists = advanced.departmentChecklists;
+    patch.currentDepartments = advanced.currentDepartments;
   }
 
   return setTracking(data.jobKey, patch, actor.name);

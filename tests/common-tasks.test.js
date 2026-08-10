@@ -137,3 +137,53 @@ test('the Paint handoff preserves an existing open Assembly task and does not ru
   const repeated = context.advancePaintToAssembly(handedOff, handedOff.departmentChecklists.Paint, { id: 'p1', name: 'Pat' }, '2026-08-10T15:31:00.000Z');
   assert.deepEqual(JSON.parse(JSON.stringify(repeated)), JSON.parse(JSON.stringify(handedOff)));
 });
+
+test('a painter completing the final task persists the Assembly handoff', () => {
+  const { context } = loadBackend();
+  const current = {
+    completed: false,
+    departments: ['Paint'],
+    currentDepartments: ['Paint'],
+    departmentChecklists: { Paint: [{ id: 'paint-1', text: 'Final coat', done: false }] },
+  };
+  context.getAllTracking = () => ({ '260001': current });
+  context.setTracking = (jobKey, patch) => ({ success: true, jobKey, ...patch });
+
+  const result = context.toggleDepartmentTaskDone(
+    { id: 'painter-1', name: 'Pat Painter', department: 'Paint' },
+    { jobKey: '260001', department: 'Paint', itemId: 'paint-1', done: true },
+  );
+
+  assert.equal(result.success, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.currentDepartments)), ['Assembly']);
+  assert.equal(result.departmentChecklists.Assembly[0].addedBy, 'Pat Painter');
+  assert.equal(result.departmentChecklists.Assembly[0].addedAt, result.departmentChecklists.Paint[0].doneAt);
+});
+
+test('the management checklist editor applies the same Paint handoff rule', () => {
+  const { context } = loadBackend();
+  const current = {
+    completed: false,
+    updatedAt: 'before',
+    departments: ['Paint'],
+    currentDepartments: ['Paint'],
+    departmentChecklists: { Paint: [{ id: 'paint-1', text: 'Final coat', done: false }] },
+  };
+  context.getAllTracking = () => ({ '260001': current });
+  context.setTracking = (jobKey, patch) => ({ success: true, jobKey, ...patch });
+
+  const result = context.updateJobDepartments(
+    { id: 'manager-1', name: 'Morgan Manager', department: 'Manager' },
+    {
+      jobKey: '260001',
+      departments: ['Paint'],
+      currentDepartments: ['Paint'],
+      departmentChecklists: { Paint: [{ id: 'paint-1', text: 'Final coat', done: true }] },
+      expectedUpdatedAt: 'before',
+    },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result.currentDepartments)), ['Assembly']);
+  assert.equal(result.departmentChecklists.Assembly[0].addedBy, 'Morgan Manager');
+  assert.equal(result.departmentChecklists.Assembly[0].addedAt, result.departmentChecklists.Paint[0].doneAt);
+});

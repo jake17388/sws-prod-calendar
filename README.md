@@ -117,6 +117,10 @@ completed response briefly so a network retry does not repeat the operation.
 The header shows `Saving…` while writes are in flight, and the browser warns
 before closing a tab with unfinished writes.
 
+Completing Paint's final open task automatically assigns the job to Assembly
+and marks Assembly current. If Assembly has no open work, the app creates a
+`Prep for Install` task attributed to the painter at the same completion time.
+
 ## Validation and permissions
 
 All permissions are enforced in `Code.js`; hidden frontend controls are only a
