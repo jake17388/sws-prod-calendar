@@ -119,3 +119,51 @@ test('bad cached files can be evicted before a clean retry', async () => {
   assert.equal(await deleteStoredProof('repair-me', cacheStorage), true);
   assert.equal(await readStoredProof('repair-me', 1001, cacheStorage), null);
 });
+
+test('the full viewer lifecycle parses, zooms, and releases the original PDF document', async () => {
+  const pdfViewer = await import('../js/pdfViewer.js');
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  let destroyed = 0;
+  const pdf = {
+    numPages: 1,
+    getPage: async () => ({
+      getViewport: ({ scale }) => ({ width: 400 * scale, height: 600 * scale }),
+      render: () => ({ promise: Promise.resolve() }),
+    }),
+    destroy: async () => { destroyed++; },
+  };
+  const fakeLib = { getDocument: () => ({ promise: Promise.resolve(pdf) }), GlobalWorkerOptions: {} };
+  const canvases = [];
+  globalThis.window = { devicePixelRatio: 2 };
+  globalThis.document = {
+    createElement: () => {
+      const canvas = { style: {}, getContext: () => ({}) };
+      canvases.push(canvas);
+      return canvas;
+    },
+  };
+  const container = {
+    clientWidth: 800,
+    replaceChildren: () => {},
+    appendChild: () => {},
+  };
+
+  try {
+    pdfViewer.setPdfJsForTests(fakeLib);
+    assert.equal(await pdfViewer.validatePdfBytes(new TextEncoder().encode('%PDF-1.7\n')), true);
+    const controller = await pdfViewer.renderPdfPages(
+      container,
+      new TextEncoder().encode('%PDF-1.7\n'),
+      () => false,
+    );
+    assert.equal(await controller.setZoom(1.25), 1.25);
+    assert.equal(canvases.at(-1).style.width, '1000px');
+    await controller.destroy();
+    assert.ok(destroyed >= 2);
+  } finally {
+    pdfViewer.resetPdfViewerEngine();
+    globalThis.document = originalDocument;
+    globalThis.window = originalWindow;
+  }
+});
