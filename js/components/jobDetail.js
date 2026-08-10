@@ -1,7 +1,7 @@
 import { toggleComplete, updateDueDate, fetchProofFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
-import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canAddProjectNotes, currentDepartment } from '../auth.js';
+import { canEditDueDates, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { renderNotes } from './notes.js';
@@ -169,7 +169,6 @@ function renderDepartmentSection(job) {
   if (!job.departments) job.departments = [];
   if (!job.departmentChecklists) job.departmentChecklists = {};
   if (!job.currentDepartments) job.currentDepartments = [];
-  if (!job.departmentNotes) job.departmentNotes = {};
 
   if (canAssignDepartments()) {
     wrap.hidden = false;
@@ -245,7 +244,7 @@ export function openJobDetail(jobKey) {
       });
   } : null;
 
-  renderNotes(document.getElementById('job-detail-notes'), job, 'project', '', { canWrite: canAddProjectNotes() });
+  renderNotes(document.getElementById('job-detail-notes'), job, { canWrite: true });
 
   document.getElementById('job-detail-overlay').classList.add('open');
   setHeaderDimmed(true);

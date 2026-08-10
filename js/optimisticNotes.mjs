@@ -49,17 +49,6 @@ export function preservePendingNotesInJobs(currentJobs, nextJobs) {
     if (!current) return nextJob;
 
     const notes = preservePendingNotes(current.notes || [], nextJob.notes || []);
-    const departmentNotes = { ...(nextJob.departmentNotes || {}) };
-    const departments = new Set([
-      ...Object.keys(current.departmentNotes || {}),
-      ...Object.keys(departmentNotes),
-    ]);
-    departments.forEach(department => {
-      departmentNotes[department] = preservePendingNotes(
-        (current.departmentNotes && current.departmentNotes[department]) || [],
-        departmentNotes[department] || [],
-      );
-    });
-    return { ...nextJob, notes, departmentNotes };
+    return { ...nextJob, notes };
   });
 }

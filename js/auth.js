@@ -61,9 +61,6 @@ export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' |
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const isAdmin = () => !!auth && auth.department === 'Admin';
 export const mustChangePin = () => !!auth && !!auth.mustChangePin;
-// Project notes: Admin, Manager, and Viewer can add one — production-
-// department accounts can't (they add department notes instead).
-export const canAddProjectNotes = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager' || auth.department === 'Viewer');
 // Now shown to everyone with a session, including production-department
 // accounts — a job can show departments other than their own (they see
 // every job their department is ever assigned, not just current ones), and

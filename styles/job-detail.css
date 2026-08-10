@@ -151,7 +151,7 @@
   min-height: 1.2em;
 }
 
-/* ── Notes list — shared by project notes and department notes ─────────── */
+/* ── Shared project notes timeline ─────────────────────────────────────── */
 .notes-list {
   display: flex;
   flex-direction: column;

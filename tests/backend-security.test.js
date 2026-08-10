@@ -180,7 +180,7 @@ test('every authenticated role can write shared project notes and department sco
     .forEach(department => assert.equal(context.canWriteNote({ department }), true));
   assert.deepEqual(
     JSON.parse(JSON.stringify(context.noteScopeAndDept({ scope: 'department', department: 'Paint' }))),
-    { scope: '', department: '' },
+    { scope: 'project', department: '' },
   );
 });
 

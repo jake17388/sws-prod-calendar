@@ -17,38 +17,25 @@ function noteStampText(note) {
 }
 
 /**
- * Renders a list of authored, timestamped notes plus an "Add note" button
- * that reveals a small inline form — shared by project notes (jobDetail.js,
- * scope 'project') and department notes (departmentAssign.js, scope
- * 'department', with `department` set). A note can only be edited or
- * deleted by whoever wrote it; an Admin can touch any note.
+ * Renders the shared project timeline plus an "Add note" button. A note can
+ * only be edited or deleted by whoever wrote it; an Admin can touch any note.
  * @param {HTMLElement} container
  * @param {object} job
- * @param {'project'|'department'} scope
- * @param {string} department — required when scope is 'department'
  * @param {{ canWrite: boolean }} options — whether this viewer may add a
  *   note at all (edit/delete is decided per-note, by authorship)
  */
-export function renderNotes(container, job, scope, department, { canWrite }) {
+export function renderNotes(container, job, { canWrite }) {
   container.innerHTML = '';
-  const renderKey = `${job.jobKey}:${scope}:${department}`;
+  const renderKey = job.jobKey;
 
-  const listFor = source => (scope === 'project' ? (source.notes || []) : ((source.departmentNotes && source.departmentNotes[department]) || []));
+  const listFor = source => source.notes || [];
   const readList = () => listFor(job);
   const readLatestList = () => listFor(findJob(job.jobKey) || job);
   let list = readList();
 
   function writeList(nextList) {
-    const latest = findJob(job.jobKey) || job;
-    if (scope === 'project') {
-      job.notes = nextList;
-      job.departmentNotes = latest.departmentNotes;
-      patchJob(job.jobKey, { notes: nextList });
-    } else {
-      job.notes = latest.notes;
-      job.departmentNotes = { ...(latest.departmentNotes || {}), [department]: nextList };
-      patchJob(job.jobKey, { departmentNotes: job.departmentNotes });
-    }
+    job.notes = nextList;
+    patchJob(job.jobKey, { notes: nextList });
     list = nextList;
   }
 
@@ -67,13 +54,11 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
     )[0];
     if (settledDeleteId) {
       const settled = settleDeletedNote(listFor(latest), settledDeleteId, listFor(merged));
-      if (scope === 'project') merged.notes = settled;
-      else merged.departmentNotes = { ...(merged.departmentNotes || {}), [department]: settled };
+      merged.notes = settled;
     }
     job.notes = merged.notes;
-    job.departmentNotes = merged.departmentNotes;
     job.updatedAt = res.updatedAt;
-    patchJob(job.jobKey, { notes: job.notes, departmentNotes: job.departmentNotes, updatedAt: res.updatedAt });
+    patchJob(job.jobKey, { notes: job.notes, updatedAt: res.updatedAt });
     refreshVisibleList();
   }
 
@@ -94,7 +79,6 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
     const latest = findJob(job.jobKey);
     if (latest) {
       job.notes = latest.notes;
-      job.departmentNotes = latest.departmentNotes;
       job.updatedAt = latest.updatedAt;
     }
     list = readList();
@@ -134,7 +118,7 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
       deleteBtn.addEventListener('click', () => {
         writeList(markNoteDeleting(readLatestList(), note.id));
         refreshVisibleList();
-        deleteNote(job.jobKey, scope, department, note.id)
+        deleteNote(job.jobKey, note.id)
           .then(res => {
             if (!res.success) {
               writeList(restoreDeletingNote(readLatestList(), note.id));
@@ -169,7 +153,7 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
       () => {
         const text = textarea.value.trim();
         if (!text) return null;
-        return updateNote(job.jobKey, scope, department, note.id, text);
+        return updateNote(job.jobKey, note.id, text);
       },
     ));
     textarea.focus();
@@ -253,7 +237,7 @@ export function renderNotes(container, job, scope, department, { canWrite }) {
       refreshVisibleList();
       resetAddForm();
 
-      addNote(job.jobKey, scope, department, text, noteId)
+      addNote(job.jobKey, text, noteId)
         .then(res => {
           if (!res.success) {
             writeList(removePendingNote(readLatestList(), noteId));

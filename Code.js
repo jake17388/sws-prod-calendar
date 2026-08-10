@@ -947,7 +947,7 @@ function updateJobDepartments(actor, data) {
   if (!Array.isArray(data.departments) || data.departments.length > JOB_TAGS.length) return { success: false, error: 'Invalid departments' };
   if (data.departments.some(dept => JOB_TAGS.indexOf(String(dept)) === -1)) return { success: false, error: 'Invalid department' };
 
-  const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {}, departmentNotes: {} };
+  const existing = getAllTracking()[String(data.jobKey)] || { completed: false, departmentChecklists: {} };
   if (existing.completed) return { success: false, error: 'Job is complete — reopen it to edit departments' };
 
   const departments = [...new Set(data.departments.map(String))];
@@ -1014,39 +1014,14 @@ function updateJobDepartments(actor, data) {
   const currentDepartments = rawCurrentDepartments.filter(dept =>
     dept === 'Ship-In' || (departmentChecklists[dept] || []).some(i => !i.done));
 
-  // Carries forward each kept department's notes (written through the
-  // separate addNote/updateNote/deleteNote actions) and drops any belonging
-  // to a department no longer assigned — same "only kept departments
-  // survive" rule as departmentChecklists above.
-  const departmentNotes = {};
-  const oldNotes = existing.departmentNotes || {};
-  departments.forEach(dept => {
-    if (oldNotes[dept] !== undefined) departmentNotes[dept] = oldNotes[dept];
-  });
-
-  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments, departmentNotes }, actor.name, data.expectedUpdatedAt);
+  return setTracking(data.jobKey, { departments, departmentChecklists, currentDepartments }, actor.name, data.expectedUpdatedAt);
 }
 
-// ── Notes (project + per-department) ────────────────────────────────────────
-// Project notes: Admin, Manager, and Viewer can add one; everyone can read
-// them. Department notes: Admin, Manager, and anyone logged in as that
-// specific department can add one (not other departments, not Viewers) —
-// scoped to whether the department is *assigned* to the job, not whether
-// it's currently theirs, matching the rest of the department workflow now
-// that jobs stay visible to a department indefinitely (see
-// getProductionJobs). Every note carries who added it and when, the same
-// stamp pattern as a completed checklist item.
-function canWriteNote(actor, scope, department) {
-  if (scope === 'project') {
-    return actor.department === 'Admin' || actor.department === 'Manager' || actor.department === 'Viewer';
-  }
-  return actor.department === 'Admin' || actor.department === 'Manager' || actor.department === department;
-}
-
-function canWriteDepartmentNote(actor, tracking, department) {
-  return JOB_TAGS.indexOf(department) !== -1
-    && (tracking.departments || []).indexOf(department) !== -1
-    && canWriteNote(actor, 'department', department);
+// ── Shared project notes ────────────────────────────────────────────────────
+// Every authenticated user who can view a job can add a note to its one shared
+// timeline. Author names and timestamps provide the organizational context.
+function canWriteNote(actor) {
+  return !!actor;
 }
 
 // Only the person who wrote a note can edit or delete it — an Admin is the
@@ -1061,23 +1036,14 @@ function canEditNote(actor, note) {
 }
 
 function noteScopeAndDept(data) {
-  const scope = data.scope === 'department' ? 'department' : (data.scope === 'project' ? 'project' : '');
-  const department = scope === 'department' ? String(data.department || '') : '';
-  return { scope, department };
-}
-
-function getNoteList(tracking, scope, department) {
-  return scope === 'project' ? tracking.notes : (tracking.departmentNotes[department] || []);
-}
-
-function withNoteList(tracking, scope, department, list) {
-  return scope === 'project'
-    ? { notes: list }
-    : { departmentNotes: { ...tracking.departmentNotes, [department]: list } };
+  // Treat requests from a briefly cached pre-upgrade frontend as project
+  // notes too, so a note can never be written into a retired hidden scope.
+  const scope = data.scope === 'project' || data.scope === 'department' ? 'project' : '';
+  return { scope, department: '' };
 }
 
 function addNote(actor, data) {
-  const { scope, department } = noteScopeAndDept(data);
+  const { scope } = noteScopeAndDept(data);
   if (!scope) return { success: false, error: 'Invalid note scope' };
   if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
   const text = String(data.text || '').trim();
@@ -1087,23 +1053,21 @@ function addNote(actor, data) {
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to add notes' };
-    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) {
-      return { error: 'forbidden' };
-    }
-    const currentList = getNoteList(current, scope, department);
+    if (!canWriteNote(actor)) return { error: 'forbidden' };
+    const currentList = current.notes || [];
     if (currentList.length >= 200) return { error: 'This note list has reached its 200-note limit' };
     const noteId = requestedId || Utilities.getUuid();
     // A retry with the same client-generated id is idempotent, preventing a
     // slow first response plus a retry from creating duplicate notes.
-    if (currentList.some(note => note.id === noteId)) return withNoteList(current, scope, department, currentList);
+    if (currentList.some(note => note.id === noteId)) return { notes: currentList };
     const note = { id: noteId, text, author: actor.name, authorId: actor.id, createdAt: new Date().toISOString() };
     const list = [...currentList, note];
-    return withNoteList(current, scope, department, list);
+    return { notes: list };
   }, actor.name);
 }
 
 function updateNote(actor, data) {
-  const { scope, department } = noteScopeAndDept(data);
+  const { scope } = noteScopeAndDept(data);
   if (!scope) return { success: false, error: 'Invalid note scope' };
   if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
   const text = String(data.text || '').trim();
@@ -1112,31 +1076,31 @@ function updateNote(actor, data) {
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to edit notes' };
-    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) return { error: 'forbidden' };
-    const list = getNoteList(current, scope, department);
+    if (!canWriteNote(actor)) return { error: 'forbidden' };
+    const list = current.notes || [];
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
     if (!canEditNote(actor, existing)) return { error: 'Only the author or an Admin can edit this note' };
     const updatedList = list.map(n => (n.id === data.noteId ? { ...n, text } : n));
-    return withNoteList(current, scope, department, updatedList);
+    return { notes: updatedList };
   }, actor.name);
 }
 
 function deleteNote(actor, data) {
-  const { scope, department } = noteScopeAndDept(data);
+  const { scope } = noteScopeAndDept(data);
   if (!scope) return { success: false, error: 'Invalid note scope' };
   if (!validJobKey(data.jobKey)) return { success: false, error: 'Invalid job key' };
   if (!data.noteId || String(data.noteId).length > 100) return { success: false, error: 'Invalid note id' };
 
   return setTracking(data.jobKey, current => {
     if (current.completed) return { error: 'Job is complete — reopen it to delete notes' };
-    if (scope === 'department' ? !canWriteDepartmentNote(actor, current, department) : !canWriteNote(actor, scope, department)) return { error: 'forbidden' };
-    const list = getNoteList(current, scope, department);
+    if (!canWriteNote(actor)) return { error: 'forbidden' };
+    const list = current.notes || [];
     const existing = list.find(n => n.id === data.noteId);
     if (!existing) return { error: 'Note not found' };
     if (!canEditNote(actor, existing)) return { error: 'Only the author or an Admin can delete this note' };
     const updatedList = list.filter(n => n.id !== data.noteId);
-    return withNoteList(current, scope, department, updatedList);
+    return { notes: updatedList };
   }, actor.name);
 }
 
@@ -1268,7 +1232,6 @@ function getProductionJobs(e, actor) {
     job.departments = t.departments || [];
     job.departmentChecklists = t.departmentChecklists || {};
     job.currentDepartments = t.currentDepartments || [];
-    job.departmentNotes = t.departmentNotes || {};
     // The token a client echoes back on its next write (see setTracking's
     // expectedUpdatedAt check) so a save built from this snapshot gets
     // rejected if someone else's write landed first.
@@ -1446,8 +1409,8 @@ function getTrackingSheet() {
   return getTrackingSpreadsheet().getSheets()[0];
 }
 
-// Notes used to be a single free-text field (job-level) or one per
-// department — now each is a list of authored, timestamped note objects
+// Notes used to be a single free-text field — now each is a list of authored,
+// timestamped note objects
 // ({id, text, author, createdAt}) instead, so multiple notes can be added
 // and each one attributed and individually editable/deletable. Old plain-
 // text content is migrated into a single note the first time it's read
@@ -1476,6 +1439,46 @@ function parseDepartmentNotesCell(raw) {
   return result;
 }
 
+// Department notes were retired in August 2026. Fold every legacy note into
+// the shared project timeline on read, preserving attribution and timestamps.
+// Repeated reads are safe: duplicate IDs/content are collapsed, and the next
+// write stores the merged list while clearing the legacy column.
+function mergeLegacyDepartmentNotes(projectNotes, departmentNotes) {
+  const merged = (Array.isArray(projectNotes) ? projectNotes : []).map(note => ({ ...note }));
+  const signature = note => [note.text || '', note.author || '', note.authorId || '', note.createdAt || ''].join('\u0001');
+  const usedIds = new Map();
+  merged.forEach(note => { if (note.id) usedIds.set(String(note.id), signature(note)); });
+
+  Object.keys(departmentNotes || {}).sort().forEach(department => {
+    const notes = Array.isArray(departmentNotes[department]) ? departmentNotes[department] : [];
+    notes.forEach((source, index) => {
+      const note = { ...source };
+      const noteSignature = signature(note);
+      let id = String(note.id || '');
+      if (id && usedIds.get(id) === noteSignature) return;
+      if (!id || usedIds.has(id)) {
+        const base = `legacy-${String(department).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 40) || 'department'}-${index + 1}`;
+        id = base;
+        let suffix = 2;
+        while (usedIds.has(id)) id = `${base}-${suffix++}`;
+        note.id = id;
+      }
+      usedIds.set(id, noteSignature);
+      merged.push(note);
+    });
+  });
+
+  return merged
+    .map((note, index) => ({ note, index }))
+    .sort((a, b) => {
+      const aTime = Date.parse(a.note.createdAt || '');
+      const bTime = Date.parse(b.note.createdAt || '');
+      if (Number.isNaN(aTime) || Number.isNaN(bTime) || aTime === bTime) return a.index - b.index;
+      return aTime - bTime;
+    })
+    .map(entry => entry.note);
+}
+
 function getAllTracking() {
   const sheet = getTrackingSheet();
   const data = sheet.getDataRange().getValues();
@@ -1497,12 +1500,11 @@ function getAllTracking() {
     let currentDepartments = [];
     try { currentDepartments = currentDepartmentsJson ? JSON.parse(currentDepartmentsJson) : []; } catch (err) { currentDepartments = []; }
     tracking[String(jobKey)] = {
-      completed: !!completed, notes: parseNotesCell(notes), checklist,
+      completed: !!completed, notes: mergeLegacyDepartmentNotes(parseNotesCell(notes), parseDepartmentNotesCell(departmentNotesJson)), checklist,
       updatedAt: updatedAt || '',
       completedAt: completedAt || '', completedBy: completedBy || '',
       dueOverride: normalizeDateCell(dueOverride),
       departments, departmentChecklists, currentDepartments,
-      departmentNotes: parseDepartmentNotesCell(departmentNotesJson),
     };
   }
   return tracking;
@@ -1568,10 +1570,10 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], departmentNotes: {} }
+      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [] }
       : {
           completed: !!data[rowIndex - 1][1],
-          notes: parseNotesCell(data[rowIndex - 1][2]),
+          notes: mergeLegacyDepartmentNotes(parseNotesCell(data[rowIndex - 1][2]), parseDepartmentNotesCell(data[rowIndex - 1][12])),
           checklist: (() => { try { return JSON.parse(data[rowIndex - 1][3] || '[]'); } catch (e) { return []; } })(),
           updatedAt: data[rowIndex - 1][4] || '',
           completedAt: data[rowIndex - 1][6] || '',
@@ -1580,7 +1582,6 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
           departments: (() => { try { return JSON.parse(data[rowIndex - 1][9] || '[]'); } catch (e) { return []; } })(),
           departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
           currentDepartments: (() => { try { return JSON.parse(data[rowIndex - 1][11] || '[]'); } catch (e) { return []; } })(),
-          departmentNotes: parseDepartmentNotesCell(data[rowIndex - 1][12]),
         };
 
     if (expectedUpdatedAt && rowIndex !== -1 && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
@@ -1605,8 +1606,8 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     const departmentsJson = JSON.stringify(next.departments);
     const departmentChecklistsJson = JSON.stringify(next.departmentChecklists);
     const currentDepartmentsJson = JSON.stringify(next.currentDepartments);
-    const departmentNotesJson = JSON.stringify(next.departmentNotes);
-    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson].some(value => value.length > 45000)) {
+    const departmentNotesJson = '{}'; // retained as an empty compatibility column
+    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson].some(value => value.length > 45000)) {
       return { success: false, error: 'Job data is too large to save' };
     }
     const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson];

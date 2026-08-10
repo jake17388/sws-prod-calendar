@@ -123,8 +123,10 @@ All permissions are enforced in `Code.js`; hidden frontend controls are only a
 usability feature. Job keys, dates, departments, note/task lengths, request IDs,
 and stored payload sizes are validated before writing. Production-department
 accounts can only read jobs/proofs assigned to their department and can only
-change their own department tasks and notes. Note and checklist ownership uses
-immutable user IDs rather than editable names.
+change their own department tasks. Every authenticated role can add to the one
+shared project-notes timeline; all viewers of that job see the same notes with
+author names and timestamps. Note and checklist ownership uses immutable user
+IDs rather than editable names.
 
 ## Tests and deployment safety
 

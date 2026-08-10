@@ -59,13 +59,11 @@ test('a background job refresh cannot erase a note that is still saving', () => 
   const current = [{
     jobKey: 'job-1',
     notes: [{ id: 'local-1', text: 'Call customer', pending: true }],
-    departmentNotes: { Paint: [{ id: 'local-2', text: 'Match color', pending: true }] },
   }];
-  const refreshed = [{ jobKey: 'job-1', notes: [], departmentNotes: { Paint: [] } }];
+  const refreshed = [{ jobKey: 'job-1', notes: [] }];
 
   const merged = preservePendingNotesInJobs(current, refreshed);
   assert.equal(merged[0].notes[0].id, 'local-1');
-  assert.equal(merged[0].departmentNotes.Paint[0].id, 'local-2');
 });
 
 test('deleting a note hides it immediately and a refresh cannot bring it back', () => {
@@ -75,8 +73,8 @@ test('deleting a note hides it immediately and a refresh cannot bring it back', 
   assert.equal(deleting[0].deleting, true);
 
   const merged = preservePendingNotesInJobs(
-    [{ jobKey: 'job-1', notes: deleting, departmentNotes: {} }],
-    [{ jobKey: 'job-1', notes: original, departmentNotes: {} }],
+    [{ jobKey: 'job-1', notes: deleting }],
+    [{ jobKey: 'job-1', notes: original }],
   );
   assert.deepEqual(merged[0].notes.filter(note => !note.deleting), []);
   assert.equal(merged[0].notes[0].deleting, true);

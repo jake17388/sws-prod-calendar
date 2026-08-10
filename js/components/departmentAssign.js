@@ -4,7 +4,6 @@ import { currentUser, currentUserId, isAdmin } from '../auth.js';
 import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
-import { renderNotes } from './notes.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
 import { showToast } from '../toast.js';
 import { commonTasksForDepartment } from './commonTaskManagement.js';
@@ -82,8 +81,7 @@ function sendPersist(job, queue) {
       job.departments = res.departments;
       job.departmentChecklists = res.departmentChecklists;
       job.currentDepartments = res.currentDepartments;
-      job.departmentNotes = res.departmentNotes;
-      patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, departmentNotes: res.departmentNotes, updatedAt: res.updatedAt });
+      patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, updatedAt: res.updatedAt });
       if ((res.error === 'conflict' || currentDepartmentsChanged) && queue.rerender) queue.rerender();
     })
     .catch(err => {
@@ -245,21 +243,11 @@ function renderStaticChecklist(container, items) {
   });
 }
 
-// Department notes for one department on one job — a list of authored,
-// timestamped notes (see notes.js), writable by Admin, Manager, or whoever
-// is logged in as that specific department. `canWrite` covers the job-level
-// lock (whole job complete) and any role that can't write at all (Viewers,
-// other departments) — same as before, just delegated to the shared
-// component instead of a single free-text textarea per department.
-function renderDeptNotes(container, job, dept, canWrite) {
-  renderNotes(container, job, 'department', dept, { canWrite });
-}
-
 /**
  * Full editor for Admin/Manager: checkbox per department for "this job needs
  * them", and — for any checked department other than Ship-In — a second
  * "currently has it" checkbox plus an inline add/edit/remove checklist and a
- * free-text notes box. Ship-In has no "currently has it" toggle: it means
+ * task list. Ship-In has no "currently has it" toggle: it means
  * the job was made elsewhere and just shipped in to us, so it's implicitly
  * current for as long as it's needed (see the self-heal below). Multiple
  * departments can be current at once (parallel work), and there's no
@@ -269,7 +257,7 @@ function renderDeptNotes(container, job, dept, canWrite) {
  * job click and a "Jobs to Assign" click land on for these roles.
  *
  * Once the whole job is marked complete, this locks: department checkboxes
- * gray out, "Currently has it" disappears entirely, and checklists/notes
+ * gray out, "Currently has it" disappears entirely, and checklists
  * become read-only (still showing who completed what and when) — reopen the
  * job (uncheck "Mark job complete") to edit again.
  * @param {HTMLElement} container @param {object} job
@@ -303,14 +291,11 @@ export function renderDepartmentEditor(container, job) {
         <button type="button" class="dept-current-btn ${isCurrent ? 'active' : ''}" ${needed ? '' : 'hidden'} ${openTask ? '' : 'disabled'}>Currently has it</button>`}
       </div>
       <div class="dept-assign-checklist" ${needed ? '' : 'hidden'}></div>
-      <div class="dept-assign-notes" ${needed ? '' : 'hidden'}></div>
     `;
     const checklistEl = wrap.querySelector('.dept-assign-checklist');
-    const notesEl = wrap.querySelector('.dept-assign-notes');
     if (needed) {
       if (locked) renderStaticChecklist(checklistEl, job.departmentChecklists[dept] || []);
       else renderEditableChecklist(checklistEl, job, dept);
-      renderDeptNotes(notesEl, job, dept, !locked);
     }
 
     if (!locked) {
@@ -330,9 +315,7 @@ export function renderDepartmentEditor(container, job) {
             syncCurrentButtonState(currentBtn, job, dept);
           }
           checklistEl.hidden = false;
-          notesEl.hidden = false;
           renderEditableChecklist(checklistEl, job, dept);
-          renderDeptNotes(notesEl, job, dept, true);
         } else {
           job.departments = job.departments.filter(d => d !== dept);
           job.currentDepartments = job.currentDepartments.filter(d => d !== dept);
@@ -342,8 +325,6 @@ export function renderDepartmentEditor(container, job) {
           }
           checklistEl.hidden = true;
           checklistEl.innerHTML = '';
-          notesEl.hidden = true;
-          notesEl.innerHTML = '';
         }
         persist(job, () => renderDepartmentEditor(container, job));
       });
@@ -366,7 +347,7 @@ export function renderDepartmentEditor(container, job) {
 
 /**
  * Toggle-only view for a production-department account: just their own
- * department's checklist plus its notes box, no add/edit/remove, no other
+ * department's checklist, no add/edit/remove, no other
  * departments shown. Locks to read-only once the whole job is marked
  * complete.
  * @param {HTMLElement} container @param {object} job @param {string} department
@@ -445,15 +426,10 @@ export function renderOwnDepartmentTasks(container, job, department) {
       tasksEl.appendChild(row);
     });
   }
-
-  const notesEl = document.createElement('div');
-  notesEl.className = 'dept-assign-notes dept-own-notes';
-  container.appendChild(notesEl);
-  renderDeptNotes(notesEl, job, department, !locked);
 }
 
 /**
- * Read-only breakdown of every assigned department's checklist and notes —
+ * Read-only breakdown of every assigned department's checklist —
  * for Viewers, who can see progress at a glance but never touch anything.
  * Departments currently holding the job are marked so it's clear where it
  * actually sits right now, not just which departments it'll eventually need.
@@ -469,10 +445,8 @@ export function renderDepartmentsReadOnly(container, job) {
     section.innerHTML = `
       <div class="dept-assign-checkbox-row"><span class="dept-assign-checkbox-label">${escapeHtml(dept)}</span>${isCurrent ? '<span class="dept-current-tag">Current</span>' : ''}</div>
       <div class="dept-assign-checklist"></div>
-      <div class="dept-assign-notes"></div>
     `;
     renderStaticChecklist(section.querySelector('.dept-assign-checklist'), job.departmentChecklists[dept] || []);
-    renderDeptNotes(section.querySelector('.dept-assign-notes'), job, dept, false);
     container.appendChild(section);
   });
 }

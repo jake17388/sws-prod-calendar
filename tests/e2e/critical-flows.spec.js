@@ -6,10 +6,10 @@ const job = {
   startDate: today, endDate: today, dueDate: today, autoDueDate: today,
   dueOverride: '', multiDay: false, crew: [], completed: false,
   notes: [], checklist: [], departments: [], currentDepartments: [],
-  departmentChecklists: {}, departmentNotes: {}, updatedAt: '2026-08-10T12:00:00.000Z',
+  departmentChecklists: {}, updatedAt: '2026-08-10T12:00:00.000Z',
 };
 
-async function mockBackend(page, { mustChangePin = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin' } = {}) {
   let currentJob = structuredClone(job);
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
@@ -24,7 +24,7 @@ async function mockBackend(page, { mustChangePin = false } = {}) {
 
     let body;
     if (action === 'login') {
-      body = { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user: 'Test Admin', department: 'Admin', canManageUsers: true, mustChangePin };
+      body = { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user: 'Test User', department, canManageUsers: department === 'Admin', mustChangePin };
     } else if (action === 'getProductionJobs') {
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
@@ -41,7 +41,7 @@ async function mockBackend(page, { mustChangePin = false } = {}) {
       body = { users: [{ id: 'worker', name: 'Alex Worker', department: 'Paint', pin: '000001', mustChangePin: true }] };
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
-      body = { success: true, notes: currentJob.notes, departmentNotes: {}, updatedAt: currentJob.updatedAt };
+      body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
     } else if (action === 'updateSelf') {
       body = { success: true, user: { id: 'admin', name: 'Test Admin', department: 'Admin', mustChangePin: false }, token: 'eyJ1aWQiOiJhZG1pbiJ9.replacement' };
     } else {
@@ -73,6 +73,17 @@ test('an Admin can sign in, open a job, and add a note immediately', async ({ pa
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Ready for production')).toBeVisible();
   await expect(page.getByText('Saving…')).toHaveCount(0);
+});
+
+test('a Viewer can add to the same project notes timeline', async ({ page }) => {
+  await mockBackend(page, { department: 'Viewer' });
+  await login(page);
+  await expect(page.getByText('Browser Test Job')).toBeVisible();
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await page.getByRole('button', { name: '+ Add note' }).click();
+  await page.getByPlaceholder('Add a note…').fill('Viewer update');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Viewer update')).toBeVisible();
 });
 
 test('a temporary PIN forces My Account until the user replaces it', async ({ page }) => {
