@@ -62,6 +62,7 @@ test('two-week preloading finishes the current week before loading the following
       return { available: true, name: `${jobNum}.pdf`, base64: 'AQ==' };
     },
     storeProof: async () => true,
+    validateProof: async () => true,
   });
 
   const firstNextStart = events.findIndex(event => event.startsWith('start:next'));
@@ -97,6 +98,7 @@ test('preloading fetches only uncached files with at most two background request
       return { available: true, name: `${jobNum}.pdf`, base64: 'AQID' };
     },
     storeProof: async (key, proof) => stored.push([key, Array.from(proof.bytes)]),
+    validateProof: async () => true,
   });
 
   assert.deepEqual(fetched.sort(), ['260002', '260003']);
@@ -123,10 +125,49 @@ test('one missing or failed proof does not stop the rest of the week', async () 
       return { available: true, name: 'ready.pdf', base64: 'AQ==' };
     },
     storeProof: async key => stored.push(key),
+    validateProof: async () => true,
   });
 
   assert.deepEqual(stored, ['production:ready']);
   assert.deepEqual(result, { total: 3, cached: 0, stored: 1, unavailable: 1, failed: 1 });
+});
+
+test('preloading retries a temporary failure and only stores a validated PDF', async () => {
+  const { preloadCurrentWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
+  let attempts = 0;
+  const stored = [];
+  const result = await preloadCurrentWeekProofs([{ jobNum: '260948', dueDate: '2026-08-10' }], {
+    now: new Date(2026, 7, 10),
+    readStored: async () => null,
+    fetchProof: async () => {
+      attempts++;
+      if (attempts === 1) throw new Error('temporary failure');
+      return { available: true, name: '260948.pdf', base64: 'JVBERi0xLjcK' };
+    },
+    validateProof: async proof => new TextDecoder().decode(proof.bytes).startsWith('%PDF-'),
+    storeProof: async (key, proof) => stored.push([key, proof]),
+    retryDelay: async () => {},
+  });
+
+  assert.equal(attempts, 2);
+  assert.equal(stored.length, 1);
+  assert.deepEqual(result, { total: 1, cached: 0, stored: 1, unavailable: 0, failed: 0 });
+});
+
+test('preloading never caches bytes that fail PDF validation', async () => {
+  const { preloadCurrentWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
+  let stored = false;
+  const result = await preloadCurrentWeekProofs([{ jobNum: '260948', dueDate: '2026-08-10' }], {
+    now: new Date(2026, 7, 10),
+    readStored: async () => null,
+    fetchProof: async () => ({ available: true, name: 'bad.pdf', base64: 'PGh0bWw+' }),
+    validateProof: async () => false,
+    storeProof: async () => { stored = true; },
+    retryDelay: async () => {},
+  });
+
+  assert.equal(stored, false);
+  assert.equal(result.failed, 1);
 });
 
 test('prefetched bytes are stored on disk with expiration metadata', async () => {
