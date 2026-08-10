@@ -24,6 +24,12 @@ export function resetPdfViewerEngine() {
   pdfjsLibPromise = null;
 }
 
+// Keeps browser code independent from test tooling while allowing the complete
+// parse/render/zoom lifecycle to be exercised without loading a worker in Node.
+export function setPdfJsForTests(lib) {
+  pdfjsLibPromise = Promise.resolve(lib);
+}
+
 export function preloadPdfViewer() {
   return loadPdfJs();
 }

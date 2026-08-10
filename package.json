@@ -2,7 +2,6 @@
   "name": "sws-production-calendar",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "build:pages": "node scripts/build-pages.mjs",
     "check": "npm run check:syntax && npm run test:coverage",
