@@ -70,3 +70,10 @@ test('the app starts loading the PDF engine before a user opens a file', async (
     .then(fs => fs.readFile(new URL('../js/app.js', import.meta.url), 'utf8'));
   assert.match(appSource, /preloadPdfViewer\(\)/);
 });
+
+test('additional project PDFs use the same instant-reopen cache', async () => {
+  const componentSource = await import('node:fs/promises')
+    .then(fs => fs.readFile(new URL('../js/components/jobDetail.js', import.meta.url), 'utf8'));
+  assert.match(componentSource, /additional:\$\{job\.jobKey\}:\$\{file\.id\}/);
+  assert.match(componentSource, /getCachedProofFile\(cacheKey\)/);
+});

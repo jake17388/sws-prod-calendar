@@ -9,6 +9,7 @@ import { showToast } from '../toast.js';
 import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { renderPdfPages } from '../pdfViewer.js';
+import { cacheProofFile, getCachedProofFile } from '../proofCache.mjs';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
@@ -55,7 +56,12 @@ function prepareFileViewer(job, title) {
 function openProofViewer(job, bytes) {
   const { pages, loading, token } = prepareFileViewer(job, job.title);
 
-  renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
+  renderPdfPages(
+    pages,
+    bytes,
+    () => token !== viewerRequestToken,
+    () => { if (token === viewerRequestToken) loading.hidden = true; },
+  )
     .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
     .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
 }
@@ -80,7 +86,12 @@ function openAdditionalFileViewer(job, file, response, bytes) {
   const { pages, loading, token } = prepareFileViewer(job, name);
 
   if (mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) {
-    renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
+    renderPdfPages(
+      pages,
+      bytes,
+      () => token !== viewerRequestToken,
+      () => { if (token === viewerRequestToken) loading.hidden = true; },
+    )
       .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
       .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
     return;
@@ -162,6 +173,15 @@ function renderProofSection(job) {
   empty.textContent = 'Loading production file…';
 
   const token = ++proofRequestToken;
+  const cached = getCachedProofFile(job.jobNum);
+  if (cached) {
+    currentProofBytes = cached.bytes;
+    empty.hidden = true;
+    openBtn.hidden = false;
+    openBtn.onclick = () => openProofViewer(job, currentProofBytes);
+    return;
+  }
+
   fetchProofFile(job.jobNum)
     .then(res => {
       if (token !== proofRequestToken) return; // a newer job was opened before this resolved
@@ -170,6 +190,7 @@ function renderProofSection(job) {
         return;
       }
       currentProofBytes = base64ToBytes(res.base64);
+      cacheProofFile(job.jobNum, { name: res.name || job.title, bytes: currentProofBytes });
       empty.hidden = true;
       openBtn.hidden = false;
       openBtn.onclick = () => openProofViewer(job, currentProofBytes);
@@ -200,9 +221,16 @@ async function viewAdditionalFile(job, file, button) {
   const originalText = button.textContent;
   button.textContent = 'Loading…';
   try {
+    const cacheKey = `additional:${job.jobKey}:${file.id}`;
+    const cached = getCachedProofFile(cacheKey);
+    if (cached) {
+      openAdditionalFileViewer(job, file, cached, cached.bytes);
+      return;
+    }
     const res = await fetchAdditionalFile(job.jobKey, file.id);
     if (!res || !res.available || !res.base64) throw new Error(res && (res.message || res.error));
     const bytes = base64ToBytes(res.base64);
+    cacheProofFile(cacheKey, { name: res.name || file.name, mimeType: res.mimeType || file.mimeType, bytes });
     openAdditionalFileViewer(job, file, res, bytes);
   } catch (err) {
     showToast('Could not open file — try again', 'error');

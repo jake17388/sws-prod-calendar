@@ -2,6 +2,7 @@ import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js'
 import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut, isAdmin, mustChangePin } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
+import { preloadPdfViewer } from './pdfViewer.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
 import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
@@ -349,6 +350,10 @@ function saveMyAccount() {
 }
 
 function boot() {
+  // Warm the PDF engine in parallel with the first jobs request. This does
+  // not block app startup, but removes a cold CDN/module load from the first
+  // Production File the user opens.
+  preloadPdfViewer().catch(() => {});
   document.getElementById('user-badge').textContent = currentUser() || '';
   const deptBadge = document.getElementById('dept-badge');
   const department = currentDepartment();
