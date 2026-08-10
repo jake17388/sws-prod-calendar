@@ -108,7 +108,7 @@ test('a Viewer can add an additional file with visible attribution but cannot de
   });
 
   await expect(page.getByText('install-photo.jpg')).toBeVisible();
-  await expect(page.getByText(/Test User/)).toBeVisible();
+  await expect(page.locator('.additional-file-meta').filter({ hasText: 'Test User' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 });
 
