@@ -32,6 +32,7 @@ jobs:
 
       - name: Test and build public artifact
         run: |
+          npm ci
           npm run check
           npm run build:pages
 
