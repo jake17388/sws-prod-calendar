@@ -167,13 +167,34 @@ test('four-digit PINs cannot authenticate', () => {
   assert.equal(context.checkPin('1234', 'ipad-1').ok, false);
 });
 
-test('note ownership uses immutable user ids and department notes require assignment', () => {
+test('note ownership uses immutable user ids', () => {
   const { context } = loadBackend();
   const actor = { id: 'u1', name: 'Renamed Pat', department: 'Paint' };
   assert.equal(context.canEditNote(actor, { authorId: 'u1', author: 'Old Pat' }), true);
   assert.equal(context.canEditNote({ ...actor, id: 'u2', name: 'Old Pat' }, { authorId: 'u1', author: 'Old Pat' }), false);
-  assert.equal(context.canWriteDepartmentNote(actor, { departments: ['Paint'] }, 'Paint'), true);
-  assert.equal(context.canWriteDepartmentNote(actor, { departments: ['Assembly'] }, 'Paint'), false);
+});
+
+test('every authenticated role can write shared project notes and department scope is retired', () => {
+  const { context } = loadBackend();
+  ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing']
+    .forEach(department => assert.equal(context.canWriteNote({ department }), true));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.noteScopeAndDept({ scope: 'department', department: 'Paint' }))),
+    { scope: '', department: '' },
+  );
+});
+
+test('legacy department notes merge into the shared project timeline without duplicates', () => {
+  const { context } = loadBackend();
+  const project = [{ id: 'project-1', text: 'Project', author: 'Pat', createdAt: '2026-08-10T10:00:00.000Z' }];
+  const department = {
+    Paint: [
+      { id: 'department-1', text: 'Paint', author: 'Alex', createdAt: '2026-08-10T09:00:00.000Z' },
+      project[0],
+    ],
+  };
+  const merged = context.mergeLegacyDepartmentNotes(project, department);
+  assert.deepEqual(merged.map(note => note.id), ['department-1', 'project-1']);
 });
 
 test('tracking inputs reject malformed keys and dates and neutralize spreadsheet formulas', () => {
