@@ -20,6 +20,59 @@ test('current-week preloading selects Sunday through Saturday jobs once each', a
   );
 });
 
+test('following-week preloading selects only the next Sunday through Saturday', async () => {
+  const { selectProofJobsForWeek } = await import('../js/currentWeekProofPreload.mjs');
+  const jobs = [
+    { jobNum: 'current-sat', dueDate: '2026-08-15' },
+    { jobNum: 'next-sun', dueDate: '2026-08-16' },
+    { jobNum: 'next-sat', dueDate: '2026-08-22' },
+    { jobNum: 'later-sun', dueDate: '2026-08-23' },
+  ];
+
+  assert.deepEqual(
+    selectProofJobsForWeek(jobs, 1, new Date(2026, 7, 10)).map(job => job.jobNum),
+    ['next-sun', 'next-sat'],
+  );
+});
+
+test('two-week preloading finishes the current week before loading the following week', async () => {
+  const { preloadCurrentAndNextWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
+  const jobs = [
+    { jobNum: 'current-1', dueDate: '2026-08-10' },
+    { jobNum: 'current-2', dueDate: '2026-08-11' },
+    { jobNum: 'next-1', dueDate: '2026-08-16' },
+    { jobNum: 'next-2', dueDate: '2026-08-17' },
+  ];
+  const events = [];
+  let active = 0;
+  let currentMaxActive = 0;
+  let nextMaxActive = 0;
+
+  const result = await preloadCurrentAndNextWeekProofs(jobs, {
+    now: new Date(2026, 7, 10),
+    readStored: async () => null,
+    fetchProof: async jobNum => {
+      events.push(`start:${jobNum}`);
+      active++;
+      if (jobNum.startsWith('current')) currentMaxActive = Math.max(currentMaxActive, active);
+      else nextMaxActive = Math.max(nextMaxActive, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      events.push(`end:${jobNum}`);
+      return { available: true, name: `${jobNum}.pdf`, base64: 'AQ==' };
+    },
+    storeProof: async () => true,
+  });
+
+  const firstNextStart = events.findIndex(event => event.startsWith('start:next'));
+  const lastCurrentEnd = Math.max(...events.map((event, index) => event.startsWith('end:current') ? index : -1));
+  assert.ok(firstNextStart > lastCurrentEnd);
+  assert.equal(currentMaxActive, 2);
+  assert.equal(nextMaxActive, 1);
+  assert.equal(result.current.stored, 2);
+  assert.equal(result.next.stored, 2);
+});
+
 test('preloading fetches only uncached files with at most two background requests', async () => {
   const { preloadCurrentWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
   const fetched = [];
