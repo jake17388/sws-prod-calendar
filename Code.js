@@ -45,6 +45,7 @@ const DROPBOX_PROOFS_REFRESH_HOURS = 6;
 const TOKEN_TTL_MS = 12 * 3600 * 1000; // one workday; shared devices should not stay signed in for weeks
 const TOKEN_HANDOFF_GRACE_MS = 30 * 1000; // lets an in-flight request finish while My Account stores its replacement token
 const TRAINING_PIN_BATCH = '2026-08-07-six-digit';
+const PIN_CHANGE_STATUS_BATCH = '2026-08-10-required-pin-change';
 
 const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
@@ -150,15 +151,19 @@ function getUsers() {
     const users = JSON.parse(raw);
     const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users);
     const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
-    if (changed || trainingPinsApplied) saveUsers(users);
+    const pinStatusApplied = markTemporaryPinStatus(users, props);
+    if (changed || trainingPinsApplied || pinStatusApplied) saveUsers(users);
     if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
+    if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
     return users;
   }
   const users = migrateLegacyPins() || defaultUsers();
   migrateUserCredentials(users);
   const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
+  const pinStatusApplied = markTemporaryPinStatus(users, props);
   saveUsers(users);
   if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
+  if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
   return users;
 }
 
@@ -175,7 +180,21 @@ function applyTemporaryTrainingPins(users, props) {
   users.forEach((user, index) => {
     Object.assign(user, withNewPin(user, String(index + 1).padStart(6, '0')));
     user.authVersion = (+user.authVersion || 1) + 1;
+    user.mustChangePin = true;
     delete user.pinRecoveryAttempted;
+  });
+  return true;
+}
+
+// Accounts that still have the predictable alphabetical training PIN are
+// required to replace it. Users who already changed their PIN before this
+// release are detected from the current Admin-visible copy and left alone.
+function markTemporaryPinStatus(users, props) {
+  if (props.getProperty('PIN_CHANGE_STATUS_BATCH') === PIN_CHANGE_STATUS_BATCH) return false;
+  const sorted = users.slice().sort((a, b) => a.name.localeCompare(b.name));
+  sorted.forEach((user, index) => {
+    const trainingPin = String(index + 1).padStart(6, '0');
+    user.mustChangePin = user.adminPin === trainingPin;
   });
   return true;
 }
@@ -322,7 +341,7 @@ function addUser(actor, data) {
     lock.waitLock(10000);
     const users = getUsers();
     if (pinAlreadyUsed(users, pin)) return { success: false, error: 'That PIN is already in use' };
-    const newUser = withNewPin({ id: Utilities.getUuid(), name, department, authVersion: 1 }, pin);
+    const newUser = withNewPin({ id: Utilities.getUuid(), name, department, authVersion: 1, mustChangePin: true }, pin);
     users.push(newUser);
     saveUsers(users);
     return { success: true, user: userFor(actor, newUser) };
@@ -365,6 +384,7 @@ function updateUser(actor, data) {
       if (pinAlreadyUsed(users, pin, target.id)) return { success: false, error: 'That PIN is already in use' };
       Object.assign(next, withNewPin(next, pin));
       next.authVersion = (+next.authVersion || 1) + 1;
+      next.mustChangePin = true;
       delete next.previousAuthVersion;
       delete next.previousAuthExpiresAt;
       pinChanged = true;
@@ -419,12 +439,14 @@ function updateSelf(actor, data) {
     if (data.pin !== undefined) {
       const pin = String(data.pin);
       if (!validPin(pin)) return { success: false, error: 'PIN must be 6 digits' };
+      if (next.mustChangePin && pinMatches(next, pin)) return { success: false, error: 'Choose a different PIN' };
       if (pinAlreadyUsed(users, pin, next.id)) return { success: false, error: 'That PIN is already in use' };
       Object.assign(next, withNewPin(next, pin));
       const currentAuthVersion = +next.authVersion || 1;
       next.previousAuthVersion = currentAuthVersion;
       next.previousAuthExpiresAt = Date.now() + TOKEN_HANDOFF_GRACE_MS;
       next.authVersion = currentAuthVersion + 1;
+      next.mustChangePin = false;
       pinChanged = true;
     }
     users[idx] = next;
@@ -611,6 +633,7 @@ function checkPin(pin, deviceId) {
     // Safe to delete once every client has reloaded.
     isDueDateEditor: canEditDueDates(user.department),
     canManageUsers: canAccessUserManagement(user.department),
+    mustChangePin: !!user.mustChangePin,
   };
 }
 
@@ -740,6 +763,7 @@ function routeGet(e) {
   if (action === 'getProductionJobs') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
+    ensureOperationalTriggersOnce();
     if ((params.from && !validDateOverride(params.from)) || (params.to && !validDateOverride(params.to))) {
       return json({ error: 'bad_request', message: 'Invalid date range' });
     }
@@ -774,6 +798,11 @@ function routeGet(e) {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
     return json({ connected: isDropboxConnected(), hasCredentials: !!dropboxCredentials().appKey });
+  }
+  if (action === 'getSystemHealth') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
+    return json(getSystemHealth());
   }
   if (action === 'getDropboxAuthUrl') {
     const actor = resolveActor(e.parameter.token);
@@ -817,6 +846,9 @@ function routePost(e) {
 
   const actor = resolveActor(data.token);
   if (!actor) return json(UNAUTHORIZED);
+  if (actor.mustChangePin && data.action !== 'updateSelf') {
+    return json({ error: 'pin_change_required', message: 'Change your temporary PIN before continuing' });
+  }
   const user = actor.name;
   const respond = operation => json(runMutationOnce(actor, data, operation));
 
@@ -2070,11 +2102,23 @@ function getDropboxProofFile(jobNum) {
 // silently wrong in production.
 const DROPBOX_TRIGGER_HOURS_PROP = 'DROPBOX_TRIGGER_HOURS';
 
+function scheduledDropboxProofRefresh() {
+  try {
+    const result = refreshDropboxProofs();
+    clearOperationalFailure('dropbox-refresh');
+    return result;
+  } catch (err) {
+    recordOperationalFailure('dropbox-refresh', err);
+    throw err;
+  }
+}
+
 function ensureDropboxRefreshTrigger() {
   const props = PropertiesService.getScriptProperties();
-  const existing = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'refreshDropboxProofs');
+  const existing = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'scheduledDropboxProofRefresh');
+  const legacy = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'refreshDropboxProofs');
   const scheduledHours = +(props.getProperty(DROPBOX_TRIGGER_HOURS_PROP) || 0);
-  if (existing.length === 1 && scheduledHours === DROPBOX_PROOFS_REFRESH_HOURS) return;
+  if (existing.length === 1 && !legacy.length && scheduledHours === DROPBOX_PROOFS_REFRESH_HOURS) return;
   resetDropboxRefreshTrigger();
 }
 
@@ -2084,9 +2128,9 @@ function ensureDropboxRefreshTrigger() {
 // interval change to an already-deployed script.
 function resetDropboxRefreshTrigger() {
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'refreshDropboxProofs')
+    .filter(t => ['refreshDropboxProofs', 'scheduledDropboxProofRefresh'].indexOf(t.getHandlerFunction()) !== -1)
     .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('refreshDropboxProofs').timeBased().everyHours(DROPBOX_PROOFS_REFRESH_HOURS).create();
+  ScriptApp.newTrigger('scheduledDropboxProofRefresh').timeBased().everyHours(DROPBOX_PROOFS_REFRESH_HOURS).create();
   PropertiesService.getScriptProperties().setProperty(DROPBOX_TRIGGER_HOURS_PROP, String(DROPBOX_PROOFS_REFRESH_HOURS));
   Logger.log('refreshDropboxProofs trigger set to every %s hour(s)', DROPBOX_PROOFS_REFRESH_HOURS);
 }
@@ -2145,18 +2189,23 @@ function handleDropboxOAuthCallback(e, scriptUrl) {
 // recovery path. Jobs themselves would repopulate from Calendar; nothing else
 // would.
 //
-// A daily copy is deliberately the simplest thing that works — one Drive
-// file copy, negligible against the 90-minute daily trigger budget. Copies live
+// Hourly Drive copies meet the one-hour recovery-point target while remaining
+// inexpensive against the consumer account's daily trigger budget. Copies live
 // in their own folder so they can't be confused with the live sheet, and old
 // ones are pruned so this can't grow without bound.
 //
-// NOTE: these copies live in the same Google account as the original, so they
-// protect against deletion and corruption but NOT against loss of the account
-// itself. See review item #36 — the account credentials belonging to a company
-// password manager is the other half of this.
+// By default these copies live in the script owner's account. For account-loss
+// protection, BACKUP_FOLDER_ID can point at a folder owned by a second
+// company-controlled account and shared with the script owner.
 const BACKUP_FOLDER_NAME = 'SWS Prod Calendar - Tracking Backups';
 const BACKUP_FOLDER_PROP = 'BACKUP_FOLDER_ID';
-const BACKUP_RETENTION_COUNT = 30;
+const BACKUP_INTERVAL_HOURS = 1;
+const BACKUP_RETENTION_COUNT = 168; // seven days of hourly recovery points
+const BACKUP_TRIGGER_HOURS_PROP = 'BACKUP_TRIGGER_HOURS';
+const LAST_BACKUP_AT = 'LAST_BACKUP_AT';
+const LAST_BACKUP_FILE_ID = 'LAST_BACKUP_FILE_ID';
+const LAST_CONFIG_BACKUP_FILE_ID = 'LAST_CONFIG_BACKUP_FILE_ID';
+const LAST_OPERATIONAL_FAILURE = 'LAST_OPERATIONAL_FAILURE';
 
 function getBackupFolder() {
   const props = PropertiesService.getScriptProperties();
@@ -2173,29 +2222,164 @@ function getBackupFolder() {
 // the file's own creation date rather than parsing names, so a manually renamed
 // or hand-made copy in this folder still ages out correctly.
 function pruneOldBackups(folder) {
-  const files = [];
+  const filesByKind = { tracking: [], configuration: [] };
   const it = folder.getFiles();
   while (it.hasNext()) {
     const f = it.next();
-    files.push({ file: f, created: f.getDateCreated().getTime() });
+    const kind = /^SWS Production Configuration /.test(f.getName()) ? 'configuration' : 'tracking';
+    filesByKind[kind].push({ file: f, created: f.getDateCreated().getTime() });
   }
-  if (files.length <= BACKUP_RETENTION_COUNT) return 0;
-  files.sort((a, b) => b.created - a.created);
-  const stale = files.slice(BACKUP_RETENTION_COUNT);
+  const stale = [];
+  Object.keys(filesByKind).forEach(kind => {
+    filesByKind[kind].sort((a, b) => b.created - a.created);
+    stale.push(...filesByKind[kind].slice(BACKUP_RETENTION_COUNT));
+  });
   stale.forEach(entry => { try { entry.file.setTrashed(true); } catch (err) { /* already gone */ } });
   return stale.length;
 }
 
-// Runs daily on a trigger (see setupAllTriggers). Safe to run by hand from the
-// Apps Script editor to take an immediate backup.
+function recordOperationalFailure(area, err) {
+  const failure = {
+    area: String(area || 'unknown'),
+    at: new Date().toISOString(),
+    message: String((err && err.message) || err || 'Unknown failure').slice(0, 500),
+  };
+  PropertiesService.getScriptProperties().setProperty(LAST_OPERATIONAL_FAILURE, JSON.stringify(failure));
+  console.error('%s failed: %s', failure.area, failure.message);
+  return failure;
+}
+
+function clearOperationalFailure(area) {
+  const props = PropertiesService.getScriptProperties();
+  const raw = props.getProperty(LAST_OPERATIONAL_FAILURE);
+  if (!raw) return;
+  try {
+    const failure = JSON.parse(raw);
+    if (!area || failure.area === area) props.deleteProperty(LAST_OPERATIONAL_FAILURE);
+  } catch (err) {
+    props.deleteProperty(LAST_OPERATIONAL_FAILURE);
+  }
+}
+
+// Credentials are intentionally omitted. A disaster restore recreates the
+// roster with temporary PINs that each user must replace, rather than copying
+// hashes, Dropbox tokens, or application secrets into Drive.
+function configurationSnapshot() {
+  return {
+    schemaVersion: 1,
+    createdAt: new Date().toISOString(),
+    users: getUsers().map(user => ({
+      id: user.id,
+      name: user.name,
+      department: user.department,
+    })),
+    commonTasks: getCommonTasks(),
+  };
+}
+
+function backupConfigurationSnapshot(folder, stamp) {
+  const name = 'SWS Production Configuration ' + stamp + '.json';
+  const blob = Utilities.newBlob(JSON.stringify(configurationSnapshot(), null, 2), 'application/json', name);
+  return folder.createFile(blob);
+}
+
+// Runs hourly on a trigger (see setupAllTriggers). Safe to run by hand from
+// the Apps Script editor to take an immediate backup.
 function backupTrackingSpreadsheet() {
-  const ss = getTrackingSpreadsheet();
-  const folder = getBackupFolder();
+  const props = PropertiesService.getScriptProperties();
+  try {
+    const ss = getTrackingSpreadsheet();
+    const folder = getBackupFolder();
+    const now = new Date();
+    const stamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    const copy = DriveApp.getFileById(ss.getId()).makeCopy('SWS Production Tracking ' + stamp, folder);
+    const configCopy = backupConfigurationSnapshot(folder, stamp);
+    const pruned = pruneOldBackups(folder);
+    props.setProperty(LAST_BACKUP_AT, now.toISOString());
+    props.setProperty(LAST_BACKUP_FILE_ID, copy.getId());
+    props.setProperty(LAST_CONFIG_BACKUP_FILE_ID, configCopy.getId());
+    clearOperationalFailure('backup');
+    Logger.log('Backed up tracking and configuration (pruned %s old file(s))', pruned);
+    return { name: copy.getName(), id: copy.getId(), configId: configCopy.getId(), pruned };
+  } catch (err) {
+    recordOperationalFailure('backup', err);
+    throw err;
+  }
+}
+
+// Disaster-recovery tool: makes a new working copy so the retained backup is
+// never edited in place, validates that it opens as a spreadsheet, then moves
+// the live pointer. Run manually from the Apps Script editor after confirming
+// the chosen backup file ID.
+function restoreTrackingSpreadsheetFromBackup(backupFileId) {
+  const id = String(backupFileId || '').trim();
+  if (!id) throw new Error('Backup file ID is required');
+  const source = DriveApp.getFileById(id);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
-  const copy = DriveApp.getFileById(ss.getId()).makeCopy('SWS Production Tracking ' + stamp, folder);
-  const pruned = pruneOldBackups(folder);
-  Logger.log('Backed up tracking sheet to "%s" (pruned %s old copy/copies)', copy.getName(), pruned);
-  return { name: copy.getName(), id: copy.getId(), pruned };
+  const restored = source.makeCopy('SWS Production Tracking Restored ' + stamp);
+  const ss = SpreadsheetApp.openById(restored.getId());
+  if (!ss.getSheets().length) throw new Error('Backup has no sheets');
+  PropertiesService.getScriptProperties().setProperty('TRACKING_SHEET_ID', restored.getId());
+  PropertiesService.getScriptProperties().setProperty('LAST_RESTORE_AT', new Date().toISOString());
+  return { id: restored.getId(), name: restored.getName() };
+}
+
+// Restores non-secret configuration and issues fresh alphabetical temporary
+// PINs. The returned list is intended for the recovery operator's handoff; it
+// is never exposed through the web API.
+function restoreConfigurationFromBackup(backupFileId) {
+  const id = String(backupFileId || '').trim();
+  if (!id) throw new Error('Configuration backup file ID is required');
+  const snapshot = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString());
+  if (!snapshot || snapshot.schemaVersion !== 1 || !Array.isArray(snapshot.users)) {
+    throw new Error('Unsupported configuration backup');
+  }
+  const restoredUsers = snapshot.users
+    .filter(user => validName(String(user.name || '').trim()) && DEPARTMENTS.indexOf(user.department) !== -1)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((user, index) => {
+      const pin = String(index + 1).padStart(6, '0');
+      return withNewPin({
+        id: /^[A-Za-z0-9_-]{1,100}$/.test(String(user.id || '')) ? user.id : Utilities.getUuid(),
+        name: String(user.name).trim(),
+        department: user.department,
+        authVersion: 1,
+        mustChangePin: true,
+      }, pin);
+    });
+  if (!restoredUsers.length || !restoredUsers.some(user => user.department === 'Admin')) {
+    throw new Error('Configuration backup must contain at least one Admin');
+  }
+  const tasksResult = saveCommonTasks({ department: 'Admin' }, { tasks: Array.isArray(snapshot.commonTasks) ? snapshot.commonTasks : [] });
+  if (!tasksResult.success) throw new Error(tasksResult.error || 'Could not restore common tasks');
+  saveUsers(restoredUsers);
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
+  props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
+  props.setProperty('LAST_RESTORE_AT', new Date().toISOString());
+  return restoredUsers.map((user, index) => ({ name: user.name, pin: String(index + 1).padStart(6, '0') }));
+}
+
+function getSystemHealth() {
+  const props = PropertiesService.getScriptProperties();
+  const lastBackupAt = props.getProperty(LAST_BACKUP_AT) || '';
+  const backupAgeMs = lastBackupAt ? Date.now() - new Date(lastBackupAt).getTime() : Infinity;
+  const backupTriggers = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'backupTrackingSpreadsheet');
+  let lastFailure = null;
+  try { lastFailure = JSON.parse(props.getProperty(LAST_OPERATIONAL_FAILURE) || 'null'); } catch (err) { lastFailure = null; }
+  return {
+    checkedAt: new Date().toISOString(),
+    healthy: backupAgeMs <= BACKUP_INTERVAL_HOURS * 2 * 3600 * 1000 && backupTriggers.length === 1 && !lastFailure,
+    backup: {
+      lastAt: lastBackupAt,
+      current: backupAgeMs <= BACKUP_INTERVAL_HOURS * 2 * 3600 * 1000,
+      triggerInstalled: backupTriggers.length === 1,
+      recoveryPointHours: BACKUP_INTERVAL_HOURS,
+    },
+    trackingConfigured: !!props.getProperty('TRACKING_SHEET_ID'),
+    dropboxConnected: isDropboxConnected(),
+    lastFailure,
+  };
 }
 
 // ── Trigger setup ───────────────────────────────────────────────────────────
@@ -2214,9 +2398,28 @@ function setupAllTriggers() {
   return summary;
 }
 
+// Normal app traffic self-heals the backup trigger at most once per hour, so
+// a deploy never depends on someone remembering an Apps Script editor step.
+// Failure is recorded for Admins but does not block the production calendar.
+function ensureOperationalTriggersOnce() {
+  const cache = CacheService.getScriptCache();
+  if (cache.get('operational_triggers_checked')) return;
+  try {
+    ensureBackupTrigger();
+    clearOperationalFailure('trigger-setup');
+    cache.put('operational_triggers_checked', '1', 3600);
+  } catch (err) {
+    recordOperationalFailure('trigger-setup', err);
+  }
+}
+
 function ensureBackupTrigger() {
-  const already = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'backupTrackingSpreadsheet');
-  if (already) return;
-  ScriptApp.newTrigger('backupTrackingSpreadsheet').timeBased().everyDays(1).atHour(2).create();
-  Logger.log('Daily tracking-sheet backup trigger created (runs ~2am).');
+  const props = PropertiesService.getScriptProperties();
+  const existing = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'backupTrackingSpreadsheet');
+  const scheduledHours = +(props.getProperty(BACKUP_TRIGGER_HOURS_PROP) || 0);
+  if (existing.length === 1 && scheduledHours === BACKUP_INTERVAL_HOURS) return;
+  existing.forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger('backupTrackingSpreadsheet').timeBased().everyHours(BACKUP_INTERVAL_HOURS).create();
+  props.setProperty(BACKUP_TRIGGER_HOURS_PROP, String(BACKUP_INTERVAL_HOURS));
+  Logger.log('Tracking backup trigger set to every %s hour(s).', BACKUP_INTERVAL_HOURS);
 }

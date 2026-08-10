@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut, isAdmin } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut, isAdmin, mustChangePin } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
@@ -16,6 +16,7 @@ import { setHeaderDimmed } from './headerDim.js';
 import { loadCachedJobs, saveCachedJobs } from './jobsCache.js';
 import { reportSyncSuccess, reportSyncFailure, setOnFirstFailure } from './syncStatus.js';
 import { hasPendingWrites, subscribePendingWrites } from './pendingWrites.mjs';
+import { initSystemHealth, refreshSystemHealthUI } from './components/systemHealth.js';
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -109,8 +110,10 @@ let lastKnownVersion = 0;
  */
 function refreshJobs(userInitiated = false) {
   const refreshBtn = document.getElementById('refresh-btn');
+  const viewArea = document.getElementById('view-area');
   refreshBtn.classList.add('spinning');
   refreshBtn.disabled = true;
+  viewArea.setAttribute('aria-busy', 'true');
   return fetchProductionJobs()
     .then(({ jobs, version }) => {
       setJobs(jobs);
@@ -120,6 +123,7 @@ function refreshJobs(userInitiated = false) {
       document.getElementById('last-updated').textContent =
         `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
       reportSyncSuccess();
+      return true;
     })
     .catch(err => {
       // Was `.catch(() => {})`. A silent failure here left a stale list sitting
@@ -128,11 +132,29 @@ function refreshJobs(userInitiated = false) {
       console.error('Failed to refresh jobs:', err);
       if (userInitiated) showToast("Couldn't refresh — check your connection", 'error');
       reportSyncFailure();
+      if (!getJobs().length) renderLoadFailure();
+      return false;
     })
     .finally(() => {
       refreshBtn.classList.remove('spinning');
       refreshBtn.disabled = false;
+      viewArea.setAttribute('aria-busy', 'false');
     });
+}
+
+function renderLoadFailure() {
+  const viewArea = document.getElementById('view-area');
+  viewArea.innerHTML = `
+    <div class="empty-state" role="alert">
+      <div class="empty-state-icon">!</div>
+      <div class="empty-state-title">Could not load production jobs</div>
+      <div class="empty-state-subtitle">Check the connection, then try again. Production can use the paper/Squarecoil fallback during an outage.</div>
+      <button class="empty-state-retry settings-action primary" type="button">Retry</button>
+    </div>`;
+  viewArea.querySelector('.empty-state-retry').addEventListener('click', () => {
+    viewArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading jobs…</div></div>';
+    refreshJobs(true);
+  });
 }
 
 // This app's backend runs on a consumer Google account, whose hard ceiling is
@@ -257,9 +279,13 @@ function applyZoom() {
   localStorage.setItem(ZOOM_KEY, pct);
 }
 
-function openSettings() {
+function openSettings(forcePinChange = false) {
+  const required = mustChangePin() || forcePinChange === true;
   document.getElementById('settings-backdrop').classList.add('show');
   document.getElementById('settings-panel').classList.add('show');
+  document.getElementById('pin-change-required').hidden = !required;
+  document.getElementById('settings-close-btn').hidden = required;
+  document.getElementById('settings-panel').classList.toggle('pin-change-required', required);
   setHeaderDimmed(true);
   const nameField = document.getElementById('my-account-name');
   nameField.value = currentUser() || '';
@@ -275,8 +301,14 @@ function openSettings() {
   pinField.placeholder = 'New 6-digit PIN';
 
   refreshDropboxSettingsUI();
+  refreshSystemHealthUI();
+  if (required) setTimeout(() => pinField.focus(), 0);
 }
 function closeSettings() {
+  if (mustChangePin()) {
+    document.getElementById('my-account-hint').textContent = 'Set a new PIN before returning to the calendar.';
+    return;
+  }
   document.getElementById('settings-backdrop').classList.remove('show');
   document.getElementById('settings-panel').classList.remove('show');
   setHeaderDimmed(false);
@@ -303,10 +335,13 @@ function saveMyAccount() {
       // Reflect what was actually stored, so a rejected PIN doesn't linger in
       // the field looking accepted.
       document.getElementById('my-account-pin').value = '';
-      updateAuthProfile({ user: res.user.name, ...(res.token ? { token: res.token } : {}) });
+      updateAuthProfile({ user: res.user.name, mustChangePin: false, ...(res.token ? { token: res.token } : {}) });
       document.getElementById('user-badge').textContent = res.user.name;
       hint.textContent = pin ? 'PIN updated' : 'Saved';
       showToast(pin ? 'Your PIN was updated' : 'Account details saved');
+      document.getElementById('pin-change-required').hidden = true;
+      document.getElementById('settings-close-btn').hidden = false;
+      document.getElementById('settings-panel').classList.remove('pin-change-required');
       setTimeout(() => { hint.textContent = ''; }, 1500);
     })
     .catch(() => { hint.textContent = 'Network error — try again'; })
@@ -371,6 +406,7 @@ function boot() {
   initUserManagement();
   initCommonTaskManagement();
   initDropboxSettings();
+  initSystemHealth();
   if (canAssignDepartments()) refreshCommonTasks().catch(() => {});
   document.getElementById('zoom-in-btn').addEventListener('click', () => {
     zoomIdx = Math.min(zoomIdx + 1, ZOOM_STEPS.length - 1);
@@ -392,6 +428,7 @@ function boot() {
   // overwrite by rendering real content.
   document.getElementById('view-area').innerHTML =
     '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading jobs…</div></div>';
+  document.getElementById('view-area').setAttribute('aria-busy', 'true');
 
   subscribe(renderActiveView);
   subscribe(renderStatsBar);
@@ -408,10 +445,22 @@ function boot() {
 
   refreshJobs().then(() => { if (document.visibilityState === 'visible') startPolling(); });
   checkForUpdate();
+  if (mustChangePin()) openSettings(true);
 }
 
 document.getElementById('update-reload-btn').addEventListener('click', reloadForUpdate);
 document.getElementById('settings-update-reload-btn').addEventListener('click', reloadForUpdate);
+
+function updateOnlineState() {
+  document.getElementById('offline-banner').hidden = navigator.onLine;
+}
+window.addEventListener('offline', updateOnlineState);
+window.addEventListener('online', () => {
+  updateOnlineState();
+  refreshJobs(true);
+});
+document.getElementById('offline-retry-btn').addEventListener('click', () => refreshJobs(true));
+updateOnlineState();
 
 // A home-screen PWA left open in the background is often resumed from a
 // suspended in-memory instance rather than a real reload, so it never

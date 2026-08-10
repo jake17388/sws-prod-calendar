@@ -97,6 +97,8 @@ export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum });
 
 export const fetchDropboxStatus = () => scriptGet('getDropboxStatus');
 
+export const fetchSystemHealth = () => scriptGet('getSystemHealth');
+
 /** @returns {Promise<{url?: string, error?: string}>} */
 export const fetchDropboxAuthUrl = () => scriptGet('getDropboxAuthUrl');
 

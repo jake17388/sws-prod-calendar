@@ -127,6 +127,20 @@ test('any role can change its own PIN without losing the current session during 
   assert.equal(context.resolveActor(login.token), null);
 });
 
+test('temporary PIN users must choose a different PIN before the requirement clears', () => {
+  const original = [{ id: 'worker', name: 'Aaron', department: 'Paint', pin: '000001', authVersion: 1 }];
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+  });
+  const login = context.checkPin('000001', 'ipad-1');
+  assert.equal(login.mustChangePin, true);
+  const actor = context.resolveActor(login.token);
+  assert.equal(context.updateSelf(actor, { pin: '000001' }).error, 'Choose a different PIN');
+  assert.equal(context.updateSelf(actor, { pin: '654321' }).success, true);
+  assert.equal(context.checkPin('654321', 'ipad-1').mustChangePin, false);
+});
+
 test('only Admins can rename accounts', () => {
   const original = [
     { id: 'admin', name: 'Admin', department: 'Admin', pin: '111111', authVersion: 1 },

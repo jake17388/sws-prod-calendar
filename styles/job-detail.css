@@ -10,7 +10,7 @@
 #job-detail-overlay.open { display: flex; }
 
 .job-detail-panel {
-  width: min(440px, 100%);
+  width: min(900px, 100%);
   background: var(--surface-overlay);
   border-left: 1px solid var(--border-default);
   box-shadow: var(--shadow-4);
@@ -66,6 +66,25 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+@media (min-width: 900px) {
+  .job-detail-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: var(--space-5);
+  }
+  .job-detail-complete-toggle,
+  .completed-info,
+  #job-detail-departments { grid-column: 1 / -1; }
+  .job-detail-section {
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+  }
 }
 
 .job-detail-section h3 {

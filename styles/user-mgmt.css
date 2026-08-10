@@ -112,6 +112,16 @@
 }
 .user-row input:focus,
 .user-row select:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
+.user-row-name-wrap { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
+.user-row-training-status {
+  align-self: flex-start;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+}
 .user-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
 .user-row-open {
   min-width: 36px;

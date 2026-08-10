@@ -84,6 +84,8 @@ accounts. Clicking a user's row opens account actions, including revoking all of
 that user's sessions. Sessions expire after 12 hours, shared browsers sign out
 after two hours without activity, and changing a PIN invalidates the account's
 other sessions. Every role can change its own PIN under Settings → My Account.
+New accounts and accounts still using the alphabetical training PIN are marked
+`Temporary PIN` and cannot make production changes until they replace it.
 
 The one-time bootstrap is automatic: the first request after this feature's
 initial deploy finds no `USERS` property yet, migrates the old flat `PINS`
@@ -134,6 +136,11 @@ Both deployment workflows run the checks before deployment and smoke-test the
 live URL afterward. The Apps Script workflow also verifies that the live
 deployment description contains the current commit. See
 [`docs/ROLLBACK.md`](docs/ROLLBACK.md) for rollback steps.
+
+The tracking spreadsheet and a sanitized roster/common-task snapshot are backed
+up hourly with seven days of recovery points. Admins can verify the last backup,
+trigger installation, and recorded runtime failures under Settings → System
+Health. Normal app traffic self-heals a missing backup trigger.
 
 ---
 

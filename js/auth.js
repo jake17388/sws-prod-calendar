@@ -60,6 +60,7 @@ export const canManageUsers = () => !!(auth && auth.canManageUsers);
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const isAdmin = () => !!auth && auth.department === 'Admin';
+export const mustChangePin = () => !!auth && !!auth.mustChangePin;
 // Project notes: Admin, Manager, and Viewer can add one — production-
 // department accounts can't (they add department notes instead).
 export const canAddProjectNotes = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager' || auth.department === 'Viewer');
@@ -168,7 +169,7 @@ function submitPin(onLogin) {
       // credential sitting in localStorage for any XSS — or anyone holding the
       // device — to read. Settings now asks for a new PIN instead of showing
       // the current one.
-      auth = { token: res.token, userId: res.userId, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers, lastActiveAt: Date.now() };
+      auth = { token: res.token, userId: res.userId, user: res.user, department: res.department, canManageUsers: !!res.canManageUsers, mustChangePin: !!res.mustChangePin, lastActiveAt: Date.now() };
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();

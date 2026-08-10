@@ -7,7 +7,12 @@
     "check": "npm run check:syntax && npm run test:coverage",
     "check:syntax": "node scripts/check-syntax.mjs",
     "test": "node --test tests/*.test.js tests/*.test.mjs",
-    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test tests/*.test.js tests/*.test.mjs"
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test tests/*.test.js tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:load": "node scripts/load-simulation.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
   },
   "engines": {
     "node": ">=22"

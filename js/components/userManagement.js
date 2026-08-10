@@ -40,7 +40,7 @@ function renderLockedRow(user) {
   const row = document.createElement('div');
   row.className = 'user-row user-row-locked';
   row.innerHTML = `
-    <span class="user-row-name">${escapeHtml(user.name)}</span>
+    <span class="user-row-name-wrap"><span class="user-row-name">${escapeHtml(user.name)}</span>${user.mustChangePin ? '<span class="user-row-training-status">Temporary PIN</span>' : ''}</span>
     <span class="user-row-dept">${escapeHtml(user.department)}</span>
     <span class="user-row-pin user-row-pin-hidden">••••••</span>
     <span class="user-row-lock" title="You don't have permission to edit this account">&#128274;</span>
@@ -59,7 +59,10 @@ function renderEditableRow(user, actorDept) {
   const currentPin = adminCanSeePins && typeof user.pin === 'string' ? user.pin : '';
   const pinType = adminCanSeePins ? 'text' : 'password';
   row.innerHTML = `
-    <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" ${adminCanEditNames ? '' : 'readonly'} title="${adminCanEditNames ? 'Edit account name' : 'Only an Admin can change account names'}" />
+    <label class="user-row-name-wrap">
+      <input type="text" class="user-row-name" value="${escapeAttr(user.name)}" ${adminCanEditNames ? '' : 'readonly'} title="${adminCanEditNames ? 'Edit account name' : 'Only an Admin can change account names'}" />
+      ${user.mustChangePin ? '<span class="user-row-training-status">Temporary PIN</span>' : ''}
+    </label>
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
     <input type="${pinType}" class="user-row-pin" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
     <span class="user-row-actions">
@@ -112,6 +115,10 @@ function renderEditableRow(user, actorDept) {
         e.target.value = '';
       }
       if (res.token) updateAuthProfile({ token: res.token });
+      user.mustChangePin = !!(res.user && res.user.mustChangePin);
+      if (user.mustChangePin && !row.querySelector('.user-row-training-status')) {
+        row.querySelector('.user-row-name-wrap').insertAdjacentHTML('beforeend', '<span class="user-row-training-status">Temporary PIN</span>');
+      }
       showRowHint(row, 'PIN updated');
     }).catch(() => { e.target.value = ''; showRowHint(row, 'Network error — try again', true); });
   });

@@ -111,6 +111,9 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', `Open ${job.jobNum ? job.jobNum + ', ' : ''}${job.title}`);
   const canComplete = canMarkJobComplete();
   el.innerHTML = `
     ${canComplete ? `<button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>` : ''}
@@ -129,6 +132,12 @@ export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
     });
   }
   el.addEventListener('click', () => onOpen(job.jobKey));
+  el.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpen(job.jobKey);
+    }
+  });
   return el;
 }
 
@@ -137,6 +146,9 @@ export function renderJobChip(job) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
   el.className = `job-chip ${state} ${job.completed ? 'completed' : ''}`.trim();
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', `Open ${job.jobNum ? job.jobNum + ', ' : ''}${job.title}`);
   el.title = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title} (${crewLabel(job)})`;
   const canComplete = canMarkJobComplete();
   el.innerHTML = `
@@ -153,5 +165,11 @@ export function renderJobChip(job) {
     });
   }
   el.addEventListener('click', () => openJobDetail(job.jobKey));
+  el.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openJobDetail(job.jobKey);
+    }
+  });
   return el;
 }

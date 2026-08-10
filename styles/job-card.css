@@ -11,6 +11,7 @@
   cursor: pointer;
   box-shadow: var(--shadow-1);
   transition: transform var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo);
+  min-height: 44px;
 }
 .job-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
 
@@ -206,6 +207,7 @@
   align-items: flex-start;
   gap: 5px;
   transition: background var(--duration-fast) var(--ease-out-expo), transform var(--duration-fast) var(--ease-out-expo);
+  min-height: 28px;
 }
 .job-chip:hover { transform: translateX(1px); }
 .job-chip-text {
@@ -244,6 +246,7 @@
    toward Apple's ~44px touch-target guidance; layout stays the same as
    desktop since there's already enough width for it. */
 @media (min-width: 641px) and (pointer: coarse) {
+  .job-chip { min-height: 44px; align-items: center; }
   .job-card-checkbox { width: 26px; height: 26px; }
   .job-card-checkbox.checked::after { width: 7px; height: 12px; }
   .job-card { padding-top: var(--space-4); padding-bottom: var(--space-4); }
