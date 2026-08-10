@@ -138,10 +138,12 @@ can download those files and see who added each one and when. Only Admins can
 delete them; that permission is enforced by the backend.
 
 After each fresh job-list load, the browser preloads Production Files for jobs
-due in the current Sunday-through-Saturday week. Downloads run two at a time
-after a short stagger and are kept in browser disk cache for six hours; only an
-opened file is promoted into the small in-memory viewer cache. Expired weeks are
-removed automatically so iPads do not retain an ever-growing file collection.
+due in the current and following Sunday-through-Saturday weeks. After a short
+stagger, current-week downloads run two at a time; following-week downloads
+begin only after those finish and run one at a time. Files stay in browser disk
+cache for six hours, while only an opened file is promoted into the small
+in-memory viewer cache. Expired files are removed automatically so iPads do not
+retain an ever-growing collection.
 
 ## Validation and permissions
 

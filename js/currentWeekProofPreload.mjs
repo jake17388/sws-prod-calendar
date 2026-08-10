@@ -21,8 +21,8 @@ function base64ToBytes(base64) {
   return bytes;
 }
 
-export function selectCurrentWeekProofJobs(jobs, now = new Date()) {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+export function selectProofJobsForWeek(jobs, weekOffset = 0, now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + (weekOffset * 7));
   const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
   const first = formatLocalISO(start);
   const last = formatLocalISO(end);
@@ -35,17 +35,17 @@ export function selectCurrentWeekProofJobs(jobs, now = new Date()) {
   });
 }
 
-export async function preloadCurrentWeekProofs(jobs, options = {}) {
-  const targets = selectCurrentWeekProofJobs(jobs, options.now || new Date());
+export function selectCurrentWeekProofJobs(jobs, now = new Date()) {
+  return selectProofJobsForWeek(jobs, 0, now);
+}
+
+async function preloadProofTargets(targets, options, concurrency) {
   const readStored = options.readStored || readStoredProof;
   const fetchProof = options.fetchProof || defaultFetchProof;
   const writeStored = options.storeProof || storeProof;
   const hasMemory = options.hasMemory || (key => !!getCachedProofFile(key));
-  const concurrency = Math.max(1, Math.min(2, Number(options.concurrency) || 2));
   const result = { total: targets.length, cached: 0, stored: 0, unavailable: 0, failed: 0 };
   let nextIndex = 0;
-
-  if (!options.readStored && !options.storeProof) await pruneStoredProofs();
 
   async function worker() {
     while (nextIndex < targets.length) {
@@ -68,8 +68,9 @@ export async function preloadCurrentWeekProofs(jobs, options = {}) {
           mimeType: 'application/pdf',
           bytes: base64ToBytes(response.base64),
         };
-        await writeStored(key, proof);
-        result.stored++;
+        const didStore = await writeStored(key, proof);
+        if (didStore === false) result.failed++;
+        else result.stored++;
       } catch (err) {
         result.failed++;
       } finally {
@@ -80,4 +81,21 @@ export async function preloadCurrentWeekProofs(jobs, options = {}) {
 
   await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()));
   return result;
+}
+
+export async function preloadCurrentWeekProofs(jobs, options = {}) {
+  if (!options.readStored && !options.storeProof) await pruneStoredProofs();
+  const targets = selectCurrentWeekProofJobs(jobs, options.now || new Date());
+  const concurrency = Math.max(1, Math.min(2, Number(options.concurrency) || 2));
+  return preloadProofTargets(targets, options, concurrency);
+}
+
+export async function preloadCurrentAndNextWeekProofs(jobs, options = {}) {
+  if (!options.readStored && !options.storeProof) await pruneStoredProofs();
+  const now = options.now || new Date();
+  const currentTargets = selectProofJobsForWeek(jobs, 0, now);
+  const nextTargets = selectProofJobsForWeek(jobs, 1, now);
+  const current = await preloadProofTargets(currentTargets, options, 2);
+  const next = await preloadProofTargets(nextTargets, options, 1);
+  return { current, next };
 }
