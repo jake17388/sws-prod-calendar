@@ -88,3 +88,52 @@ test('new checklist tasks receive an immutable added-by timestamp', () => {
   assert.equal(edited.addedBy, first.addedBy);
   assert.equal(edited.addedAt, first.addedAt);
 });
+
+test('finishing the final Paint task automatically hands the job to Assembly', () => {
+  const { context } = loadBackend();
+  const completedAt = '2026-08-10T15:30:00.000Z';
+  const state = {
+    departments: ['Paint'],
+    currentDepartments: ['Paint'],
+    departmentChecklists: {
+      Paint: [{ id: 'paint-1', text: 'Final coat', done: true, doneBy: 'Pat Painter', doneById: 'painter-1', doneAt: completedAt }],
+    },
+  };
+  const previousPaint = [{ id: 'paint-1', text: 'Final coat', done: false }];
+
+  const result = context.advancePaintToAssembly(state, previousPaint, { id: 'painter-1', name: 'Pat Painter' }, completedAt);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result.departments)), ['Paint', 'Assembly']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.currentDepartments)), ['Assembly']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.departmentChecklists.Assembly)), [{
+    id: 'uuid-1',
+    text: 'Prep for Install',
+    done: false,
+    doneBy: '',
+    doneById: '',
+    doneAt: '',
+    addedBy: 'Pat Painter',
+    addedById: 'painter-1',
+    addedAt: completedAt,
+  }]);
+});
+
+test('the Paint handoff preserves an existing open Assembly task and does not run twice', () => {
+  const { context } = loadBackend();
+  const assemblyTask = { id: 'assembly-1', text: 'Existing prep', done: false, addedBy: 'Morgan' };
+  const state = {
+    departments: ['Paint', 'Assembly'],
+    currentDepartments: ['Paint'],
+    departmentChecklists: {
+      Paint: [{ id: 'paint-1', text: 'Final coat', done: true }],
+      Assembly: [assemblyTask],
+    },
+  };
+
+  const handedOff = context.advancePaintToAssembly(state, [{ id: 'paint-1', done: false }], { id: 'p1', name: 'Pat' }, '2026-08-10T15:30:00.000Z');
+  assert.deepEqual(JSON.parse(JSON.stringify(handedOff.departmentChecklists.Assembly)), [assemblyTask]);
+  assert.deepEqual(JSON.parse(JSON.stringify(handedOff.currentDepartments)), ['Assembly']);
+
+  const repeated = context.advancePaintToAssembly(handedOff, handedOff.departmentChecklists.Paint, { id: 'p1', name: 'Pat' }, '2026-08-10T15:31:00.000Z');
+  assert.deepEqual(JSON.parse(JSON.stringify(repeated)), JSON.parse(JSON.stringify(handedOff)));
+});
