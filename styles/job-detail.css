@@ -420,7 +420,7 @@
 }
 .additional-files-dropzone:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 
-/* ── Production file viewer — full-screen on every device, not a panel ──── */
+/* ── File viewer — full-screen on every device, not a panel ────────────── */
 #proof-viewer-overlay {
   display: none;
   position: fixed;
@@ -481,6 +481,39 @@
   background: #fff;
   box-shadow: var(--shadow-2);
 }
+.file-viewer-image,
+.file-viewer-media {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+}
+.file-viewer-media { width: min(100%, 960px); margin: auto; }
+.file-viewer-text {
+  width: min(100%, 960px);
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--ink-primary);
+  box-shadow: var(--shadow-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.file-viewer-fallback {
+  width: min(100%, 480px);
+  margin: auto;
+  padding: var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-2);
+  text-align: center;
+}
+.file-viewer-fallback p { margin: 0 0 var(--space-4); color: var(--ink-secondary); }
+.file-viewer-fallback .settings-action { display: inline-flex; width: auto; text-decoration: none; }
 
 .due-date-edit-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .due-date-edit-form[hidden] { display: none; }

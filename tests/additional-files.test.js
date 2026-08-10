@@ -119,4 +119,7 @@ test('the project screen labels the proof as Production File and provides drag-a
   assert.match(component, /dragover/);
   assert.match(component, /uploadAdditionalFile/);
   assert.match(component, /deleteAdditionalFile/);
+  assert.match(component, /View File/);
+  assert.match(component, /openAdditionalFileViewer/);
+  assert.match(component, /file-viewer-image/);
 });

@@ -13,6 +13,7 @@ import { renderPdfPages } from '../pdfViewer.js';
 let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
+let viewerObjectUrl = null;
 let activeJobKey = null;
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
 
@@ -34,8 +35,12 @@ function setViewportZoomable(zoomable) {
   if (meta) meta.setAttribute('content', zoomable ? ZOOMABLE_VIEWPORT_CONTENT : DEFAULT_VIEWPORT_CONTENT);
 }
 
-function openProofViewer(job, bytes) {
-  document.getElementById('proof-viewer-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
+function prepareFileViewer(job, title) {
+  if (viewerObjectUrl) {
+    URL.revokeObjectURL(viewerObjectUrl);
+    viewerObjectUrl = null;
+  }
+  document.getElementById('proof-viewer-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${title}`;
   const pages = document.getElementById('proof-viewer-pages');
   pages.innerHTML = '';
   const loading = document.getElementById('proof-viewer-loading');
@@ -44,16 +49,100 @@ function openProofViewer(job, bytes) {
   document.getElementById('proof-viewer-overlay').classList.add('open');
   setViewportZoomable(true);
 
-  const token = ++viewerRequestToken;
+  return { pages, loading, token: ++viewerRequestToken };
+}
+
+function openProofViewer(job, bytes) {
+  const { pages, loading, token } = prepareFileViewer(job, job.title);
+
   renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
     .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
     .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
+}
+
+function addDownloadFallback(pages, url, name, message = 'This file type cannot be previewed in the browser.') {
+  const fallback = document.createElement('div');
+  fallback.className = 'file-viewer-fallback';
+  const text = document.createElement('p');
+  text.textContent = message;
+  const download = document.createElement('a');
+  download.className = 'settings-action primary';
+  download.href = url;
+  download.download = name;
+  download.textContent = 'Download File';
+  fallback.append(text, download);
+  pages.appendChild(fallback);
+}
+
+function openAdditionalFileViewer(job, file, response, bytes) {
+  const name = response.name || file.name || 'Additional File';
+  const mimeType = response.mimeType || file.mimeType || 'application/octet-stream';
+  const { pages, loading, token } = prepareFileViewer(job, name);
+
+  if (mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) {
+    renderPdfPages(pages, bytes, () => token !== viewerRequestToken)
+      .then(() => { if (token === viewerRequestToken) loading.hidden = true; })
+      .catch(() => { if (token === viewerRequestToken) loading.textContent = 'Failed to load PDF'; });
+    return;
+  }
+
+  viewerObjectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  const url = viewerObjectUrl;
+
+  if (mimeType.startsWith('image/')) {
+    const image = document.createElement('img');
+    image.className = 'file-viewer-image';
+    image.alt = name;
+    image.onload = () => { if (token === viewerRequestToken) loading.hidden = true; };
+    image.onerror = () => {
+      if (token !== viewerRequestToken) return;
+      loading.hidden = true;
+      image.remove();
+      addDownloadFallback(pages, url, name, 'This image could not be displayed.');
+    };
+    image.src = url;
+    pages.appendChild(image);
+    return;
+  }
+
+  if (mimeType.startsWith('video/') || mimeType.startsWith('audio/')) {
+    const media = document.createElement(mimeType.startsWith('video/') ? 'video' : 'audio');
+    media.className = 'file-viewer-media';
+    media.controls = true;
+    media.playsInline = true;
+    media.src = url;
+    media.onloadedmetadata = () => { if (token === viewerRequestToken) loading.hidden = true; };
+    media.onerror = () => {
+      if (token !== viewerRequestToken) return;
+      loading.hidden = true;
+      media.remove();
+      addDownloadFallback(pages, url, name, 'This media file could not be played.');
+    };
+    pages.appendChild(media);
+    return;
+  }
+
+  if (mimeType.startsWith('text/') || /\.(txt|csv|json|log|md)$/i.test(name)) {
+    const text = document.createElement('pre');
+    text.className = 'file-viewer-text';
+    text.textContent = new TextDecoder().decode(bytes);
+    pages.appendChild(text);
+    loading.hidden = true;
+    return;
+  }
+
+  loading.hidden = true;
+  addDownloadFallback(pages, url, name);
 }
 
 export function closeProofViewer() {
   viewerRequestToken++; // stop any in-flight page rendering
   document.getElementById('proof-viewer-overlay').classList.remove('open');
   document.getElementById('proof-viewer-pages').innerHTML = '';
+  if (viewerObjectUrl) {
+    URL.revokeObjectURL(viewerObjectUrl);
+    viewerObjectUrl = null;
+  }
   setViewportZoomable(false);
 }
 
@@ -106,7 +195,7 @@ function formatFileSize(size) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function downloadAdditionalFile(job, file, button) {
+async function viewAdditionalFile(job, file, button) {
   button.disabled = true;
   const originalText = button.textContent;
   button.textContent = 'Loading…';
@@ -114,16 +203,9 @@ async function downloadAdditionalFile(job, file, button) {
     const res = await fetchAdditionalFile(job.jobKey, file.id);
     if (!res || !res.available || !res.base64) throw new Error(res && (res.message || res.error));
     const bytes = base64ToBytes(res.base64);
-    const url = URL.createObjectURL(new Blob([bytes], { type: res.mimeType || file.mimeType || 'application/octet-stream' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = res.name || file.name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    openAdditionalFileViewer(job, file, res, bytes);
   } catch (err) {
-    showToast('Could not download file — try again', 'error');
+    showToast('Could not open file — try again', 'error');
   } finally {
     button.disabled = false;
     button.textContent = originalText;
@@ -161,12 +243,12 @@ function renderAdditionalFiles(job) {
 
     const actions = document.createElement('div');
     actions.className = 'additional-file-actions';
-    const download = document.createElement('button');
-    download.type = 'button';
-    download.className = 'additional-file-action';
-    download.textContent = 'Download';
-    download.onclick = () => downloadAdditionalFile(job, file, download);
-    actions.appendChild(download);
+    const view = document.createElement('button');
+    view.type = 'button';
+    view.className = 'additional-file-action';
+    view.textContent = 'View File';
+    view.onclick = () => viewAdditionalFile(job, file, view);
+    actions.appendChild(view);
 
     if (isAdmin()) {
       const remove = document.createElement('button');
