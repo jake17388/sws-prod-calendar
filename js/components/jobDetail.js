@@ -1,7 +1,7 @@
-import { toggleComplete, updateDueDate, fetchProofFile } from '../api.js';
+import { toggleComplete, updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
-import { canEditDueDates, canMarkJobComplete, canAssignDepartments, currentDepartment } from '../auth.js';
+import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { renderNotes } from './notes.js';
@@ -13,6 +13,8 @@ import { renderPdfPages } from '../pdfViewer.js';
 let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
+let activeJobKey = null;
+const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
 
 function base64ToBytes(base64) {
   const bin = atob(base64);
@@ -68,7 +70,7 @@ function renderProofSection(job) {
   currentProofBytes = null;
   openBtn.hidden = true;
   empty.hidden = false;
-  empty.textContent = 'Loading proof…';
+  empty.textContent = 'Loading production file…';
 
   const token = ++proofRequestToken;
   fetchProofFile(job.jobNum)
@@ -87,6 +89,171 @@ function renderProofSection(job) {
       if (token !== proofRequestToken) return;
       empty.textContent = 'No File Available';
     });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function downloadAdditionalFile(job, file, button) {
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = 'Loading…';
+  try {
+    const res = await fetchAdditionalFile(job.jobKey, file.id);
+    if (!res || !res.available || !res.base64) throw new Error(res && (res.message || res.error));
+    const bytes = base64ToBytes(res.base64);
+    const url = URL.createObjectURL(new Blob([bytes], { type: res.mimeType || file.mimeType || 'application/octet-stream' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = res.name || file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    showToast('Could not download file — try again', 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+function renderAdditionalFiles(job) {
+  const list = document.getElementById('job-detail-additional-list');
+  const dropzone = document.getElementById('job-detail-additional-dropzone');
+  const input = document.getElementById('job-detail-additional-input');
+  const hint = document.getElementById('job-detail-additional-hint');
+  const files = Array.isArray(job.additionalFiles) ? job.additionalFiles : [];
+
+  list.innerHTML = '';
+  if (!files.length) {
+    const empty = document.createElement('div');
+    empty.className = 'additional-files-empty';
+    empty.textContent = 'No additional files yet.';
+    list.appendChild(empty);
+  }
+
+  files.forEach(file => {
+    const row = document.createElement('div');
+    row.className = 'additional-file-row';
+
+    const details = document.createElement('div');
+    details.className = 'additional-file-details';
+    const name = document.createElement('div');
+    name.className = 'additional-file-name';
+    name.textContent = file.name;
+    const meta = document.createElement('div');
+    meta.className = 'additional-file-meta';
+    meta.textContent = `${file.addedBy || 'Unknown'} · ${formatTimestamp(file.addedAt)} · ${formatFileSize(file.size || 0)}`;
+    details.append(name, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'additional-file-actions';
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.className = 'additional-file-action';
+    download.textContent = 'Download';
+    download.onclick = () => downloadAdditionalFile(job, file, download);
+    actions.appendChild(download);
+
+    if (isAdmin()) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'additional-file-action danger';
+      remove.textContent = 'Delete';
+      remove.onclick = async () => {
+        if (!confirm(`Delete ${file.name}?`)) return;
+        remove.disabled = true;
+        try {
+          const res = await deleteAdditionalFile(job.jobKey, file.id);
+          if (!res.success) throw new Error(res.error || 'failed');
+          job.additionalFiles = res.additionalFiles || [];
+          patchJob(job.jobKey, { additionalFiles: job.additionalFiles, updatedAt: res.updatedAt });
+          if (activeJobKey === job.jobKey) renderAdditionalFiles(job);
+          showToast('File deleted');
+        } catch (err) {
+          remove.disabled = false;
+          showToast('Could not delete file — try again', 'error');
+        }
+      };
+      actions.appendChild(remove);
+    }
+
+    row.append(details, actions);
+    list.appendChild(row);
+  });
+
+  const canUpload = canUploadAdditionalFiles();
+  dropzone.hidden = !canUpload;
+  hint.textContent = '';
+  if (!canUpload) return;
+
+  const acceptFiles = fileList => uploadFiles(job, Array.from(fileList || []));
+  dropzone.onclick = event => { if (event.target !== input) input.click(); };
+  dropzone.onkeydown = event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      input.click();
+    }
+  };
+  input.onchange = () => {
+    acceptFiles(input.files);
+    input.value = '';
+  };
+  dropzone.ondragover = event => {
+    event.preventDefault();
+    dropzone.classList.add('is-dragging');
+  };
+  dropzone.ondragleave = () => dropzone.classList.remove('is-dragging');
+  dropzone.ondrop = event => {
+    event.preventDefault();
+    dropzone.classList.remove('is-dragging');
+    acceptFiles(event.dataTransfer.files);
+  };
+}
+
+async function uploadFiles(job, files) {
+  if (!files.length) return;
+  const hint = document.getElementById('job-detail-additional-hint');
+  let failures = 0;
+
+  for (const file of files) {
+    if (!file.size || file.size > MAX_ADDITIONAL_FILE_BYTES) {
+      failures++;
+      showToast(`${file.name} must be 8 MB or smaller`, 'error');
+      continue;
+    }
+    hint.textContent = `Uploading ${file.name}…`;
+    try {
+      const base64 = await fileToBase64(file);
+      const res = await uploadAdditionalFile(job.jobKey, file, base64);
+      if (!res.success) throw new Error(res.error || 'failed');
+      job.additionalFiles = res.additionalFiles || [];
+      job.updatedAt = res.updatedAt || job.updatedAt;
+      patchJob(job.jobKey, { additionalFiles: job.additionalFiles, updatedAt: job.updatedAt });
+      if (activeJobKey === job.jobKey) renderAdditionalFiles(job);
+    } catch (err) {
+      failures++;
+      showToast(`Could not upload ${file.name}`, 'error');
+    }
+  }
+
+  if (activeJobKey === job.jobKey) {
+    hint.textContent = failures ? `${failures} file${failures === 1 ? '' : 's'} could not be uploaded.` : 'Upload complete.';
+  }
+  if (!failures) showToast(files.length === 1 ? 'File added' : 'Files added');
 }
 
 function renderCompletedInfo(job) {
@@ -199,12 +366,14 @@ function renderDepartmentSection(job) {
 export function openJobDetail(jobKey) {
   const job = findJob(jobKey);
   if (!job) return;
+  activeJobKey = job.jobKey;
 
   document.getElementById('job-detail-title').textContent = `${job.jobNum ? job.jobNum + ' — ' : ''}${job.title}`;
   updateMetaText(job);
   renderDueDateEditor(job);
   renderDepartmentSection(job);
   renderProofSection(job);
+  renderAdditionalFiles(job);
 
   const canComplete = canMarkJobComplete();
 
@@ -254,6 +423,7 @@ export function closeJobDetail() {
   document.getElementById('job-detail-overlay').classList.remove('open');
   setHeaderDimmed(false);
   proofRequestToken++; // invalidate any in-flight proof fetch
+  activeJobKey = null;
   currentProofBytes = null;
   closeProofViewer();
 }

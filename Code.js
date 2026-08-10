@@ -46,6 +46,10 @@ const TOKEN_TTL_MS = 12 * 3600 * 1000; // one workday; shared devices should not
 const TOKEN_HANDOFF_GRACE_MS = 30 * 1000; // lets an in-flight request finish while My Account stores its replacement token
 const TRAINING_PIN_BATCH = '2026-08-07-six-digit';
 const PIN_CHANGE_STATUS_BATCH = '2026-08-10-required-pin-change';
+const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_ADDITIONAL_FILES_PER_JOB = 50;
+const MAX_STANDARD_REQUEST_CHARS = 250000;
+const MAX_UPLOAD_REQUEST_CHARS = 12 * 1024 * 1024;
 
 const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
 
@@ -57,6 +61,17 @@ const JOB_TAGS = JOB_DEPARTMENTS.concat(['Ship-In']);
 
 function canAssignDepartments(department) {
   return department === 'Admin' || department === 'Manager';
+}
+
+function canUploadAdditionalFiles(department) {
+  return department === 'Admin' || department === 'Manager' || department === 'Viewer';
+}
+
+function additionalFilesForClient(files) {
+  return (files || []).map(file => {
+    const { fileId, ...visible } = file;
+    return visible;
+  });
 }
 
 // Only Admin/Manager can mark an entire job complete. Production-department
@@ -794,6 +809,11 @@ function routeGet(e) {
     if (!canAccessJobKey(actor, jobNum)) return json({ error: 'forbidden' });
     return json(getDropboxProofFile(jobNum));
   }
+  if (action === 'getAdditionalFile') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json(getAdditionalFile(actor, params));
+  }
   if (action === 'getDropboxStatus') {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
@@ -827,7 +847,7 @@ function routePost(e) {
   if (!e || !e.postData || !e.postData.contents) {
     return json({ error: 'bad_request', message: 'Missing request body' });
   }
-  if (e.postData.contents.length > 250000) {
+  if (e.postData.contents.length > MAX_UPLOAD_REQUEST_CHARS) {
     return json({ error: 'bad_request', message: 'Request body is too large' });
   }
   let data;
@@ -838,6 +858,9 @@ function routePost(e) {
   }
   if (!data || typeof data !== 'object') {
     return json({ error: 'bad_request', message: 'Request body must be a JSON object' });
+  }
+  if (data.action !== 'addAdditionalFile' && e.postData.contents.length > MAX_STANDARD_REQUEST_CHARS) {
+    return json({ error: 'bad_request', message: 'Request body is too large' });
   }
 
   if (data.action === 'login') {
@@ -881,6 +904,8 @@ function routePost(e) {
   if (data.action === 'updateSelf') return respond(() => updateSelf(actor, data));
   if (data.action === 'revokeUserSessions') return respond(() => revokeUserSessions(actor, data));
   if (data.action === 'saveCommonTasks') return respond(() => saveCommonTasks(actor, data));
+  if (data.action === 'addAdditionalFile') return respond(() => addAdditionalFile(actor, data));
+  if (data.action === 'deleteAdditionalFile') return respond(() => deleteAdditionalFile(actor, data));
   if (data.action === 'setDropboxCredentials') {
     return respond(() => {
       if (actor.department !== 'Admin') return { error: 'forbidden' };
@@ -1298,6 +1323,7 @@ function getProductionJobs(e, actor) {
     job.departments = t.departments || [];
     job.departmentChecklists = t.departmentChecklists || {};
     job.currentDepartments = t.currentDepartments || [];
+    job.additionalFiles = additionalFilesForClient(t.additionalFiles);
     // The token a client echoes back on its next write (see setTracking's
     // expectedUpdatedAt check) so a save built from this snapshot gets
     // rejected if someone else's write landed first.
@@ -1463,7 +1489,7 @@ function getTrackingSpreadsheet() {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
     const sheet = ss.getActiveSheet();
-    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json', 'department_notes_json']);
+    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json', 'department_notes_json', 'additional_files_json']);
     // Plain-text format on the date-shaped columns so Sheets doesn't
     // auto-coerce "2026-08-15" into an actual Date cell.
     sheet.getRange('G:I').setNumberFormat('@');
@@ -1472,7 +1498,11 @@ function getTrackingSpreadsheet() {
 }
 
 function getTrackingSheet() {
-  return getTrackingSpreadsheet().getSheets()[0];
+  const sheet = getTrackingSpreadsheet().getSheets()[0];
+  if (sheet.getRange(1, 14).getValue() !== 'additional_files_json') {
+    sheet.getRange(1, 14).setValue('additional_files_json');
+  }
+  return sheet;
 }
 
 // Notes used to be a single free-text field — now each is a list of authored,
@@ -1503,6 +1533,15 @@ function parseDepartmentNotesCell(raw) {
       : [];
   });
   return result;
+}
+
+function parseAdditionalFilesCell(raw) {
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
 }
 
 // Department notes were retired in August 2026. Fold every legacy note into
@@ -1550,7 +1589,7 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson] = data[i];
+    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson] = data[i];
     if (!jobKey) continue;
     // A duplicate job_key row (see dedupeTrackingSheet) must resolve the
     // same way setTracking's own row-finder does — first occurrence wins —
@@ -1571,6 +1610,7 @@ function getAllTracking() {
       completedAt: completedAt || '', completedBy: completedBy || '',
       dueOverride: normalizeDateCell(dueOverride),
       departments, departmentChecklists, currentDepartments,
+      additionalFiles: parseAdditionalFilesCell(additionalFilesJson),
     };
   }
   return tracking;
@@ -1636,7 +1676,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [] }
+      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], additionalFiles: [] }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: mergeLegacyDepartmentNotes(parseNotesCell(data[rowIndex - 1][2]), parseDepartmentNotesCell(data[rowIndex - 1][12])),
@@ -1648,6 +1688,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
           departments: (() => { try { return JSON.parse(data[rowIndex - 1][9] || '[]'); } catch (e) { return []; } })(),
           departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
           currentDepartments: (() => { try { return JSON.parse(data[rowIndex - 1][11] || '[]'); } catch (e) { return []; } })(),
+          additionalFiles: parseAdditionalFilesCell(data[rowIndex - 1][13]),
         };
 
     if (expectedUpdatedAt && rowIndex !== -1 && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
@@ -1672,11 +1713,12 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     const departmentsJson = JSON.stringify(next.departments);
     const departmentChecklistsJson = JSON.stringify(next.departmentChecklists);
     const currentDepartmentsJson = JSON.stringify(next.currentDepartments);
+    const additionalFilesJson = JSON.stringify(next.additionalFiles || []);
     const departmentNotesJson = '{}'; // retained as an empty compatibility column
-    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson].some(value => value.length > 45000)) {
+    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, additionalFilesJson].some(value => value.length > 45000)) {
       return { success: false, error: 'Job data is too large to save' };
     }
-    const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson];
+    const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {
@@ -1690,6 +1732,134 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// ── Additional project files ────────────────────────────────────────────────
+// Files uploaded from the job screen live in a private Drive folder owned by
+// the Apps Script account. Only lightweight metadata is stored with the job's
+// tracking row; file bytes are fetched on demand so the normal calendar payload
+// stays small. The Drive file id is never accepted directly from a client — it
+// must first match metadata attached to a job the signed-in user can access.
+function getAdditionalFilesFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const folderId = props.getProperty('ADDITIONAL_FILES_FOLDER_ID');
+  if (folderId) {
+    try { return DriveApp.getFolderById(folderId); } catch (err) { /* recreate below */ }
+  }
+  const folder = DriveApp.createFolder('SWS Prod Calendar - Additional Files');
+  props.setProperty('ADDITIONAL_FILES_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+function normalizeAdditionalFileName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '_')
+    .slice(0, 160);
+}
+
+function addAdditionalFile(actor, data) {
+  if (!canUploadAdditionalFiles(actor && actor.department)) return { success: false, error: 'forbidden' };
+  const jobKey = String(data.jobKey || '');
+  if (!validJobKey(jobKey)) return { success: false, error: 'Invalid job key' };
+  if (!canAccessJobKey(actor, jobKey)) return { success: false, error: 'forbidden' };
+
+  const name = normalizeAdditionalFileName(data.name);
+  if (!name) return { success: false, error: 'File name is required' };
+  const mimeType = /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(String(data.mimeType || ''))
+    ? String(data.mimeType)
+    : 'application/octet-stream';
+  const encoded = String(data.base64 || '');
+  if (!encoded || encoded.length > Math.ceil(MAX_ADDITIONAL_FILE_BYTES / 3) * 4 + 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    return { success: false, error: 'Invalid or oversized file' };
+  }
+
+  let bytes;
+  try { bytes = Utilities.base64Decode(encoded); } catch (err) { return { success: false, error: 'Invalid file data' }; }
+  if (!bytes.length || bytes.length > MAX_ADDITIONAL_FILE_BYTES) {
+    return { success: false, error: 'Files must be 8 MB or smaller' };
+  }
+
+  const addedAt = new Date().toISOString();
+  const id = Utilities.getUuid();
+  let driveFile;
+  try {
+    const blob = Utilities.newBlob(bytes, mimeType, name);
+    driveFile = getAdditionalFilesFolder().createFile(blob);
+  } catch (err) {
+    console.error('Additional file upload failed for job %s: %s', jobKey, err && err.message);
+    return { success: false, error: 'File upload failed — try again' };
+  }
+
+  const metadata = {
+    id,
+    fileId: driveFile.getId(),
+    name,
+    mimeType,
+    size: bytes.length,
+    addedBy: actor.name,
+    addedById: actor.id || '',
+    addedAt,
+  };
+  const result = setTracking(jobKey, current => {
+    const files = current.additionalFiles || [];
+    if (files.length >= MAX_ADDITIONAL_FILES_PER_JOB) return { error: 'This project already has the maximum of 50 additional files' };
+    return { additionalFiles: files.concat(metadata) };
+  }, actor.name);
+
+  if (!result.success) {
+    try { driveFile.setTrashed(true); } catch (err) { /* cleanup is best-effort */ }
+    return result;
+  }
+  return { ...result, additionalFiles: additionalFilesForClient(result.additionalFiles) };
+}
+
+function getAdditionalFile(actor, data) {
+  const jobKey = String(data.jobKey || '');
+  const fileId = String(data.fileId || '');
+  if (!validJobKey(jobKey) || !fileId || fileId.length > 100) return { error: 'bad_request', message: 'Invalid file request' };
+  if (!canAccessJobKey(actor, jobKey)) return { error: 'forbidden' };
+  const tracking = getAllTracking()[jobKey] || {};
+  const metadata = (tracking.additionalFiles || []).find(file => file.id === fileId);
+  if (!metadata) return { error: 'not_found', message: 'File not found' };
+
+  try {
+    const blob = DriveApp.getFileById(metadata.fileId).getBlob();
+    return {
+      available: true,
+      name: metadata.name,
+      mimeType: metadata.mimeType || blob.getContentType() || 'application/octet-stream',
+      base64: Utilities.base64Encode(blob.getBytes()),
+    };
+  } catch (err) {
+    console.error('Additional file download failed for job %s: %s', jobKey, err && err.message);
+    return { error: 'not_found', message: 'File is no longer available' };
+  }
+}
+
+function deleteAdditionalFile(actor, data) {
+  if (!actor || actor.department !== 'Admin') return { success: false, error: 'forbidden' };
+  const jobKey = String(data.jobKey || '');
+  const fileId = String(data.fileId || '');
+  if (!validJobKey(jobKey)) return { success: false, error: 'Invalid job key' };
+  if (!fileId || fileId.length > 100) return { success: false, error: 'Invalid file id' };
+  if (!canAccessJobKey(actor, jobKey)) return { success: false, error: 'forbidden' };
+
+  let removed = null;
+  const result = setTracking(jobKey, current => {
+    const files = current.additionalFiles || [];
+    removed = files.find(file => file.id === fileId) || null;
+    if (!removed) return { error: 'File not found' };
+    return { additionalFiles: files.filter(file => file.id !== fileId) };
+  }, actor.name);
+
+  if (result.success && removed && removed.fileId) {
+    try { DriveApp.getFileById(removed.fileId).setTrashed(true); } catch (err) {
+      console.warn('Could not trash deleted additional file %s: %s', removed.fileId, err && err.message);
+    }
+  }
+  if (!result.success) return result;
+  return { ...result, additionalFiles: additionalFilesForClient(result.additionalFiles) };
 }
 
 // ── Dropbox proofs ───────────────────────────────────────────────────────────

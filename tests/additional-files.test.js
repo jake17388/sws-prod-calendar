@@ -15,7 +15,7 @@ function loadBackend() {
     getBlob: () => ({ getBytes: () => Buffer.from('hello') }),
     setTrashed: value => { trashed = value; },
   };
-  const folder = { createFile: () => storedFile };
+  const folder = { getId: () => 'additional-folder-1', createFile: () => storedFile };
   const context = vm.createContext({
     console,
     Date,
@@ -54,10 +54,13 @@ test('Admins, Managers, and Viewers can upload additional files but production r
 
 test('an uploaded file is stored with immutable author and timestamp metadata', () => {
   const { context } = loadBackend();
+  let storedMetadata;
   context.canAccessJobKey = () => true;
   context.setTracking = (jobKey, patch) => {
     const current = { additionalFiles: [] };
-    return { success: true, ...current, ...patch(current), updatedAt: 'updated' };
+    const resolved = patch(current);
+    storedMetadata = resolved.additionalFiles[0];
+    return { success: true, ...current, ...resolved, updatedAt: 'updated' };
   };
 
   const result = context.addAdditionalFile(
@@ -69,7 +72,6 @@ test('an uploaded file is stored with immutable author and timestamp metadata', 
   assert.equal(result.additionalFiles.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(result.additionalFiles[0])), {
     id: 'uuid-1',
-    fileId: 'drive-file-1',
     name: 'install-photo.jpg',
     mimeType: 'image/jpeg',
     size: 5,
@@ -77,6 +79,8 @@ test('an uploaded file is stored with immutable author and timestamp metadata', 
     addedById: 'viewer-1',
     addedAt: result.additionalFiles[0].addedAt,
   });
+  assert.equal(storedMetadata.fileId, 'drive-file-1');
+  assert.equal(result.additionalFiles[0].fileId, undefined);
   assert.match(result.additionalFiles[0].addedAt, /^\d{4}-\d{2}-\d{2}T/);
 });
 

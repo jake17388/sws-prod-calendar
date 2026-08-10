@@ -65,19 +65,19 @@ function handleConnect() {
 }
 
 function handleRefresh() {
-  setHint('Refreshing proofs from Dropbox…');
+  setHint('Refreshing Production Files from Dropbox…');
   refreshDropboxProofsNow()
     .then(res => {
       if (!res.success) { setHint(res.error || 'Refresh failed'); return; }
       setHint('Refreshed');
-      showToast('Dropbox proofs refreshed');
+      showToast('Production Files refreshed');
       setTimeout(() => setHint(''), 1500);
     })
     .catch(() => setHint('Network error — try again'));
 }
 
 function handleDisconnect() {
-  if (!confirm('Disconnect Dropbox? Proofs will show "No File Available" until reconnected.')) return;
+  if (!confirm('Disconnect Dropbox? Production Files will show "No File Available" until reconnected.')) return;
   setHint('Disconnecting…');
   disconnectDropbox()
     .then(res => {

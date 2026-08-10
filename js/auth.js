@@ -59,6 +59,7 @@ export const canManageUsers = () => !!(auth && auth.canManageUsers);
 // Only Admin/Manager can mark an entire job complete or assign departments.
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
+export const canUploadAdditionalFiles = () => !!auth && ['Admin', 'Manager', 'Viewer'].includes(auth.department);
 export const isAdmin = () => !!auth && auth.department === 'Admin';
 export const mustChangePin = () => !!auth && !!auth.mustChangePin;
 // Now shown to everyone with a session, including production-department

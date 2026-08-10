@@ -6,7 +6,7 @@ const job = {
   startDate: today, endDate: today, dueDate: today, autoDueDate: today,
   dueOverride: '', multiDay: false, crew: [], completed: false,
   notes: [], checklist: [], departments: [], currentDepartments: [],
-  departmentChecklists: {}, updatedAt: '2026-08-10T12:00:00.000Z',
+  departmentChecklists: {}, additionalFiles: [], updatedAt: '2026-08-10T12:00:00.000Z',
 };
 
 async function mockBackend(page, { mustChangePin = false, department = 'Admin' } = {}) {
@@ -42,6 +42,17 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin' }
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
+    } else if (action === 'addAdditionalFile') {
+      currentJob = {
+        ...currentJob,
+        additionalFiles: [{
+          id: 'file-1', name: payload.name, mimeType: payload.mimeType,
+          size: Buffer.from(payload.base64, 'base64').length,
+          addedBy: 'Test User', addedById: 'admin', addedAt: '2026-08-10T12:02:00.000Z',
+        }],
+        updatedAt: '2026-08-10T12:02:00.000Z',
+      };
+      body = { success: true, additionalFiles: currentJob.additionalFiles, updatedAt: currentJob.updatedAt };
     } else if (action === 'updateSelf') {
       body = { success: true, user: { id: 'admin', name: 'Test Admin', department: 'Admin', mustChangePin: false }, token: 'eyJ1aWQiOiJhZG1pbiJ9.replacement' };
     } else {
@@ -84,6 +95,21 @@ test('a Viewer can add to the same project notes timeline', async ({ page }) => 
   await page.getByPlaceholder('Add a note…').fill('Viewer update');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Viewer update')).toBeVisible();
+});
+
+test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {
+  await mockBackend(page, { department: 'Viewer' });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await page.locator('#job-detail-additional-input').setInputFiles({
+    name: 'install-photo.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from('test image'),
+  });
+
+  await expect(page.getByText('install-photo.jpg')).toBeVisible();
+  await expect(page.getByText(/Test User/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0);
 });
 
 test('a temporary PIN forces My Account until the user replaces it', async ({ page }) => {

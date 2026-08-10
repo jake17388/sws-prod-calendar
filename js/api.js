@@ -95,6 +95,16 @@ export const deleteNote = (jobKey, noteId) =>
 /** @param {string} jobNum @returns {Promise<{available: boolean, name?: string, base64?: string}>} */
 export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum });
 
+/** @param {string} jobKey @param {{name: string, type: string}} file @param {string} base64 */
+export const uploadAdditionalFile = (jobKey, file, base64) =>
+  scriptPost({ action: 'addAdditionalFile', jobKey, name: file.name, mimeType: file.type, base64 });
+
+export const fetchAdditionalFile = (jobKey, fileId) =>
+  scriptGet('getAdditionalFile', { jobKey, fileId });
+
+export const deleteAdditionalFile = (jobKey, fileId) =>
+  scriptPost({ action: 'deleteAdditionalFile', jobKey, fileId });
+
 export const fetchDropboxStatus = () => scriptGet('getDropboxStatus');
 
 export const fetchSystemHealth = () => scriptGet('getSystemHealth');

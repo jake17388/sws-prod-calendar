@@ -16,6 +16,8 @@ job's install start date — pulled from the `SWS - Install` and
   (multi-day jobs use the earliest day)
 - **Completion/notes/checklist** are stored in a Google Sheet
   ("SWS Production Tracking"), created automatically on first use
+- **Additional files** are stored privately in Google Drive, with their project,
+  uploader, and timestamp recorded in the tracking sheet
 - **Authentication** is a PIN-only account. Every PIN is exactly six digits and
   stored as a salted hash, with an Admin-visible copy for account support.
 - **Hosted** on GitHub Pages — every push to `main` deploys automatically
@@ -129,12 +131,18 @@ it does not delete its tracking record. Tracking history remains indefinitely
 in the `SWS Production Tracking` Google Sheet unless an administrator removes
 it manually. There is currently no separate archive browser or automatic purge.
 
+The job screen calls the Dropbox-sourced proof the **Production File**. Admins,
+Managers, and Viewers can add up to 50 additional project files (8 MB each) by
+choosing or dragging them into the project. Everyone who can view the project
+can download those files and see who added each one and when. Only Admins can
+delete them; that permission is enforced by the backend.
+
 ## Validation and permissions
 
 All permissions are enforced in `Code.js`; hidden frontend controls are only a
 usability feature. Job keys, dates, departments, note/task lengths, request IDs,
 and stored payload sizes are validated before writing. Production-department
-accounts can only read jobs/proofs assigned to their department and can only
+accounts can only read jobs/Production Files assigned to their department and can only
 change their own department tasks. Every authenticated role can add to the one
 shared project-notes timeline; all viewers of that job see the same notes with
 author names and timestamps. Note and checklist ownership uses immutable user
