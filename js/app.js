@@ -171,9 +171,18 @@ function renderLoadFailure() {
       <button class="empty-state-retry settings-action primary" type="button">Retry</button>
     </div>`;
   viewArea.querySelector('.empty-state-retry').addEventListener('click', () => {
-    viewArea.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading jobs…</div></div>';
+    viewArea.innerHTML = loadingJobsHtml();
     refreshJobs(true);
   });
+}
+
+function loadingJobsHtml() {
+  return `<div class="loading-jobs" aria-label="Loading jobs">
+    <div class="loading-jobs-title">Loading production schedule…</div>
+    <div class="loading-jobs-grid" aria-hidden="true">
+      ${Array.from({ length: 6 }, () => '<div class="skeleton-job-card"><span></span><div><i></i><i></i></div></div>').join('')}
+    </div>
+  </div>`;
 }
 
 // This app's backend runs on a consumer Google account, whose hard ceiling is
@@ -449,8 +458,7 @@ function boot() {
   // network round-trip takes — this replaces that with an explicit loading
   // state, which the cache-seed or the real fetch below both immediately
   // overwrite by rendering real content.
-  document.getElementById('view-area').innerHTML =
-    '<div class="empty-state"><div class="empty-state-icon">⏳</div><div class="empty-state-title">Loading jobs…</div></div>';
+  document.getElementById('view-area').innerHTML = loadingJobsHtml();
   document.getElementById('view-area').setAttribute('aria-busy', 'true');
 
   subscribe(renderActiveView);

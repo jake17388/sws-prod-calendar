@@ -1,4 +1,4 @@
-import { toggleComplete, updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
+import { updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin } from '../auth.js';
@@ -12,7 +12,7 @@ import { looksLikePdfBytes, renderPdfPages, resetPdfViewerEngine } from '../pdfV
 import { cacheProofFile, deleteCachedProofFile, getCachedProofFile } from '../proofCache.mjs';
 import { isJobInPreloadedOriginalWindow, productionProofCacheKey } from '../currentWeekProofPreload.mjs';
 import { deleteStoredProof, readStoredProof, storeProof } from '../proofDiskCache.mjs';
-import { archiveSnapshotFor } from '../archiveSnapshot.mjs';
+import { queueJobCompletion } from '../jobCompletion.js';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
@@ -657,35 +657,24 @@ export function openJobDetail(jobKey) {
   completeBtn.checked = job.completed;
   completeBtn.disabled = !canComplete;
   renderCompletedInfo(job);
-  const completeRequestKey = `job-complete:${job.jobKey}`;
   completeBtn.onchange = canComplete ? () => {
     const nextCompleted = completeBtn.checked;
-    const prevCompleted = job.completed;
-    // Same out-of-order-response guard as jobCard.js — rapid toggling here
-    // fires overlapping requests, and only the latest one's response should
-    // ever be allowed to update the checkbox.
-    const token = beginRequest(completeRequestKey);
-    job.completed = nextCompleted;
-    patchJob(job.jobKey, { completed: nextCompleted });
-    renderDepartmentSection(job); // lock/unlock department editing immediately, without reopening the panel
-    toggleComplete(job.jobKey, nextCompleted, archiveSnapshotFor(job))
-      .then(res => {
-        if (!isLatestRequest(completeRequestKey, token)) return;
-        if (!res.success) throw new Error(res.error || 'failed');
-        const patch = { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy };
-        Object.assign(job, patch);
-        patchJob(job.jobKey, patch);
-        renderCompletedInfo(job);
-      })
-      .catch(() => {
-        if (!isLatestRequest(completeRequestKey, token)) return;
-        completeBtn.checked = prevCompleted;
-        job.completed = prevCompleted;
-        patchJob(job.jobKey, { completed: prevCompleted });
+    const toggleRow = completeBtn.closest('.job-detail-complete-toggle');
+    queueJobCompletion(job, nextCompleted, {
+      onOptimistic(completed) {
+        job.completed = completed;
+        completeBtn.checked = completed;
+        toggleRow?.classList.add('is-saving');
+        renderDepartmentSection(job);
+      },
+      onSettled(state) {
+        Object.assign(job, state);
+        completeBtn.checked = state.completed;
+        toggleRow?.classList.remove('is-saving');
         renderCompletedInfo(job);
         renderDepartmentSection(job);
-        showToast('Failed to update job — check your connection', 'error');
-      });
+      },
+    });
   } : null;
 
   renderNotes(document.getElementById('job-detail-notes'), job, { canWrite: true });

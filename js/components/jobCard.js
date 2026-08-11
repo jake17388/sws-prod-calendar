@@ -1,13 +1,9 @@
-import { toggleComplete } from '../api.js';
-import { patchJob } from '../state.js';
 import { dueStateClass } from '../dueDate.js';
 import { openJobDetail } from './jobDetail.js';
 import { canMarkJobComplete, canSeeDepartmentBadges } from '../auth.js';
-import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { JOB_TAGS } from '../config.js';
 import { escapeHtml } from '../lib/html.js';
-import { showToast } from '../toast.js';
-import { archiveSnapshotFor } from '../archiveSnapshot.mjs';
+import { queueJobCompletion } from '../jobCompletion.js';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -82,42 +78,20 @@ function departmentBadgeHtml(job) {
 
 function handleCheckboxToggle(job) {
   const nextCompleted = !job.completed;
-  const prevCompleted = job.completed;
-  // Rapid clicks fire overlapping requests whose responses can resolve out
-  // of order — only the response matching the most recently fired toggle
-  // for this job is allowed to touch state, so a slow stale response can't
-  // silently flip the checkbox back.
-  const requestKey = `job-complete:${job.jobKey}`;
-  const token = beginRequest(requestKey);
-  patchJob(job.jobKey, { completed: nextCompleted });
-  toggleComplete(job.jobKey, nextCompleted, archiveSnapshotFor(job))
-    .then(res => {
-      if (!isLatestRequest(requestKey, token)) return;
-      if (res.success) {
-        patchJob(job.jobKey, { completed: res.completed, completedAt: res.completedAt, completedBy: res.completedBy });
-      } else {
-        patchJob(job.jobKey, { completed: prevCompleted });
-        showToast(res.error || 'Failed to update job', 'error');
-      }
-    })
-    .catch(() => {
-      if (!isLatestRequest(requestKey, token)) return;
-      patchJob(job.jobKey, { completed: prevCompleted }); // revert on failure
-      showToast('Failed to update job — check your connection', 'error');
-    });
+  queueJobCompletion(job, nextCompleted);
 }
 
 /** Full card used in schedule/week day lists. @param {object} job @param {boolean} showCrew @param {(jobKey: string) => void} onOpen @returns {HTMLElement} */
 export function renderJobCard(job, showCrew = true, onOpen = openJobDetail) {
   const el = document.createElement('div');
   const state = dueStateClass(job.dueDate, job.completed);
-  el.className = `job-card ${state} ${job.completed ? 'completed' : ''}`.trim();
+  el.className = `job-card ${state} ${job.completed ? 'completed' : ''} ${job.completionPending ? 'is-saving' : ''}`.trim();
   el.tabIndex = 0;
   el.setAttribute('role', 'button');
   el.setAttribute('aria-label', `Open ${job.jobNum ? job.jobNum + ', ' : ''}${job.title}`);
   const canComplete = canMarkJobComplete();
   el.innerHTML = `
-    ${canComplete ? `<button class="job-card-checkbox ${job.completed ? 'checked' : ''}" aria-label="Mark complete"></button>` : ''}
+    ${canComplete ? `<button class="job-card-checkbox ${job.completed ? 'checked' : ''} ${job.completionPending ? 'saving' : ''}" aria-label="Mark complete" aria-busy="${job.completionPending ? 'true' : 'false'}"></button>` : ''}
     <div class="job-card-body">
       <div class="job-card-title">${job.jobNum ? `${escapeHtml(job.jobNum)} — ` : ''}${escapeHtml(job.title)}</div>
       <div class="job-card-meta">

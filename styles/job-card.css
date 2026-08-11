@@ -14,6 +14,8 @@
   min-height: 44px;
 }
 .job-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); border-color: var(--border-strong); }
+.job-card:active { transform: translateY(0) scale(0.995); }
+.job-card.is-saving { border-color: var(--accent-ring); }
 
 .job-card.due-soon { border-left-color: var(--status-warning-solid); }
 .job-card.due-overdue { border-left-color: var(--status-critical-solid); }
@@ -33,6 +35,7 @@
 }
 
 .job-card-checkbox {
+  position: relative;
   flex-shrink: 0;
   width: 20px;
   height: 20px;
@@ -43,6 +46,15 @@
   place-items: center;
   margin-top: 2px;
   transition: background var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo), transform var(--duration-fast) var(--ease-out-expo);
+}
+.job-card-checkbox.saving::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent-solid);
+  border-radius: 50%;
+  animation: interaction-saving-spin 0.7s linear infinite;
 }
 .job-card-checkbox:hover { border-color: var(--accent-solid); transform: scale(1.06); }
 .job-card-checkbox.checked {
@@ -144,6 +156,7 @@
   height: 100%;
   background: var(--color-brand-navy);
   border-radius: var(--radius-full);
+  transition: width var(--duration-normal) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
 }
 .job-card-dept-progress-fill.complete { background: var(--status-success-solid); }
 .job-card-dept-progress-text {
@@ -234,6 +247,8 @@
   border: 1.5px solid currentColor;
 }
 .job-chip.completed .job-chip-check { background: currentColor; }
+
+@keyframes interaction-saving-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 640px) {
   .job-chip-check, .job-chip-title { display: none; }

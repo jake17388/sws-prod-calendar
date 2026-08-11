@@ -113,6 +113,10 @@ Viewer), and everything after that goes through the app.
   `toggleDepartmentTaskDone`) skip this — they're applied to a fresh
   server-side read under the lock, so they can't clobber unrelated concurrent
   edits by construction.
+- **Rapid interaction handling** — completion and department-task controls
+  update immediately, briefly coalesce repeated taps, and show a local saving
+  state while their final value is written. This keeps fast shop-floor input
+  responsive without sending a burst of contradictory requests.
 
 Every authenticated mutation carries a client request ID. The backend caches a
 completed response briefly so a network retry does not repeat the operation.

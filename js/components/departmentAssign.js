@@ -3,9 +3,9 @@ import { patchJob } from '../state.js';
 import { currentUser, currentUserId, isAdmin } from '../auth.js';
 import { JOB_TAGS } from '../config.js';
 import { abbreviateName, formatTimestamp } from '../dates.js';
-import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { escapeHtml, escapeAttr } from '../lib/html.js';
 import { showToast } from '../toast.js';
+import { createKeyedDebouncer } from '../keyedDebouncer.mjs';
 import { commonTasksForDepartment } from './commonTaskManagement.js';
 
 function stampHtml(item) {
@@ -21,6 +21,21 @@ function addedStampHtml(item) {
 // One entry per job, tracking whether a save is currently in flight and
 // whether another change landed locally while it was — see persist() below.
 const saveQueues = new Map();
+const persistDebouncer = createKeyedDebouncer(180);
+const taskToggleDebouncer = createKeyedDebouncer(220);
+const taskToggleStates = new Map();
+
+function markTaskSaving(item, saving) {
+  if (saving) {
+    Object.defineProperty(item, '_saving', { value: true, writable: true, configurable: true, enumerable: false });
+  } else {
+    delete item._saving;
+  }
+}
+
+function clearTaskSaving(job) {
+  Object.values(job.departmentChecklists || {}).flat().forEach(item => markTaskSaving(item, false));
+}
 
 // Persists the job's full departments/departmentChecklists/currentDepartments
 // state after any change — used by the Admin/Manager editor, which owns the
@@ -38,7 +53,8 @@ const saveQueues = new Map();
 // response then overwrites the just-applied first change with the
 // server's older copy — the checkbox visibly "un-clicks" itself. Queuing
 // to at most one in-flight save per job, and re-sending the latest local
-// state the moment the current one finishes, means every request we send
+// state after the current one finishes and the brief input-coalescing window,
+// means every request we send
 // carries an `updatedAt` we know is current, so we never conflict with
 // ourselves — only a genuine edit from someone else can still do that.
 function persist(job, rerender) {
@@ -48,7 +64,7 @@ function persist(job, rerender) {
   if (!queue) { queue = { saving: false, dirty: false, rerender: null }; saveQueues.set(job.jobKey, queue); }
   queue.rerender = rerender; // always the latest caller's — used if a queued resend ends in a real conflict
   if (queue.saving) { queue.dirty = true; return; }
-  sendPersist(job, queue);
+  persistDebouncer.schedule(job.jobKey, () => sendPersist(job, queue));
 }
 
 function sendPersist(job, queue) {
@@ -62,6 +78,7 @@ function sendPersist(job, queue) {
         // return here silently, leaving the optimistic local edit on screen as
         // though it had been written. The next poll would quietly revert it.
         showToast(res.error || "Couldn't save department changes", 'error');
+        clearTaskSaving(job);
         if (queue.rerender) queue.rerender();
         return;
       }
@@ -77,12 +94,12 @@ function sendPersist(job, queue) {
       // repaints the checklist it just edited, not the sibling "Currently
       // has it" checkbox), so force a full rerender whenever this response's
       // currentDepartments differs from what was sent.
-      const currentDepartmentsChanged = JSON.stringify(job.currentDepartments) !== JSON.stringify(res.currentDepartments);
       job.departments = res.departments;
       job.departmentChecklists = res.departmentChecklists;
       job.currentDepartments = res.currentDepartments;
+      clearTaskSaving(job);
       patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, updatedAt: res.updatedAt });
-      if ((res.error === 'conflict' || currentDepartmentsChanged) && queue.rerender) queue.rerender();
+      if (queue.rerender) queue.rerender();
     })
     .catch(err => {
       // Network failure on a write. The edit is still sitting on screen looking
@@ -90,10 +107,12 @@ function sendPersist(job, queue) {
       // arrives, but nothing else would ever tell the user this didn't land.
       console.error('Failed to save department changes:', err);
       showToast("Couldn't save department changes — check your connection", 'error');
+      clearTaskSaving(job);
+      if (queue.rerender) queue.rerender();
     })
     .finally(() => {
       queue.saving = false;
-      if (queue.dirty) sendPersist(job, queue);
+      if (queue.dirty) persistDebouncer.schedule(job.jobKey, () => sendPersist(job, queue));
     });
 }
 
@@ -130,9 +149,9 @@ function renderEditableChecklist(container, job, dept) {
   items.forEach(item => {
     const locked = item.done && !canUndo;
     const row = document.createElement('div');
-    row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
+    row.className = `checklist-item ${item.done ? 'done' : ''} ${item._saving ? 'is-saving' : ''}`.trim();
     row.innerHTML = `
-      <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${locked ? 'disabled title="Only an Admin can un-check a completed task"' : ''}></button>
+      <button class="checklist-check ${item.done ? 'checked' : ''} ${item._saving ? 'saving' : ''}" aria-label="Toggle done" aria-busy="${item._saving ? 'true' : 'false'}" ${locked ? 'disabled title="Only an Admin can un-check a completed task"' : ''}></button>
       <div class="checklist-item-main">
         <input type="text" value="${escapeAttr(item.text)}" />
         ${addedStampHtml(item)}
@@ -146,6 +165,7 @@ function renderEditableChecklist(container, job, dept) {
         item.doneBy = item.done ? currentUser() : '';
         item.doneById = item.done ? currentUserId() : '';
         item.doneAt = item.done ? new Date().toISOString() : '';
+        markTaskSaving(item, true);
         persist(job, () => renderEditableChecklist(container, job, dept));
         renderEditableChecklist(container, job, dept);
         syncCurrentButtonState(container, job, dept);
@@ -241,6 +261,86 @@ function renderStaticChecklist(container, items) {
     `;
     container.appendChild(row);
   });
+}
+
+function restoreTask(item, baseline) {
+  item.done = baseline.done;
+  item.doneBy = baseline.doneBy;
+  item.doneById = baseline.doneById;
+  item.doneAt = baseline.doneAt;
+  markTaskSaving(item, false);
+}
+
+function sendOwnTaskToggle(container, job, department, itemId, key) {
+  const state = taskToggleStates.get(key);
+  if (!state || state.inFlight) return;
+  const sent = state.desired;
+  state.inFlight = true;
+
+  toggleDepartmentTaskDone(job.jobKey, department, itemId, sent)
+    .then(res => {
+      if (!res.success) throw new Error(res.error || 'Could not update task');
+      state.inFlight = false;
+      if (state.desired !== sent) {
+        taskToggleDebouncer.schedule(key, () => sendOwnTaskToggle(container, job, department, itemId, key), 0);
+        return;
+      }
+      taskToggleStates.delete(key);
+      job.departmentChecklists = res.departmentChecklists;
+      if (res.departments) job.departments = res.departments;
+      if (res.currentDepartments) job.currentDepartments = res.currentDepartments;
+      patchJob(job.jobKey, {
+        departmentChecklists: job.departmentChecklists,
+        departments: job.departments,
+        currentDepartments: job.currentDepartments,
+        updatedAt: res.updatedAt,
+      });
+      renderOwnDepartmentTasks(container, job, department);
+    })
+    .catch(err => {
+      state.inFlight = false;
+      if (state.desired !== sent) {
+        taskToggleDebouncer.schedule(key, () => sendOwnTaskToggle(container, job, department, itemId, key), 0);
+        return;
+      }
+      const currentItem = (job.departmentChecklists[department] || []).find(candidate => candidate.id === itemId);
+      if (currentItem) restoreTask(currentItem, state.baseline);
+      taskToggleStates.delete(key);
+      patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
+      renderOwnDepartmentTasks(container, job, department);
+      showToast(err.message || "Couldn't update task — check your connection", 'error');
+    });
+}
+
+function queueOwnTaskToggle(container, job, department, item) {
+  const key = `dept-task:${job.jobKey}:${department}:${item.id}`;
+  let state = taskToggleStates.get(key);
+  if (!state) {
+    state = {
+      baseline: { done: item.done, doneBy: item.doneBy, doneById: item.doneById, doneAt: item.doneAt },
+      desired: item.done,
+      inFlight: false,
+    };
+    taskToggleStates.set(key, state);
+  }
+
+  state.desired = !item.done;
+  item.done = state.desired;
+  item.doneBy = item.done ? currentUser() : '';
+  item.doneById = item.done ? currentUserId() : '';
+  item.doneAt = item.done ? new Date().toISOString() : '';
+  markTaskSaving(item, true);
+
+  if (!state.inFlight && state.desired === state.baseline.done) {
+    taskToggleDebouncer.cancel(key);
+    restoreTask(item, state.baseline);
+    taskToggleStates.delete(key);
+  } else {
+    taskToggleDebouncer.schedule(key, () => sendOwnTaskToggle(container, job, department, item.id, key));
+  }
+
+  patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
+  renderOwnDepartmentTasks(container, job, department);
 }
 
 /**
@@ -375,9 +475,9 @@ export function renderOwnDepartmentTasks(container, job, department) {
       // toggleDepartmentTaskDone as the actual enforcement.
       const canToggle = !item.done || (item.doneById ? item.doneById === currentUserId() : item.doneBy === currentUser());
       const row = document.createElement('div');
-      row.className = `checklist-item ${item.done ? 'done' : ''}`.trim();
+      row.className = `checklist-item ${item.done ? 'done' : ''} ${item._saving ? 'is-saving' : ''}`.trim();
       row.innerHTML = `
-        <button class="checklist-check ${item.done ? 'checked' : ''}" aria-label="Toggle done" ${canToggle ? '' : `disabled title="Only ${escapeAttr(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
+        <button class="checklist-check ${item.done ? 'checked' : ''} ${item._saving ? 'saving' : ''}" aria-label="Toggle done" aria-busy="${item._saving ? 'true' : 'false'}" ${canToggle ? '' : `disabled title="Only ${escapeAttr(item.doneBy || 'whoever completed this')} can un-check this task"`}></button>
         <div class="checklist-item-main">
           <span class="checklist-item-text">${escapeHtml(item.text)}</span>
           ${addedStampHtml(item)}
@@ -385,44 +485,7 @@ export function renderOwnDepartmentTasks(container, job, department) {
         </div>
       `;
       if (!canToggle) { tasksEl.appendChild(row); return; }
-      row.querySelector('.checklist-check').addEventListener('click', () => {
-        const nextDone = !item.done;
-        const prevDoneBy = item.doneBy;
-        const prevDoneById = item.doneById;
-        const prevDoneAt = item.doneAt;
-        // Rapid clicks fire overlapping requests whose responses can
-        // resolve out of order — only the most recently fired toggle for
-        // this exact item is allowed to apply its result, so a slow stale
-        // response can't flip the checkbox back on its own.
-        const requestKey = `dept-task:${job.jobKey}:${department}:${item.id}`;
-        const token = beginRequest(requestKey);
-        item.done = nextDone;
-        item.doneBy = nextDone ? currentUser() : '';
-        item.doneById = nextDone ? currentUserId() : '';
-        item.doneAt = nextDone ? new Date().toISOString() : '';
-        patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
-        renderOwnDepartmentTasks(container, job, department);
-        toggleDepartmentTaskDone(job.jobKey, department, item.id, nextDone)
-          .then(res => {
-            if (!isLatestRequest(requestKey, token)) return;
-            if (res.success) { job.departmentChecklists = res.departmentChecklists; return; }
-            item.done = !nextDone;
-            item.doneBy = prevDoneBy;
-            item.doneById = prevDoneById;
-            item.doneAt = prevDoneAt;
-            patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
-            renderOwnDepartmentTasks(container, job, department);
-          })
-          .catch(() => {
-            if (!isLatestRequest(requestKey, token)) return;
-            item.done = !nextDone;
-            item.doneBy = prevDoneBy;
-            item.doneById = prevDoneById;
-            item.doneAt = prevDoneAt;
-            patchJob(job.jobKey, { departmentChecklists: job.departmentChecklists });
-            renderOwnDepartmentTasks(container, job, department);
-          });
-      });
+      row.querySelector('.checklist-check').addEventListener('click', () => queueOwnTaskToggle(container, job, department, item));
       tasksEl.appendChild(row);
     });
   }

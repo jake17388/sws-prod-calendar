@@ -1,3 +1,41 @@
+/* ── Initial loading state ──────────────────────────────────────────────── */
+.loading-jobs { padding: var(--space-6); }
+.loading-jobs-title {
+  margin-bottom: var(--space-4);
+  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+.loading-jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+.skeleton-job-card {
+  min-height: 74px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2sm);
+  background: var(--surface-card);
+  overflow: hidden;
+}
+.skeleton-job-card > span,
+.skeleton-job-card i {
+  display: block;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--surface-sunken) 25%, var(--surface-card-hover) 50%, var(--surface-sunken) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.15s ease-in-out infinite;
+}
+.skeleton-job-card > span { width: 20px; height: 20px; flex: 0 0 auto; }
+.skeleton-job-card > div { flex: 1; display: grid; gap: var(--space-2); }
+.skeleton-job-card i { height: 10px; width: 88%; }
+.skeleton-job-card i + i { width: 56%; }
+@keyframes skeleton-shimmer { to { background-position: -200% 0; } }
+
 /* ── Month view ─────────────────────────────────────────────────────────── */
 .month-grid {
   display: grid;

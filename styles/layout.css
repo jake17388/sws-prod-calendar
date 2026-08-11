@@ -841,6 +841,24 @@ header.app-header.overlay-dimmed {
   transition: filter var(--duration-normal) var(--ease-out-expo);
 }
 
+/* Immediate tactile response makes touch controls feel acknowledged before a
+   network-backed action finishes. */
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  filter: brightness(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Tablets (iPad, etc.) — see job-card.css for why this is gated on
    pointer:coarse rather than a device check. Settings is a full-screen
    takeover at every width (see the settings-panel rules above); only its
