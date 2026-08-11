@@ -19,6 +19,7 @@ export default defineConfig({
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'ipad', use: { ...devices['iPad Pro 11'], browserName: 'chromium' } },
+    { name: 'phone', use: { ...devices['iPhone 14'], browserName: 'chromium' } },
   ],
   webServer: {
     command: 'npm run build:pages && python3 -m http.server 4173 --directory _site',

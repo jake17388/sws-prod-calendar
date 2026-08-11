@@ -17,15 +17,15 @@
 <!-- ?v= on every local script/stylesheet below busts the CDN/browser cache
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
-<link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.08.11.4" />
-<link rel="stylesheet" href="styles/calendar.css?v=2026.08.11.5" />
-<link rel="stylesheet" href="styles/job-card.css?v=2026.08.11.2" />
-<link rel="stylesheet" href="styles/job-detail.css?v=2026.08.11.11" />
+<link rel="stylesheet" href="styles/tokens.css?v=2026.08.11.8" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.08.11.8" />
+<link rel="stylesheet" href="styles/calendar.css?v=2026.08.11.8" />
+<link rel="stylesheet" href="styles/job-card.css?v=2026.08.11.8" />
+<link rel="stylesheet" href="styles/job-detail.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.10.10" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.11.3" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.10.10" />
-<link rel="stylesheet" href="styles/stats-bar.css?v=2026.07.16.4" />
+<link rel="stylesheet" href="styles/stats-bar.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
 </head>
 <body>
@@ -59,24 +59,33 @@
 </div>
 
 <div id="app">
+  <div class="app-ambient" aria-hidden="true"></div>
+  <svg class="icon-library" aria-hidden="true">
+    <symbol id="icon-month" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 9h18M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/></symbol>
+    <symbol id="icon-week" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M3 9h18M9 9v12M15 9v12"/></symbol>
+    <symbol id="icon-schedule" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"/></symbol>
+    <symbol id="icon-archive" viewBox="0 0 24 24"><path d="M4 7v13h16V7M3 3h18v4H3zM9 11h6"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.38.3.6.76.6 1.24v1.52c0 .48-.22.94-.6 1.24z"/></symbol>
+  </svg>
   <header class="app-header">
     <div class="brand-row">
       <div class="brand">
         <img class="brand-mark" src="icons/brand-mark-96.png" alt="" />
         <div class="brand-text">
+          <span class="brand-eyebrow">Production workspace</span>
           <span class="brand-name">Summit West Signs</span>
-          <span class="brand-sub">Production Calendar</span>
         </div>
       </div>
       <div class="header-user-cluster">
         <span id="dept-badge" class="dept-badge" hidden></span>
         <div id="user-badge"></div>
-        <button class="hdr-btn settings-btn" id="settings-btn" title="Settings" aria-label="Settings">⚙</button>
+        <button class="hdr-btn icon-btn settings-btn" id="settings-btn" title="Settings" aria-label="Settings"><svg class="nav-icon"><use href="#icon-settings" /></svg></button>
       </div>
     </div>
     <div class="toolbar-row">
       <div class="toolbar-left">
-        <button class="hdr-btn" id="refresh-btn"><span class="refresh-icon">↻</span> Refresh</button>
+        <button class="hdr-btn" id="refresh-btn" aria-label="Refresh production jobs"><svg class="nav-icon refresh-icon"><use href="#icon-refresh" /></svg><span>Refresh</span></button>
         <span id="last-updated"></span>
         <span id="sync-status" class="sync-status" role="status" hidden></span>
         <span id="save-status" class="sync-status" role="status" aria-live="polite" hidden></span>
@@ -91,11 +100,11 @@
         <button id="nav-next" aria-label="Next">›</button>
         <span id="current-range" class="current-range"></span>
       </nav>
-      <div class="view-switcher" role="tablist">
-        <button data-view="month">Month</button>
-        <button data-view="week">Week</button>
-        <button data-view="schedule">Schedule</button>
-        <button data-view="archive">Archive</button>
+      <div class="view-switcher desktop-view-switcher" role="tablist" aria-label="Calendar views">
+        <button data-view="month"><svg class="nav-icon"><use href="#icon-month" /></svg><span>Month</span></button>
+        <button data-view="week"><svg class="nav-icon"><use href="#icon-week" /></svg><span>Week</span></button>
+        <button data-view="schedule"><svg class="nav-icon"><use href="#icon-schedule" /></svg><span>Schedule</span></button>
+        <button data-view="archive"><svg class="nav-icon"><use href="#icon-archive" /></svg><span>Archive</span></button>
       </div>
     </div>
   </header>
@@ -108,6 +117,13 @@
   <div id="stats-bar"></div>
 
   <main class="view-area" id="view-area"></main>
+
+  <nav class="view-switcher mobile-view-switcher" aria-label="Calendar views">
+    <button data-view="month"><svg class="nav-icon"><use href="#icon-month" /></svg><span>Month</span></button>
+    <button data-view="week"><svg class="nav-icon"><use href="#icon-week" /></svg><span>Week</span></button>
+    <button data-view="schedule"><svg class="nav-icon"><use href="#icon-schedule" /></svg><span>Schedule</span></button>
+    <button data-view="archive"><svg class="nav-icon"><use href="#icon-archive" /></svg><span>Archive</span></button>
+  </nav>
 </div>
 
 <div id="toast-stack" aria-live="polite"></div>
@@ -394,6 +410,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.11.7"></script>
+<script type="module" src="js/app.js?v=2026.08.11.8"></script>
 </body>
 </html>

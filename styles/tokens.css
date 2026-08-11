@@ -32,6 +32,7 @@
   --color-completed-text: #565b68;
 
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -146,6 +147,7 @@
   --shadow-2: 0 2px 10px rgba(0, 0, 0, 0.34);
   --shadow-3: 0 10px 28px rgba(0, 0, 0, 0.4);
   --shadow-4: 0 20px 56px rgba(0, 0, 0, 0.5);
+  --shadow-premium: 0 18px 55px rgba(27, 68, 139, 0.13), 0 2px 8px rgba(18, 34, 62, 0.07);
   --shadow-focus: 0 0 0 3px var(--accent-ring);
 
   --text-2xs: 0.6875rem;
@@ -173,6 +175,7 @@
   --z-backdrop: 700;
   --z-panel: 710;
   --z-toast: 900;
+  --surface-glass: rgba(255, 255, 255, 0.78);
 }
 
 @media (prefers-color-scheme: light) {
@@ -265,4 +268,41 @@
     --shadow-3: 0 10px 28px rgba(20, 22, 30, 0.1);
     --shadow-4: 0 20px 56px rgba(20, 22, 30, 0.16);
   }
+}
+
+/* The authenticated product uses a deliberate light brand environment on
+   every device. The PIN screen retains its explicit navy treatment above. */
+:root {
+  color-scheme: light;
+  --color-bg: #f4f7fb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: #dbe3ef;
+  --color-text: #17243a;
+  --color-text-dim: #647189;
+  --color-text-faint: #929db0;
+  --color-accent: #2455a4;
+  --color-accent-dim: #1b448b;
+  --surface-canvas: #f3f6fa;
+  --surface-card: #ffffff;
+  --surface-card-hover: #f8faff;
+  --surface-overlay: #ffffff;
+  --surface-sunken: #edf2f8;
+  --surface-glass: rgba(255, 255, 255, 0.82);
+  --border-hairline: rgba(23, 46, 82, 0.06);
+  --border-default: rgba(27, 68, 139, 0.13);
+  --border-strong: rgba(27, 68, 139, 0.24);
+  --ink-primary: #17243a;
+  --ink-secondary: #5e6d84;
+  --ink-tertiary: #8793a7;
+  --ink-disabled: #bcc4d0;
+  --ink-inverse: #ffffff;
+  --accent-subtle-bg: rgba(36, 85, 164, 0.09);
+  --accent-subtle-text: #1b448b;
+  --accent-ring: rgba(36, 85, 164, 0.28);
+  --shadow-1: 0 1px 3px rgba(18, 34, 62, 0.06);
+  --shadow-2: 0 7px 20px rgba(18, 34, 62, 0.09);
+  --shadow-3: 0 16px 40px rgba(18, 34, 62, 0.13);
+  --shadow-4: 0 28px 80px rgba(18, 34, 62, 0.22);
+  --shadow-premium: 0 18px 55px rgba(27, 68, 139, 0.13), 0 2px 8px rgba(18, 34, 62, 0.07);
 }

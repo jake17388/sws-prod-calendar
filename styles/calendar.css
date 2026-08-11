@@ -455,6 +455,71 @@
 .archive-result-summary { white-space: nowrap; }
 .archive-result-arrow { color: var(--accent-solid); font-size: var(--text-xl); }
 
+/* Premium calendar canvas: whitespace frames the planning surface on large
+   screens while the phone tier below continues to use every available pixel. */
+.month-weekday-row,
+.month-grid,
+.week-grid {
+  width: calc(100% - clamp(24px, 4vw, 64px));
+  max-width: 1720px;
+  margin-inline: auto;
+}
+.month-weekday-row {
+  margin-top: clamp(14px, 2vw, 24px);
+  border: 1px solid var(--border-default);
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 10px 28px rgba(18, 34, 62, 0.06);
+  overflow: hidden;
+}
+.month-grid {
+  margin-bottom: clamp(18px, 3vw, 40px);
+  border: 1px solid var(--border-default);
+  border-radius: 0 0 18px 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-premium);
+}
+.week-grid {
+  min-height: calc(100% - 48px);
+  margin-block: clamp(14px, 2vw, 24px) clamp(18px, 3vw, 40px);
+  border: 1px solid var(--border-default);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-premium);
+}
+.month-cell { min-height: 128px; }
+.month-cell:hover { background: var(--surface-card-hover); }
+.month-weekday-row div { color: #6f7c90; }
+.schedule-list { max-width: 1120px; }
+.schedule-day-heading {
+  padding-inline: 4px;
+  background: color-mix(in srgb, var(--surface-canvas) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.archive-heading h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  letter-spacing: -0.025em;
+}
+.archive-search,
+.archive-result { box-shadow: var(--shadow-premium); }
+
+@media (max-width: 700px) {
+  .month-weekday-row,
+  .month-grid,
+  .week-grid {
+    width: 100%;
+    margin-inline: 0;
+    border-inline: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .month-weekday-row { margin-top: 0; }
+  .month-grid { margin-bottom: 0; }
+  .week-grid { margin-block: 0; }
+}
+
 @media (max-width: 640px) {
   .archive-view { padding: var(--space-4) var(--space-3) var(--space-7); }
   .archive-search { padding: var(--space-3); }

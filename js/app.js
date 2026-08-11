@@ -79,7 +79,9 @@ function renderActiveView() {
   view.render(container, refDate, getJobs());
   document.getElementById('current-range').textContent = view.label(refDate);
   document.querySelectorAll('.view-switcher button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === activeView);
+    const isActive = btn.dataset.view === activeView;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
   });
   document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
   document.querySelector('.date-nav').hidden = activeView === 'archive';
@@ -88,10 +90,13 @@ function renderActiveView() {
 }
 
 function switchView(view) {
+  const container = document.getElementById('view-area');
+  container.classList.remove('view-enter');
   activeView = view;
   // Opening the schedule lands on the oldest still-open job rather than today.
   if (view === 'schedule') scheduleScrollTarget = 'open';
   renderActiveView();
+  requestAnimationFrame(() => container.classList.add('view-enter'));
   // Data-refresh-triggered re-renders (subscribe(renderActiveView) below)
   // must never do this — only an actual tab switch should jump the
   // scroll position, or a mid-read poll update would yank someone back to

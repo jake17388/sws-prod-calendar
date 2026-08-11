@@ -2,7 +2,7 @@
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(8, 10, 16, 0.55);
+  background: rgba(13, 28, 53, 0.48);
   z-index: var(--z-backdrop);
   align-items: stretch;
   justify-content: flex-end;
@@ -18,7 +18,7 @@
   flex-direction: column;
   height: 100%;
   transform: translateX(100%);
-  transition: transform var(--duration-normal) var(--ease-out-expo);
+  transition: transform 340ms var(--ease-out-expo);
 }
 #job-detail-overlay.open .job-detail-panel { transform: translateX(0); }
 
@@ -28,7 +28,9 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  background: var(--surface-card);
+  background:
+    linear-gradient(90deg, rgba(36, 85, 164, 0.075), transparent 42%),
+    var(--surface-card);
 }
 .job-detail-header h2 {
   font-size: var(--text-lg);
@@ -37,6 +39,7 @@
   color: var(--ink-primary);
   margin: 0 0 var(--space-1);
   line-height: var(--line-tight);
+  font-family: var(--font-display);
 }
 .job-detail-header .job-detail-meta {
   font-size: var(--text-sm);
@@ -94,6 +97,10 @@
   letter-spacing: var(--tracking-wider);
   color: var(--ink-tertiary);
   margin: 0 0 var(--space-2);
+}
+
+@supports (backdrop-filter: blur(12px)) {
+  #job-detail-overlay { backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
 }
 
 .project-notes-section { grid-column: 1 / -1; }

@@ -3,7 +3,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  background: var(--surface-card);
+  background: rgba(255, 255, 255, 0.88);
   border-bottom: 1px solid var(--border-default);
   overflow-x: auto;
   flex-shrink: 0;
@@ -15,9 +15,10 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--surface-canvas);
+  background: #fff;
   border: 1px solid var(--border-default);
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(18, 34, 62, 0.04);
 }
 
 .stat-chip-dot {
@@ -51,6 +52,8 @@
   white-space: nowrap;
   padding-left: var(--space-2);
 }
+
+.stat-chip-dot { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 10%, transparent); }
 
 @media (max-width: 640px) {
   #stats-bar { padding: var(--space-2) var(--space-3); gap: var(--space-1); }
