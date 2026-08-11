@@ -67,6 +67,19 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       body = { connected: false, hasCredentials: false };
     } else if (action === 'getSystemHealth') {
       body = { healthy: true, backup: { current: true, lastAt: '2026-08-10T11:00:00.000Z', triggerInstalled: true }, trackingConfigured: true, lastFailure: null };
+    } else if (action === 'getArchivedJobs') {
+      body = {
+        jobs: [{
+          jobKey: '250999', jobNum: '250999', title: 'Downtown Museum Monument', addr: '100 Main St',
+          crew: ['Jake'], startDate: '2026-06-12', endDate: '2026-06-12', dueDate: '2026-06-10',
+          autoDueDate: '2026-06-10', dueOverride: '', multiDay: false, completed: true,
+          completedAt: '2026-06-10T16:30:00.000Z', completedBy: 'Test Admin',
+          notes: [{ id: 'archive-note', text: 'Museum monument ready for pickup', author: 'Alex', createdAt: '2026-06-10T15:00:00.000Z' }],
+          checklist: [], departments: ['Paint'], currentDepartments: [],
+          departmentChecklists: { Paint: [{ id: 'paint-1', text: 'Paint faces', done: true }] },
+          additionalFiles: [], updatedAt: '2026-06-10T16:30:00.000Z',
+        }],
+      };
     } else if (action === 'getUsers') {
       body = { users: [{ id: 'worker', name: 'Alex Worker', department: 'Paint', pin: '000001', mustChangePin: true }] };
     } else if (action === 'addNote') {
@@ -137,6 +150,19 @@ test('an Admin can sign in, open a job, and add a note immediately', async ({ pa
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Ready for production')).toBeVisible();
   await expect(page.getByText('Saving…')).toHaveCount(0);
+});
+
+test('a signed-in user can search archived jobs and open their retained history', async ({ page }) => {
+  await mockBackend(page);
+  await login(page);
+  await page.getByRole('button', { name: 'Archive' }).click();
+  await expect(page.getByRole('heading', { name: 'Archived Jobs' })).toBeVisible();
+  await page.getByLabel('Search archived jobs').fill('museum');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Downtown Museum Monument')).toBeVisible();
+  await page.getByRole('button', { name: /Open 250999/ }).click();
+  await expect(page.getByRole('heading', { name: /250999/ })).toBeVisible();
+  await expect(page.getByText('Museum monument ready for pickup')).toBeVisible();
 });
 
 test('a current-week Production File opens the preloaded original in one tap', async ({ page }) => {
