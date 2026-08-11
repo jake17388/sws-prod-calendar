@@ -89,8 +89,34 @@ export function signOut() {
   pinEntry = '';
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-screen').style.display = 'flex';
-  document.getElementById('pin-error').textContent = '';
+  setPinMessage('');
+  setPinBusy(false);
   renderDots();
+}
+
+// Touch browsers can delay or coalesce click events when someone taps the
+// keypad quickly. Handle touch/pen on pointerdown instead, then suppress only
+// that pointer's compatibility click. Mouse, keyboard, and assistive-tech
+// clicks continue through the normal click handler.
+function bindPinButton(button, onActivate) {
+  let directPointerAt = -Infinity;
+  button.addEventListener('pointerdown', event => {
+    const isDirectTouch = event.pointerType === 'touch' || event.pointerType === 'pen';
+    if (!isDirectTouch) return;
+    event.preventDefault();
+    directPointerAt = event.timeStamp;
+    button.classList.add('pin-key-pressed');
+    setTimeout(() => button.classList.remove('pin-key-pressed'), 120);
+    onActivate();
+  });
+  button.addEventListener('click', event => {
+    const followsDirectPointer = event.detail > 0 && event.timeStamp - directPointerAt < 1000;
+    if (followsDirectPointer) {
+      event.preventDefault();
+      return;
+    }
+    onActivate();
+  });
 }
 
 /**
@@ -100,9 +126,9 @@ export function signOut() {
  */
 export function initAuth(onLogin) {
   document.querySelectorAll('.pin-pad button[data-digit]').forEach(btn => {
-    btn.addEventListener('click', () => pinKey(btn.dataset.digit, onLogin));
+    bindPinButton(btn, () => pinKey(btn.dataset.digit, onLogin));
   });
-  document.getElementById('pin-del').addEventListener('click', pinDel);
+  bindPinButton(document.getElementById('pin-del'), pinDel);
   document.addEventListener('keydown', e => {
     if (auth) return;
     if (e.key >= '0' && e.key <= '9') pinKey(e.key, onLogin);
@@ -129,14 +155,35 @@ function renderDots() {
 
 function pinKey(digit, onLogin) {
   if (pinBusy || pinEntry.length >= 6) return;
+  if (!pinEntry) setPinMessage('');
   pinEntry += digit;
   renderDots();
   if (pinEntry.length === 6) submitPin(onLogin);
 }
 
 function pinDel() {
+  if (pinBusy) return;
   pinEntry = pinEntry.slice(0, -1);
   renderDots();
+}
+
+function setPinBusy(busy) {
+  pinBusy = busy;
+  const screen = document.getElementById('pin-screen');
+  screen.classList.toggle('is-verifying', busy);
+  screen.setAttribute('aria-busy', String(busy));
+}
+
+function setPinMessage(message, state = '') {
+  const errorEl = document.getElementById('pin-error');
+  errorEl.textContent = message;
+  errorEl.dataset.state = state;
+  const card = document.querySelector('.pin-card');
+  card.classList.toggle('has-error', state === 'error');
+  if (state === 'error') {
+    card.classList.remove('pin-shake');
+    requestAnimationFrame(() => card.classList.add('pin-shake'));
+  }
 }
 
 // The server returns how long the lockout has left, so this reports the real
@@ -150,14 +197,14 @@ function lockoutMessage(retryInSeconds) {
 }
 
 function submitPin(onLogin) {
-  pinBusy = true;
-  const errorEl = document.getElementById('pin-error');
-  errorEl.textContent = 'Verifying…';
-  scriptPost({ action: 'login', pin: pinEntry, deviceId: getDeviceId() })
+  const submittedPin = pinEntry;
+  setPinBusy(true);
+  setPinMessage('Verifying…', 'busy');
+  scriptPost({ action: 'login', pin: submittedPin, deviceId: getDeviceId() })
     .then(res => {
-      pinBusy = false;
+      setPinBusy(false);
       if (!res.ok) {
-        errorEl.textContent = res.locked ? lockoutMessage(res.retryInSeconds) : 'Incorrect PIN';
+        setPinMessage(res.locked ? lockoutMessage(res.retryInSeconds) : 'Incorrect PIN', 'error');
         pinEntry = '';
         renderDots();
         return;
@@ -171,14 +218,14 @@ function submitPin(onLogin) {
       localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
       pinEntry = '';
       renderDots();
-      errorEl.textContent = '';
+      setPinMessage('');
       document.getElementById('pin-screen').style.display = 'none';
       document.getElementById('app').style.display = 'flex';
       onLogin();
     })
     .catch(() => {
-      pinBusy = false;
-      errorEl.textContent = 'Network error — try again.';
+      setPinBusy(false);
+      setPinMessage('Network error — try again.', 'error');
       pinEntry = '';
       renderDots();
     });

@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null } = {}) {
   let currentJob = structuredClone(job);
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
@@ -43,7 +43,9 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
 
     let body;
     if (action === 'login') {
-      body = { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user: 'Test User', department, canManageUsers: department === 'Admin', mustChangePin };
+      body = expectedPin && payload.pin !== expectedPin
+        ? { ok: false }
+        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user: 'Test User', department, canManageUsers: department === 'Admin', mustChangePin };
     } else if (action === 'getProductionJobs') {
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
@@ -103,7 +105,7 @@ async function login(page) {
 }
 
 test('rapid touch entry captures every PIN digit without waiting between taps', async ({ page }) => {
-  await mockBackend(page);
+  await mockBackend(page, { expectedPin: '123456' });
   await page.goto('/');
 
   await page.evaluate(() => {
@@ -115,6 +117,9 @@ test('rapid touch entry captures every PIN digit without waiting between taps', 
         pointerType: 'touch',
         isPrimary: true,
       }));
+      // iOS may follow a pointer sequence with a compatibility click. It must
+      // not enter the same digit a second time.
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
     }
   });
 

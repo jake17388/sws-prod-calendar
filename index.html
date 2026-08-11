@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.07.27.1" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.08.11.2" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.08.11.3" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.08.10.3" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.08.10.1" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.08.10.9" />
@@ -40,7 +40,7 @@
       <span></span><span></span><span></span><span></span>
       <span></span><span></span>
     </div>
-    <div class="pin-pad">
+    <div class="pin-pad" role="group" aria-label="PIN keypad">
       <button data-digit="1">1</button>
       <button data-digit="2">2</button>
       <button data-digit="3">3</button>
@@ -54,7 +54,7 @@
       <button data-digit="0">0</button>
       <button id="pin-del" class="pin-del" aria-label="Delete digit">⌫</button>
     </div>
-    <div id="pin-error"></div>
+    <div id="pin-error" role="status" aria-live="polite"></div>
   </div>
 </div>
 
@@ -393,6 +393,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.10.9"></script>
+<script type="module" src="js/app.js?v=2026.08.11.3"></script>
 </body>
 </html>
