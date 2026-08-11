@@ -40,8 +40,14 @@ export const fetchProductionJobs = () =>
 /** Cheap poll target — one Script Property read, no Calendar/Sheet access. */
 export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d => d.version || 0);
 
-export const toggleComplete = (jobKey, completed) =>
-  scriptPost({ action: 'toggleComplete', jobKey, completed });
+export const fetchArchivedJobs = (query = '') =>
+  scriptGet('getArchivedJobs', { q: query }).then(d => {
+    if (d.error) throw new Error(d.error);
+    return d.jobs || [];
+  });
+
+export const toggleComplete = (jobKey, completed, archiveSnapshot = null) =>
+  scriptPost({ action: 'toggleComplete', jobKey, completed, archiveSnapshot });
 
 /** @param {string} dueDate "YYYY-MM-DD", or '' to clear the override and revert to the calculated date */
 export const updateDueDate = (jobKey, dueDate) =>

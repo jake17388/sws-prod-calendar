@@ -12,6 +12,7 @@ import { looksLikePdfBytes, renderPdfPages, resetPdfViewerEngine } from '../pdfV
 import { cacheProofFile, deleteCachedProofFile, getCachedProofFile } from '../proofCache.mjs';
 import { isJobInPreloadedOriginalWindow, productionProofCacheKey } from '../currentWeekProofPreload.mjs';
 import { deleteStoredProof, readStoredProof, storeProof } from '../proofDiskCache.mjs';
+import { archiveSnapshotFor } from '../archiveSnapshot.mjs';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
@@ -667,7 +668,7 @@ export function openJobDetail(jobKey) {
     job.completed = nextCompleted;
     patchJob(job.jobKey, { completed: nextCompleted });
     renderDepartmentSection(job); // lock/unlock department editing immediately, without reopening the panel
-    toggleComplete(job.jobKey, nextCompleted)
+    toggleComplete(job.jobKey, nextCompleted, archiveSnapshotFor(job))
       .then(res => {
         if (!isLatestRequest(completeRequestKey, token)) return;
         if (!res.success) throw new Error(res.error || 'failed');

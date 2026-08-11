@@ -801,6 +801,11 @@ function routeGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     return json({ version: getTrackingVersion() });
   }
+  if (action === 'getArchivedJobs') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    return json(searchArchivedJobs(actor, params.q || ''));
+  }
   if (action === 'getProofFile') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
@@ -878,7 +883,11 @@ function routePost(e) {
   if (data.action === 'toggleComplete') {
     return respond(() => {
       if (!canMarkJobComplete(actor.department)) return { error: 'forbidden' };
-      const result = setTracking(data.jobKey, { completed: !!data.completed }, user);
+      const archiveSnapshot = normalizeArchiveSnapshot(data.jobKey, data.archiveSnapshot);
+      const result = setTracking(data.jobKey, {
+        completed: !!data.completed,
+        ...(archiveSnapshot ? { archiveSnapshot } : {}),
+      }, user);
       if (result.success && data.completed && isDropboxConnected()) {
         try { evictProofCache(data.jobKey); } catch (err) { /* best-effort */ }
       }
@@ -1346,6 +1355,84 @@ function getProductionJobs(e, actor) {
   return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: getTrackingVersion() };
 }
 
+function normalizeArchiveSnapshot(jobKey, value) {
+  if (!value || String(value.jobNum || '') !== String(jobKey || '') || !validJobKey(jobKey)) return null;
+  const bounded = (input, max) => String(input || '').trim().slice(0, max);
+  const date = input => {
+    const text = bounded(input, 10);
+    return validDateOverride(text) ? text : '';
+  };
+  return {
+    title: bounded(value.title, 300),
+    addr: bounded(value.addr, 500),
+    crew: Array.isArray(value.crew)
+      ? value.crew.slice(0, 20).map(name => bounded(name, 80)).filter(Boolean)
+      : [],
+    startDate: date(value.startDate),
+    endDate: date(value.endDate),
+    dueDate: date(value.dueDate),
+  };
+}
+
+function archiveJobFromTracking(jobKey, tracking) {
+  const snapshot = tracking.archiveSnapshot || {};
+  const startDate = snapshot.startDate || '';
+  const endDate = snapshot.endDate || startDate;
+  const dueDate = tracking.dueOverride || snapshot.dueDate || '';
+  return {
+    jobKey: String(jobKey),
+    jobNum: String(jobKey),
+    title: snapshot.title || 'Archived job ' + jobKey,
+    addr: snapshot.addr || '',
+    crew: snapshot.crew || [],
+    startDate,
+    endDate,
+    dueDate,
+    autoDueDate: snapshot.dueDate || '',
+    dueOverride: tracking.dueOverride || '',
+    multiDay: !!(startDate && endDate && startDate !== endDate),
+    completed: true,
+    completedAt: tracking.completedAt || '',
+    completedBy: tracking.completedBy || '',
+    notes: tracking.notes || [],
+    checklist: tracking.checklist || [],
+    departments: tracking.departments || [],
+    departmentChecklists: tracking.departmentChecklists || {},
+    currentDepartments: tracking.currentDepartments || [],
+    additionalFiles: additionalFilesForClient(tracking.additionalFiles),
+    updatedAt: tracking.updatedAt || '',
+  };
+}
+
+function searchArchivedJobs(actor, query) {
+  const text = String(query || '').trim();
+  if (text.length > 80) return { error: 'Search is too long', jobs: [] };
+  const needle = text.toLowerCase();
+  const tracking = getAllTracking();
+  const jobs = Object.keys(tracking)
+    .filter(jobKey => {
+      const record = tracking[jobKey];
+      if (!record.completed) return false;
+      if (actor && JOB_DEPARTMENTS.indexOf(actor.department) !== -1
+          && (record.departments || []).indexOf(actor.department) === -1) return false;
+      if (!needle) return true;
+      const snapshot = record.archiveSnapshot || {};
+      const taskText = Object.keys(record.departmentChecklists || {})
+        .flatMap(department => (record.departmentChecklists[department] || []).map(item => item.text || ''));
+      const searchable = [
+        jobKey, snapshot.title || '', snapshot.addr || '', record.completedBy || '',
+        ...(record.departments || []),
+        ...(record.notes || []).flatMap(note => [note.text || '', note.author || '']),
+        ...taskText,
+      ].join('\n').toLowerCase();
+      return searchable.indexOf(needle) !== -1;
+    })
+    .map(jobKey => archiveJobFromTracking(jobKey, tracking[jobKey]))
+    .sort((a, b) => String(b.completedAt || b.updatedAt).localeCompare(String(a.completedAt || a.updatedAt)))
+    .slice(0, 100);
+  return { jobs };
+}
+
 // Parses raw calendar events into {title, addr, crew, jobNums[], eventDate}
 // records. One record per calendar event — grouping into jobs happens in
 // groupIntoJobs().
@@ -1489,7 +1576,7 @@ function getTrackingSpreadsheet() {
     ss = SpreadsheetApp.create('SWS Production Tracking');
     props.setProperty('TRACKING_SHEET_ID', ss.getId());
     const sheet = ss.getActiveSheet();
-    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json', 'department_notes_json', 'additional_files_json']);
+    sheet.appendRow(['job_key', 'completed', 'notes', 'checklist_json', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'due_override', 'departments_json', 'department_checklists_json', 'current_departments_json', 'department_notes_json', 'additional_files_json', 'archive_snapshot_json']);
     // Plain-text format on the date-shaped columns so Sheets doesn't
     // auto-coerce "2026-08-15" into an actual Date cell.
     sheet.getRange('G:I').setNumberFormat('@');
@@ -1501,6 +1588,9 @@ function getTrackingSheet() {
   const sheet = getTrackingSpreadsheet().getSheets()[0];
   if (sheet.getRange(1, 14).getValue() !== 'additional_files_json') {
     sheet.getRange(1, 14).setValue('additional_files_json');
+  }
+  if (sheet.getRange(1, 15).getValue() !== 'archive_snapshot_json') {
+    sheet.getRange(1, 15).setValue('archive_snapshot_json');
   }
   return sheet;
 }
@@ -1541,6 +1631,15 @@ function parseAdditionalFilesCell(raw) {
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     return [];
+  }
+}
+
+function parseArchiveSnapshotCell(raw) {
+  try {
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (err) {
+    return null;
   }
 }
 
@@ -1589,7 +1688,7 @@ function getAllTracking() {
   const data = sheet.getDataRange().getValues();
   const tracking = {};
   for (let i = 1; i < data.length; i++) {
-    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson] = data[i];
+    const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson, archiveSnapshotJson] = data[i];
     if (!jobKey) continue;
     // A duplicate job_key row (see dedupeTrackingSheet) must resolve the
     // same way setTracking's own row-finder does — first occurrence wins —
@@ -1611,6 +1710,7 @@ function getAllTracking() {
       dueOverride: normalizeDateCell(dueOverride),
       departments, departmentChecklists, currentDepartments,
       additionalFiles: parseAdditionalFilesCell(additionalFilesJson),
+      archiveSnapshot: parseArchiveSnapshotCell(archiveSnapshotJson),
     };
   }
   return tracking;
@@ -1676,7 +1776,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
       if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
     }
     const current = rowIndex === -1
-      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], additionalFiles: [] }
+      ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], additionalFiles: [], archiveSnapshot: null }
       : {
           completed: !!data[rowIndex - 1][1],
           notes: mergeLegacyDepartmentNotes(parseNotesCell(data[rowIndex - 1][2]), parseDepartmentNotesCell(data[rowIndex - 1][12])),
@@ -1689,6 +1789,7 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
           departmentChecklists: (() => { try { return JSON.parse(data[rowIndex - 1][10] || '{}'); } catch (e) { return {}; } })(),
           currentDepartments: (() => { try { return JSON.parse(data[rowIndex - 1][11] || '[]'); } catch (e) { return []; } })(),
           additionalFiles: parseAdditionalFilesCell(data[rowIndex - 1][13]),
+          archiveSnapshot: parseArchiveSnapshotCell(data[rowIndex - 1][14]),
         };
 
     if (expectedUpdatedAt && rowIndex !== -1 && current.updatedAt && expectedUpdatedAt !== current.updatedAt) {
@@ -1714,11 +1815,12 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     const departmentChecklistsJson = JSON.stringify(next.departmentChecklists);
     const currentDepartmentsJson = JSON.stringify(next.currentDepartments);
     const additionalFilesJson = JSON.stringify(next.additionalFiles || []);
+    const archiveSnapshotJson = JSON.stringify(next.archiveSnapshot || null);
     const departmentNotesJson = '{}'; // retained as an empty compatibility column
-    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, additionalFilesJson].some(value => value.length > 45000)) {
+    if ([notesJson, checklistJson, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, additionalFilesJson, archiveSnapshotJson].some(value => value.length > 45000)) {
       return { success: false, error: 'Job data is too large to save' };
     }
-    const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson];
+    const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson, archiveSnapshotJson];
     if (rowIndex === -1) {
       sheet.appendRow(row);
     } else {

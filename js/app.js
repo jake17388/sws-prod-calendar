@@ -12,6 +12,7 @@ import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
 import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign.js';
+import { renderArchive } from './views/archive.js';
 import { addDays } from './dates.js';
 import { showToast } from './toast.js';
 import { setHeaderDimmed } from './headerDim.js';
@@ -25,6 +26,7 @@ const VIEWS = {
   week: { render: renderWeek, label: weekRangeLabel, step: (d, dir) => addDays(d, dir * 7) },
   schedule: { render: renderSchedule, label: () => 'Schedule', step: (d, dir) => addDays(d, dir * 30) },
   assign: { render: renderJobsToAssign, label: jobsToAssignRangeLabel, step: (d, dir) => addDays(d, dir * 30) },
+  archive: { render: renderArchive, label: () => 'Archive', step: d => d },
 };
 
 subscribePendingWrites(pending => {
@@ -80,6 +82,8 @@ function renderActiveView() {
     btn.classList.toggle('active', btn.dataset.view === activeView);
   });
   document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
+  document.querySelector('.date-nav').hidden = activeView === 'archive';
+  document.getElementById('stats-bar').hidden = activeView === 'archive';
   applyScheduleScroll(container);
 }
 

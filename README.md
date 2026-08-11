@@ -129,7 +129,12 @@ days ahead, based on the install-calendar date (not the date the job was marked
 complete). Leaving that window only removes a job from the app's normal views;
 it does not delete its tracking record. Tracking history remains indefinitely
 in the `SWS Production Tracking` Google Sheet unless an administrator removes
-it manually. There is currently no separate archive browser or automatic purge.
+it manually. The **Archive** view searches completed history by job number,
+saved title, note, department, or person and opens the retained project detail.
+Production-department users only receive archived jobs assigned to their own
+department. Older records created before archive snapshots were introduced
+remain searchable by their job number and saved history. There is no automatic
+purge.
 
 The job screen calls the Dropbox-sourced proof the **Production File**. Admins,
 Managers, and Viewers can add up to 50 additional project files (8 MB each) by

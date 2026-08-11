@@ -7,6 +7,7 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { JOB_TAGS } from '../config.js';
 import { escapeHtml } from '../lib/html.js';
 import { showToast } from '../toast.js';
+import { archiveSnapshotFor } from '../archiveSnapshot.mjs';
 
 function crewLabel(job) {
   return job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned';
@@ -89,7 +90,7 @@ function handleCheckboxToggle(job) {
   const requestKey = `job-complete:${job.jobKey}`;
   const token = beginRequest(requestKey);
   patchJob(job.jobKey, { completed: nextCompleted });
-  toggleComplete(job.jobKey, nextCompleted)
+  toggleComplete(job.jobKey, nextCompleted, archiveSnapshotFor(job))
     .then(res => {
       if (!isLatestRequest(requestKey, token)) return;
       if (res.success) {
