@@ -722,6 +722,19 @@ main.view-area {
   min-height: 18px;
 }
 
+/* WebKit currently subtracts the home-indicator safe area from dvh/svh in
+   installed apps. In standalone mode, classic vh is the physical PWA canvas
+   height and prevents the uncovered strip shown below the app on iOS/iPadOS. */
+@media all and (display-mode: standalone) {
+  html,
+  body,
+  #app,
+  #pin-screen {
+    height: 100vh;
+    min-height: 100vh;
+  }
+}
+
 @media (max-width: 640px) {
   .brand-name { font-size: 11px; }
   .brand-sub { display: none; }
