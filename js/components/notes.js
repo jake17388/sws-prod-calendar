@@ -1,7 +1,7 @@
 import { addNote, updateNote, deleteNote } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { currentUser, currentUserId, isAdmin } from '../auth.js';
-import { abbreviateName, formatTimestamp } from '../dates.js';
+import { formatTimestamp } from '../dates.js';
 import { showToast } from '../toast.js';
 import { addPendingNote, markNoteDeleting, preservePendingNotesInJobs, removePendingNote, restoreDeletingNote, settleDeletedNote } from '../optimisticNotes.mjs';
 
@@ -10,10 +10,14 @@ import { addPendingNote, markNoteDeleting, preservePendingNotesInJobs, removePen
 // list, not the detached DOM created by the earlier panel instance.
 const renderedNoteLists = new Map();
 
-function noteStampText(note) {
+function authorInitials(name) {
+  const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map(part => part[0].toUpperCase()).join('') || '?';
+}
+
+function noteTimeText(note) {
   if (note.pending) return 'Saving…';
-  if (!note.author) return 'Unknown';
-  return note.createdAt ? `${abbreviateName(note.author)} · ${formatTimestamp(note.createdAt)}` : abbreviateName(note.author);
+  return note.createdAt ? formatTimestamp(note.createdAt) : 'Time unavailable';
 }
 
 /**
@@ -93,17 +97,25 @@ export function renderNotes(container, job, { canWrite }) {
     const row = document.createElement('div');
     row.className = `note-item${note.pending ? ' pending' : ''}`;
 
-    const textEl = document.createElement('div');
-    textEl.className = 'note-item-text';
-    textEl.textContent = note.text;
-    row.appendChild(textEl);
-
     const metaEl = document.createElement('div');
     metaEl.className = 'note-item-meta';
-    const stamp = document.createElement('span');
-    stamp.className = 'note-item-stamp';
-    stamp.textContent = noteStampText(note);
-    metaEl.appendChild(stamp);
+    const avatar = document.createElement('span');
+    avatar.className = 'note-item-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = authorInitials(note.author);
+    metaEl.appendChild(avatar);
+
+    const attribution = document.createElement('span');
+    attribution.className = 'note-item-attribution';
+    const author = document.createElement('strong');
+    author.className = 'note-item-author';
+    author.textContent = note.author || 'Unknown user';
+    const time = document.createElement('span');
+    time.className = 'note-item-time';
+    time.textContent = noteTimeText(note);
+    attribution.appendChild(author);
+    attribution.appendChild(time);
+    metaEl.appendChild(attribution);
     row.appendChild(metaEl);
 
     if (canEdit) {
@@ -139,6 +151,11 @@ export function renderNotes(container, job, { canWrite }) {
       metaEl.appendChild(deleteBtn);
     }
 
+    const textEl = document.createElement('div');
+    textEl.className = 'note-item-text';
+    textEl.textContent = note.text;
+    row.appendChild(textEl);
+
     listEl.appendChild(row);
   }
 
@@ -149,6 +166,7 @@ export function renderNotes(container, job, { canWrite }) {
     textarea.value = note.text;
     row.appendChild(textarea);
     row.appendChild(editFormActions(
+      textarea,
       () => renderList(),
       () => {
         const text = textarea.value.trim();
@@ -162,7 +180,31 @@ export function renderNotes(container, job, { canWrite }) {
   // Shared Save/Cancel row for note edits.
   // `onSave` returns the in-flight request promise (or null to no-op on
   // empty input); `onCancel` restores whatever was showing before.
-  function editFormActions(onCancel, onSave) {
+  function enhanceComposer(textarea, actions, saveBtn, onCancel) {
+    textarea.maxLength = 2000;
+    const count = document.createElement('span');
+    count.className = 'notes-character-count';
+    actions.prepend(count);
+
+    const updateComposer = () => {
+      count.textContent = `${textarea.value.length} / 2000 · ⌘/Ctrl + Enter to save`;
+      saveBtn.disabled = !textarea.value.trim();
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 96), 260)}px`;
+    };
+    textarea.addEventListener('input', updateComposer);
+    textarea.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        saveBtn.click();
+      } else if (event.key === 'Escape') {
+        onCancel();
+      }
+    });
+    updateComposer();
+  }
+
+  function editFormActions(textarea, onCancel, onSave) {
     const actions = document.createElement('div');
     actions.className = 'note-edit-actions';
     const saveBtn = document.createElement('button');
@@ -173,6 +215,7 @@ export function renderNotes(container, job, { canWrite }) {
     cancelBtn.textContent = 'Cancel';
     actions.appendChild(cancelBtn);
     actions.appendChild(saveBtn);
+    enhanceComposer(textarea, actions, saveBtn, onCancel);
 
     cancelBtn.addEventListener('click', onCancel);
     saveBtn.addEventListener('click', () => {
@@ -204,6 +247,7 @@ export function renderNotes(container, job, { canWrite }) {
 
   const resetAddForm = () => {
     addWrap.innerHTML = '';
+    addWrap.classList.remove('is-editing');
     addWrap.appendChild(addBtn);
   };
 
@@ -218,6 +262,7 @@ export function renderNotes(container, job, { canWrite }) {
     saveBtn.textContent = 'Save';
     actions.appendChild(cancelBtn);
     actions.appendChild(saveBtn);
+    enhanceComposer(textarea, actions, saveBtn, resetAddForm);
     cancelBtn.addEventListener('click', resetAddForm);
     saveBtn.addEventListener('click', () => {
       const text = textarea.value.trim();
@@ -258,6 +303,7 @@ export function renderNotes(container, job, { canWrite }) {
 
   addBtn.addEventListener('click', () => {
     addWrap.innerHTML = '';
+    addWrap.classList.add('is-editing');
     const textarea = document.createElement('textarea');
     textarea.className = 'notes-textarea';
     textarea.placeholder = 'Add a note…';

@@ -96,6 +96,20 @@
   margin: 0 0 var(--space-2);
 }
 
+.project-notes-section { grid-column: 1 / -1; }
+.project-notes-section > h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.project-notes-section > h3::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-solid);
+}
+
 .job-detail-complete-toggle {
   display: flex;
   align-items: center;
@@ -159,7 +173,7 @@
 .notes-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .notes-empty {
   font-size: var(--text-sm);
@@ -167,28 +181,55 @@
   padding: var(--space-1) 0;
 }
 .note-item {
-  background: var(--surface-sunken);
+  background: var(--surface-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-2sm);
-  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--duration-fast) var(--ease-out-expo), box-shadow var(--duration-fast) var(--ease-out-expo);
 }
+.note-item:hover { border-color: var(--border-strong); box-shadow: var(--shadow-2); }
+.note-item.pending { border-color: var(--accent-ring); }
 .note-item-text {
   font-size: var(--text-sm);
   color: var(--ink-primary);
   white-space: pre-wrap;
-  line-height: var(--line-normal);
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+  margin: var(--space-3) 0 0 44px;
 }
 .note-item-meta {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-2);
 }
-.note-item-stamp {
+.note-item-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-subtle-bg);
+  color: var(--accent-subtle-text);
   font-size: var(--text-2xs);
-  color: var(--ink-disabled);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+}
+.note-item-attribution {
+  display: flex;
   flex: 1;
   min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+.note-item-author {
+  color: var(--ink-primary);
+  font-size: var(--text-xs);
+}
+.note-item-time {
+  font-size: var(--text-2xs);
+  color: var(--ink-tertiary);
 }
 .note-action-btn {
   background: none;
@@ -196,7 +237,8 @@
   color: var(--ink-tertiary);
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
-  padding: 2px 6px;
+  min-height: 32px;
+  padding: 4px 9px;
   border-radius: var(--radius-2xs);
   transition: color var(--duration-fast) var(--ease-out-expo), background var(--duration-fast) var(--ease-out-expo);
 }
@@ -204,8 +246,9 @@
 .note-action-btn.danger:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
 
 .notes-add-btn {
-  align-self: flex-start;
-  background: none;
+  align-self: stretch;
+  min-height: 44px;
+  background: var(--surface-card);
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-2sm);
   color: var(--ink-secondary);
@@ -213,15 +256,30 @@
   font-weight: var(--weight-medium);
   padding: var(--space-2) var(--space-3);
   margin-top: var(--space-2);
+  text-align: left;
   transition: color var(--duration-fast) var(--ease-out-expo), border-color var(--duration-fast) var(--ease-out-expo);
 }
 .notes-add-btn:hover { color: var(--accent-solid); border-color: var(--accent-solid); }
 .notes-add-wrap { display: flex; flex-direction: column; }
+.notes-add-wrap.is-editing {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
 .note-edit-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+.notes-character-count {
+  flex: 1;
+  align-self: center;
+  color: var(--ink-tertiary);
+  font-size: var(--text-2xs);
 }
 .note-edit-actions .settings-action { margin-top: 0; width: auto; padding: 6px 14px; }
 
@@ -608,6 +666,10 @@
   .additional-file-row { align-items: flex-start; flex-direction: column; }
   .additional-file-actions { width: 100%; }
   .additional-file-action { flex: 1; }
+  .note-item { padding: var(--space-3); }
+  .note-item-text { margin-left: 0; }
+  .note-action-btn { min-width: 44px; min-height: 36px; }
+  .notes-character-count { flex-basis: 100%; }
 }
 
 /* Tablets (iPad, etc.) — see job-card.css for why this is gated on
