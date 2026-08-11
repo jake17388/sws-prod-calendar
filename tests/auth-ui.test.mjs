@@ -39,3 +39,14 @@ test('My Account submits a PIN from the keyboard and preserves the replacement s
   assert.match(app, /my-account-pin'[\s\S]*keydown[\s\S]*saveMyAccount/);
   assert.match(app, /updateAuthProfile\(\{ user: res\.user\.name,[\s\S]*token: res\.token/);
 });
+
+test('the PIN pad uses immediate pointer input and the app theme', () => {
+  const auth = read('js/auth.js');
+  const css = read('styles/layout.css');
+
+  assert.match(auth, /addEventListener\('pointerdown'/);
+  assert.match(auth, /pointerType === 'touch'/);
+  assert.match(css, /\.pin-card\s*\{[^}]*--color-brand-navy/s);
+  assert.match(css, /\.pin-pad button:active\s*\{[^}]*--color-brand-gold/s);
+  assert.match(css, /\.pin-pad button\s*\{[^}]*touch-action:\s*none/s);
+});

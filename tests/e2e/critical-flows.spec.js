@@ -102,6 +102,26 @@ async function login(page) {
   await expect(page.locator('#app')).toBeVisible();
 }
 
+test('rapid touch entry captures every PIN digit without waiting between taps', async ({ page }) => {
+  await mockBackend(page);
+  await page.goto('/');
+
+  await page.evaluate(() => {
+    for (const digit of '123456') {
+      const button = document.querySelector(`.pin-pad button[data-digit="${digit}"]`);
+      button.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        pointerType: 'touch',
+        isPrimary: true,
+      }));
+    }
+  });
+
+  await expect(page.locator('#pin-screen')).toBeHidden();
+  await expect(page.locator('#app')).toBeVisible();
+});
+
 test('an Admin can sign in, open a job, and add a note immediately', async ({ page }) => {
   await mockBackend(page);
   await login(page);
