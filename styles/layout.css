@@ -3,12 +3,11 @@
 html {
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
+  min-height: 100dvh;
   background: var(--surface-canvas);
   touch-action: manipulation;
-}
-@supports (-webkit-touch-callout: none) {
-  html { height: -webkit-fill-available; }
 }
 
 body {
@@ -19,17 +18,13 @@ body {
      elastic drag-scroll still moves the whole document unless body is
      taken out of normal flow entirely. */
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  inset: 0;
+  width: 100%;
   height: 100vh;
-  /* Standalone home-screen PWAs on iOS/iPadOS specifically (not regular
-     Safari tabs) can leave a gap under the home indicator with 100%/100vh
-     sizing even when the box is position:fixed — a longstanding WebKit
-     quirk, not a spec-compliance issue. -webkit-fill-available is Apple's
-     own documented workaround: it resolves to the *actual* available
-     height including the safe area, where 100vh does not. Feature-queried
-     so non-WebKit browsers just keep the 100vh above. */
+  /* Dynamic viewport units include the complete standalone PWA canvas on
+     current iOS/iPadOS, including the area behind the home indicator.
+     Keep 100vh immediately above as a fallback for older browsers. */
+  height: 100dvh;
   background: var(--surface-canvas);
   color: var(--ink-primary);
   font-family: var(--font-sans);
@@ -37,10 +32,6 @@ body {
   -webkit-font-smoothing: antialiased;
   touch-action: manipulation;
 }
-@supports (-webkit-touch-callout: none) {
-  body { height: -webkit-fill-available; }
-}
-
 button {
   font-family: inherit;
   cursor: pointer;
@@ -57,7 +48,7 @@ textarea:focus-visible {
 #app {
   display: none;
   flex-direction: column;
-  height: 100%; /* resolves against body's real height — see body above */
+  height: 100dvh;
 }
 
 header.app-header {
@@ -643,6 +634,7 @@ main.view-area {
 #pin-screen {
   position: fixed;
   inset: 0;
+  height: 100dvh;
   background: linear-gradient(160deg, #122d57, #0c1f3d);
   display: flex;
   flex-direction: column;
