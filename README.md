@@ -137,13 +137,16 @@ choosing or dragging them into the project. Everyone who can view the project
 can download those files and see who added each one and when. Only Admins can
 delete them; that permission is enforced by the backend.
 
-After each fresh job-list load, the browser preloads Production Files for jobs
-due in the current and following Sunday-through-Saturday weeks. After a short
-stagger, current-week downloads run two at a time; following-week downloads
-begin only after those finish and run one at a time. Files stay in browser disk
-cache for six hours, while only an opened file is promoted into the small
-in-memory viewer cache. Expired files are removed automatically so iPads do not
-retain an ever-growing collection.
+After each fresh job-list load, the browser preloads the complete original
+Production Files for jobs due in the current and following
+Sunday-through-Saturday weeks. After a short stagger, current-week downloads
+run two at a time; following-week downloads begin only after those finish and
+run one at a time. For those two weeks, **View Production File** opens the
+cached original directly in the device's native full-quality PDF viewer with
+zoom. Jobs beyond that window use the in-app preview with **Open Original** as
+a fallback. Files stay in browser disk cache for six hours, while only an
+opened file is promoted into the small in-memory viewer cache. Expired files
+are removed automatically so iPads do not retain an ever-growing collection.
 
 The PDF.js engine is pinned and served with the app rather than loaded from a
 third-party CDN. Preloaded bytes are parsed before being accepted into cache;

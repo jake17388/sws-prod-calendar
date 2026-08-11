@@ -10,13 +10,14 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { looksLikePdfBytes, renderPdfPages, resetPdfViewerEngine } from '../pdfViewer.js';
 import { cacheProofFile, deleteCachedProofFile, getCachedProofFile } from '../proofCache.mjs';
-import { productionProofCacheKey } from '../currentWeekProofPreload.mjs';
+import { isJobInPreloadedOriginalWindow, productionProofCacheKey } from '../currentWeekProofPreload.mjs';
 import { deleteStoredProof, readStoredProof, storeProof } from '../proofDiskCache.mjs';
 
 let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
 let viewerObjectUrl = null;
+let directOriginalObjectUrl = null;
 let viewerRenderController = null;
 let activeJobKey = null;
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
@@ -60,6 +61,27 @@ function attachOriginalFile(bytes, mimeType, name) {
   original.href = viewerObjectUrl;
   original.removeAttribute('download');
   return viewerObjectUrl;
+}
+
+function openOriginalPdf(bytes, name) {
+  if (directOriginalObjectUrl) URL.revokeObjectURL(directOriginalObjectUrl);
+  const fileName = name || 'Production File.pdf';
+  const file = typeof File === 'function'
+    ? new File([bytes], fileName, { type: 'application/pdf' })
+    : new Blob([bytes], { type: 'application/pdf' });
+  directOriginalObjectUrl = URL.createObjectURL(file);
+
+  // A real link activation keeps this inside the user's tap gesture, which is
+  // required for iOS/iPadOS to open its native full-quality PDF viewer rather
+  // than treating it as a blocked popup.
+  const link = document.createElement('a');
+  link.href = directOriginalObjectUrl;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.setAttribute('aria-label', `Open original ${fileName}`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function updateZoomControls(enabled, zoom = 1) {
@@ -295,7 +317,13 @@ function renderProofSection(job) {
     cacheProofFile(cacheKey, proof);
     empty.hidden = true;
     openBtn.hidden = false;
-    openBtn.onclick = () => openProofViewer(job, currentProofBytes, proof.name, repairProof);
+    const oneTapOriginal = isJobInPreloadedOriginalWindow(job);
+    openBtn.dataset.viewerMode = oneTapOriginal ? 'original' : 'preview';
+    openBtn.title = oneTapOriginal ? 'Open the preloaded original PDF' : 'Preview this Production File';
+    openBtn.onclick = () => {
+      if (oneTapOriginal) openOriginalPdf(currentProofBytes, proof.name);
+      else openProofViewer(job, currentProofBytes, proof.name, repairProof);
+    };
   };
   const cached = getCachedProofFile(cacheKey);
   if (cached) {

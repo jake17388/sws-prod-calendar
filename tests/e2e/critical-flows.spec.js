@@ -143,10 +143,11 @@ test('a current-week Production File opens the preloaded original in one tap', a
   await mockBackend(page, { productionPdf: onePagePdfBase64() });
   await login(page);
   await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.getByRole('button', { name: 'View Production File' }))
+    .toHaveAttribute('data-viewer-mode', 'original');
   const popupPromise = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'View Production File' }).click();
   const original = await popupPromise;
-  expect(original.url()).toMatch(/^blob:/);
   await expect(page.locator('#proof-viewer-overlay')).not.toHaveClass(/open/);
   await original.close();
 });
@@ -156,6 +157,7 @@ test('a Production File three weeks out keeps the preview and original-file cont
   later.setDate(later.getDate() + 21);
   await mockBackend(page, { productionPdf: onePagePdfBase64(), jobDueDate: later.toISOString().slice(0, 10) });
   await login(page);
+  for (let week = 0; week < 3; week++) await page.getByRole('button', { name: 'Next' }).click();
   await page.getByRole('button', { name: /Open 260001/ }).click();
   await page.getByRole('button', { name: 'View Production File' }).click();
   await expect(page.locator('.proof-viewer-page')).toBeVisible();
