@@ -28,8 +28,8 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null } = {}) {
-  let currentJob = structuredClone(job);
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null, jobDueDate = null } = {}) {
+  let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}) };
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
     let action;
@@ -139,8 +139,22 @@ test('an Admin can sign in, open a job, and add a note immediately', async ({ pa
   await expect(page.getByText('Saving…')).toHaveCount(0);
 });
 
-test('a production PDF opens from original bytes and can be re-rendered at higher zoom', async ({ page }) => {
+test('a current-week Production File opens the preloaded original in one tap', async ({ page }) => {
   await mockBackend(page, { productionPdf: onePagePdfBase64() });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  const popupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'View Production File' }).click();
+  const original = await popupPromise;
+  expect(original.url()).toMatch(/^blob:/);
+  await expect(page.locator('#proof-viewer-overlay')).not.toHaveClass(/open/);
+  await original.close();
+});
+
+test('a Production File three weeks out keeps the preview and original-file controls', async ({ page }) => {
+  const later = new Date();
+  later.setDate(later.getDate() + 21);
+  await mockBackend(page, { productionPdf: onePagePdfBase64(), jobDueDate: later.toISOString().slice(0, 10) });
   await login(page);
   await page.getByRole('button', { name: /Open 260001/ }).click();
   await page.getByRole('button', { name: 'View Production File' }).click();
