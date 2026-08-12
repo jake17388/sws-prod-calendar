@@ -51,12 +51,12 @@ const MAX_ADDITIONAL_FILES_PER_JOB = 50;
 const MAX_STANDARD_REQUEST_CHARS = 250000;
 const MAX_UPLOAD_REQUEST_CHARS = 12 * 1024 * 1024;
 
-const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
+const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'];
 
 // Job-assignable tags — distinct from the user DEPARTMENTS list above.
 // Ship-In isn't a role anyone logs in as; it's a job-only tag meaning "made
 // elsewhere, just shipped in to us" rather than produced in one of our shops.
-const JOB_DEPARTMENTS = ['Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing'];
+const JOB_DEPARTMENTS = ['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'];
 const JOB_TAGS = JOB_DEPARTMENTS.concat(['Ship-In']);
 
 function canAssignDepartments(department) {
