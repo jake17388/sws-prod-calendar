@@ -1952,6 +1952,170 @@ function deleteAdditionalFile(actor, data) {
   return { ...result, additionalFiles: additionalFilesForClient(result.additionalFiles) };
 }
 
+// ── Squarecoil credential probe ─────────────────────────────────────────────
+// Temporary, read-only integration probe. Credentials live only in Script
+// Properties and are never returned or logged. This verifies that Apps Script
+// can establish a reusable Squarecoil PHP session, read one known DESIGN
+// record, and download its PDF without relying on a browser session.
+const SQUARECOIL_BASE_URL = 'https://summitwestsigns.squarecoil.net';
+
+function squarecoilResponseHeader_(response, name) {
+  const headers = response.getAllHeaders ? response.getAllHeaders() : response.getHeaders();
+  const wanted = String(name).toLowerCase();
+  const key = Object.keys(headers || {}).find(header => String(header).toLowerCase() === wanted);
+  return key ? headers[key] : '';
+}
+
+function squarecoilMergeCookies_(currentCookie, response) {
+  const merged = {};
+  String(currentCookie || '').split(/;\s*/).forEach(pair => {
+    const equals = pair.indexOf('=');
+    if (equals > 0) merged[pair.slice(0, equals).trim()] = pair.slice(equals + 1).trim();
+  });
+
+  const raw = squarecoilResponseHeader_(response, 'Set-Cookie');
+  const cookies = Array.isArray(raw)
+    ? raw
+    : String(raw || '').split(/,(?=\s*[^;,=\s]+=)/);
+  cookies.forEach(cookie => {
+    const match = String(cookie).match(/^\s*([^=;,\s]+)=([^;]*)/);
+    if (match) merged[match[1]] = match[2];
+  });
+  return Object.keys(merged).map(key => key + '=' + merged[key]).join('; ');
+}
+
+function squarecoilUrl_(path) {
+  const value = String(path || '');
+  if (/^https:\/\//i.test(value)) return value;
+  return SQUARECOIL_BASE_URL + '/' + value.replace(/^\/+/, '');
+}
+
+function squarecoilGet_(path, cookie) {
+  return UrlFetchApp.fetch(squarecoilUrl_(path), {
+    method: 'get',
+    headers: {
+      Cookie: cookie,
+      Accept: 'text/html,application/xhtml+xml,application/pdf',
+      'User-Agent': 'Mozilla/5.0 (compatible; SWS-Production-Calendar/1.0)',
+    },
+    followRedirects: false,
+    muteHttpExceptions: true,
+  });
+}
+
+function squarecoilLoginForProbe_(username, password) {
+  const initial = UrlFetchApp.fetch(SQUARECOIL_BASE_URL + '/login.php', {
+    method: 'get',
+    followRedirects: false,
+    muteHttpExceptions: true,
+  });
+  let cookie = squarecoilMergeCookies_('', initial);
+  const login = UrlFetchApp.fetch(SQUARECOIL_BASE_URL + '/login.php', {
+    method: 'post',
+    payload: {
+      action: '1',
+      username,
+      password,
+      latlong: '',
+      latlong_error: '',
+      latitude: '',
+      longitude: '',
+    },
+    headers: {
+      Cookie: cookie,
+      'User-Agent': 'Mozilla/5.0 (compatible; SWS-Production-Calendar/1.0)',
+    },
+    followRedirects: false,
+    muteHttpExceptions: true,
+  });
+  cookie = squarecoilMergeCookies_(cookie, login);
+
+  const code = login.getResponseCode();
+  const location = squarecoilResponseHeader_(login, 'Location');
+  const authenticated = code >= 300 && code < 400 && location
+    ? squarecoilGet_(location, cookie)
+    : login;
+  cookie = squarecoilMergeCookies_(cookie, authenticated);
+  const html = authenticated.getContentText();
+  if (authenticated.getResponseCode() !== 200
+      || /<form[^>]+action=["']login\.php/i.test(html)
+      || !/(?:dashboard\.php|project\.php)/i.test(html)) {
+    throw new Error('Squarecoil rejected the login or changed its login flow');
+  }
+  return cookie;
+}
+
+function squarecoilDecodeText_(value) {
+  return String(value || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+function squarecoilFindPdfLink_(html, jobNum) {
+  const normalized = String(html || '').replace(/&amp;/g, '&');
+  const links = normalized.match(/<a\b[^>]*href=["'][^"']*download_design_file\.php\?[^"']+["'][^>]*>[\s\S]*?<\/a>/gi) || [];
+  for (let i = 0; i < links.length; i++) {
+    const href = (links[i].match(/href=["']([^"']+)["']/i) || [])[1] || '';
+    const fileId = (href.match(/[?&]file_id=(\d+)/i) || [])[1] || '';
+    const projectId = (href.match(/[?&]project_id=(\d+)/i) || [])[1] || '';
+    const name = squarecoilDecodeText_((links[i].match(/>([\s\S]*?)<\/a>/i) || [])[1]);
+    if (fileId && projectId === String(jobNum) && /\.pdf$/i.test(name)) return { fileId, name };
+  }
+  return null;
+}
+
+function squarecoilLooksLikePdf_(bytes) {
+  return !!bytes && bytes.length >= 5
+    && bytes[0] === 37 && bytes[1] === 80 && bytes[2] === 68
+    && bytes[3] === 70 && bytes[4] === 45;
+}
+
+function testSquarecoilLogin() {
+  const props = PropertiesService.getScriptProperties();
+  const username = props.getProperty('SQUARECOIL_USERNAME') || '';
+  const password = props.getProperty('SQUARECOIL_PASSWORD') || '';
+  if (!username || !password) {
+    return { success: false, stage: 'configuration', error: 'Squarecoil credentials are not configured' };
+  }
+
+  const jobNum = '260262';
+  const designNumber = '260262-04';
+  const designId = '30216';
+  try {
+    const cookie = squarecoilLoginForProbe_(username, password);
+    const design = squarecoilGet_('project_designs.php?id=' + jobNum + '&designid=' + designId, cookie);
+    const designHtml = design.getContentText();
+    if (design.getResponseCode() !== 200 || designHtml.indexOf(designNumber) === -1) {
+      return { success: false, stage: 'design', error: 'Expected Squarecoil design was not accessible' };
+    }
+    const file = squarecoilFindPdfLink_(designHtml, jobNum);
+    if (!file) return { success: false, stage: 'design', error: 'No PDF was found on the expected design' };
+
+    const download = squarecoilGet_('download_design_file.php?file_id=' + file.fileId + '&project_id=' + jobNum, cookie);
+    const bytes = download.getBlob().getBytes();
+    const result = {
+      success: download.getResponseCode() === 200 && squarecoilLooksLikePdf_(bytes),
+      jobNum,
+      designNumber,
+      designId,
+      fileId: file.fileId,
+      fileName: file.name,
+      responseCode: download.getResponseCode(),
+      bytes: bytes.length,
+      pdfValid: squarecoilLooksLikePdf_(bytes),
+    };
+    console.log(JSON.stringify(result));
+    return result;
+  } catch (err) {
+    const result = { success: false, stage: 'login', error: String((err && err.message) || err || 'Squarecoil probe failed').slice(0, 200) };
+    console.log(JSON.stringify(result));
+    return result;
+  }
+}
+
 // ── Dropbox proofs ───────────────────────────────────────────────────────────
 // Matches each job's Dropbox folder by job number (under DROPBOX_ORDERS_PATH)
 // and caches the path to the newest PDF in its Proofs subfolder, so opening
