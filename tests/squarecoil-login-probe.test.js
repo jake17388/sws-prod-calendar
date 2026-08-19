@@ -90,7 +90,7 @@ test('Squarecoil credential probe authenticates and validates the expected produ
 });
 
 test('Squarecoil credential probe fails safely when credentials are missing', () => {
-  const { context, requests } = loadBackend({}, []);
+  const { context, requests, logs } = loadBackend({}, []);
 
   const result = context.testSquarecoilLogin();
 
@@ -100,4 +100,5 @@ test('Squarecoil credential probe fails safely when credentials are missing', ()
     error: 'Squarecoil credentials are not configured',
   });
   assert.equal(requests.length, 0);
+  assert.deepEqual(logs, [JSON.stringify(result)]);
 });
