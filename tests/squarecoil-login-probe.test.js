@@ -118,3 +118,38 @@ test('Squarecoil PDF parser accepts numeric HTML encoding from the raw design re
     name: '260262_Prod_TelaVerdeApts_v4.pdf',
   });
 });
+
+test('Squarecoil probe reports sanitized parser diagnostics when a design has no PDF link', () => {
+  const designHtml = '<strong>260262-04</strong><a href="project_designs.php?id=260262">Design</a>';
+  const responses = [
+    response(200, '<form action="login.php"><input name="username"></form>', {
+      'Set-Cookie': 'PHPSESSID=anonymous; Path=/; HttpOnly',
+    }),
+    response(302, '', {
+      'Set-Cookie': 'PHPSESSID=authenticated; Path=/; HttpOnly',
+      Location: 'dashboard.php',
+    }),
+    response(200, '<a href="dashboard.php">Dashboard</a>'),
+    response(200, designHtml),
+  ];
+  const { context, logs } = loadBackend({
+    SQUARECOIL_USERNAME: 'integration-user',
+    SQUARECOIL_PASSWORD: 'do-not-log-this',
+  }, responses);
+
+  const result = context.testSquarecoilLogin();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    success: false,
+    stage: 'design',
+    error: 'No PDF was found on the expected design',
+    diagnostics: {
+      responseCode: 200,
+      htmlCharacters: designHtml.length,
+      downloadEndpointCount: 0,
+      pdfTextCount: 0,
+    },
+  });
+  assert.equal(logs[0], JSON.stringify(result));
+  assert.doesNotMatch(logs[0], /integration-user|do-not-log-this|PHPSESSID/);
+});

@@ -2045,17 +2045,30 @@ function squarecoilLoginForProbe_(username, password) {
   return cookie;
 }
 
+function squarecoilDecodeHtmlEntities_(value) {
+  let decoded = String(value || '');
+  // Raw PHP responses may use named or numeric encodings. Decode a few
+  // passes so double-encoded query separators are
+  // handled the same way a browser's HTML parser handles them.
+  for (let i = 0; i < 3; i++) {
+    const next = decoded
+      .replace(/&(amp|#0*38|#x0*26);/gi, '&')
+      .replace(/&(quot|#0*34|#x0*22);/gi, '"')
+      .replace(/&(#0*39|#x0*27);/gi, "'");
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
 function squarecoilDecodeText_(value) {
-  return String(value || '')
+  return squarecoilDecodeHtmlEntities_(value)
     .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
     .trim();
 }
 
 function squarecoilFindPdfLink_(html, jobNum) {
-  const normalized = String(html || '').replace(/&amp;/g, '&');
+  const normalized = squarecoilDecodeHtmlEntities_(html);
   const links = normalized.match(/<a\b[^>]*href=["'][^"']*download_design_file\.php\?[^"']+["'][^>]*>[\s\S]*?<\/a>/gi) || [];
   for (let i = 0; i < links.length; i++) {
     const href = (links[i].match(/href=["']([^"']+)["']/i) || [])[1] || '';
@@ -2065,6 +2078,16 @@ function squarecoilFindPdfLink_(html, jobNum) {
     if (fileId && projectId === String(jobNum) && /\.pdf$/i.test(name)) return { fileId, name };
   }
   return null;
+}
+
+function squarecoilDesignDiagnostics_(html, responseCode) {
+  const value = String(html || '');
+  return {
+    responseCode,
+    htmlCharacters: value.length,
+    downloadEndpointCount: (value.match(/download_design_file\.php/gi) || []).length,
+    pdfTextCount: (value.match(/\.pdf\b/gi) || []).length,
+  };
 }
 
 function squarecoilLooksLikePdf_(bytes) {
@@ -2097,7 +2120,14 @@ function testSquarecoilLogin() {
       return squarecoilProbeResult_({ success: false, stage: 'design', error: 'Expected Squarecoil design was not accessible' });
     }
     const file = squarecoilFindPdfLink_(designHtml, jobNum);
-    if (!file) return squarecoilProbeResult_({ success: false, stage: 'design', error: 'No PDF was found on the expected design' });
+    if (!file) {
+      return squarecoilProbeResult_({
+        success: false,
+        stage: 'design',
+        error: 'No PDF was found on the expected design',
+        diagnostics: squarecoilDesignDiagnostics_(designHtml, design.getResponseCode()),
+      });
+    }
 
     const download = squarecoilGet_('download_design_file.php?file_id=' + file.fileId + '&project_id=' + jobNum, cookie);
     const bytes = download.getBlob().getBytes();
