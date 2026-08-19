@@ -2073,12 +2073,17 @@ function squarecoilLooksLikePdf_(bytes) {
     && bytes[3] === 70 && bytes[4] === 45;
 }
 
+function squarecoilProbeResult_(result) {
+  console.log(JSON.stringify(result));
+  return result;
+}
+
 function testSquarecoilLogin() {
   const props = PropertiesService.getScriptProperties();
   const username = props.getProperty('SQUARECOIL_USERNAME') || '';
   const password = props.getProperty('SQUARECOIL_PASSWORD') || '';
   if (!username || !password) {
-    return { success: false, stage: 'configuration', error: 'Squarecoil credentials are not configured' };
+    return squarecoilProbeResult_({ success: false, stage: 'configuration', error: 'Squarecoil credentials are not configured' });
   }
 
   const jobNum = '260262';
@@ -2089,10 +2094,10 @@ function testSquarecoilLogin() {
     const design = squarecoilGet_('project_designs.php?id=' + jobNum + '&designid=' + designId, cookie);
     const designHtml = design.getContentText();
     if (design.getResponseCode() !== 200 || designHtml.indexOf(designNumber) === -1) {
-      return { success: false, stage: 'design', error: 'Expected Squarecoil design was not accessible' };
+      return squarecoilProbeResult_({ success: false, stage: 'design', error: 'Expected Squarecoil design was not accessible' });
     }
     const file = squarecoilFindPdfLink_(designHtml, jobNum);
-    if (!file) return { success: false, stage: 'design', error: 'No PDF was found on the expected design' };
+    if (!file) return squarecoilProbeResult_({ success: false, stage: 'design', error: 'No PDF was found on the expected design' });
 
     const download = squarecoilGet_('download_design_file.php?file_id=' + file.fileId + '&project_id=' + jobNum, cookie);
     const bytes = download.getBlob().getBytes();
@@ -2107,12 +2112,10 @@ function testSquarecoilLogin() {
       bytes: bytes.length,
       pdfValid: squarecoilLooksLikePdf_(bytes),
     };
-    console.log(JSON.stringify(result));
-    return result;
+    return squarecoilProbeResult_(result);
   } catch (err) {
     const result = { success: false, stage: 'login', error: String((err && err.message) || err || 'Squarecoil probe failed').slice(0, 200) };
-    console.log(JSON.stringify(result));
-    return result;
+    return squarecoilProbeResult_(result);
   }
 }
 
