@@ -102,3 +102,19 @@ test('Squarecoil credential probe fails safely when credentials are missing', ()
   assert.equal(requests.length, 0);
   assert.deepEqual(logs, [JSON.stringify(result)]);
 });
+
+test('Squarecoil PDF parser accepts numeric HTML encoding from the raw design response', () => {
+  const { context } = loadBackend({}, []);
+  const html = [
+    '<strong>260262-04</strong>',
+    '<a target="_blank" href="download_design_file.php?file_id=45528&#038;project_id=260262">',
+    '  260262_Prod_TelaVerdeApts_v4.pdf  </a>',
+  ].join('');
+
+  const result = context.squarecoilFindPdfLink_(html, '260262');
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    fileId: '45528',
+    name: '260262_Prod_TelaVerdeApts_v4.pdf',
+  });
+});
