@@ -2,7 +2,7 @@
 const INSTALL_CAL_ID = 'summitwestsigns.com_5ehu6it6pfpcg2g9ifpcuv6gd8@group.calendar.google.com';
 const SUB_INSTALL_CAL_ID = 'c_56442105e894ca5ed344bd94026279f754921d3ff42e0542c5d162f00c68ff07@group.calendar.google.com';
 
-const SKIP_KEYWORDS = ['no install', 'hunter out', 'johnny out', 'randy off', 'jake out', 'eli out', 'crane service', '2018 crane', "mother's day", 'memorial day', 'holiday', 'independence day'];
+const SKIP_KEYWORDS = ['removal', 'survey', 'delivery'];
 
 const CREW_NAMES = ['Johnny', 'Jonathan', 'Randy', 'Eli', 'Jerry', 'Jake', 'Brian', 'Noe', 'Jason', 'Fernando', 'Canez'];
 function normalizeCrew(names) {
@@ -1444,11 +1444,12 @@ function fetchCalendarEvents(calId, start, end) {
   events.forEach(event => {
     const title = event.getTitle().trim();
     const titleLower = title.toLowerCase();
-    if (SKIP_KEYWORDS.some(k => titleLower.includes(k))) return;
 
     // (?<![A-Za-z]-) keeps permit codes like "SGNP-251421" from being
     // mistaken for job numbers, while "251257 & 260695" still matches both
     const jobNums = [...title.matchAll(/(?<![A-Za-z]-)\b(\d{5,6})\b/g)].map(m => m[1]);
+    if (!jobNums.length || SKIP_KEYWORDS.some(k => titleLower.includes(k))) return;
+
     const crewMatch = title.match(/^\(([^)]+)\)/);
     const crew = crewMatch
       ? normalizeCrew(crewMatch[1].split(/[\/,&]/).map(n => n.trim()).filter(n => n))
@@ -1469,11 +1470,6 @@ function fetchCalendarEvents(calId, start, end) {
       crew,
       jobNums,
       eventDate: formatDate(event.getStartTime()),
-      // Case-sensitive on purpose: all-caps "REMOVAL"/"SURVEY" are the crew's
-      // convention for a non-production trip (remove-only or site survey),
-      // distinct from mixed-case titles like "Remove and Install" that
-      // describe the actual production visit.
-      isNonProductionVisit: /\bREMOVAL\b|\bSURVEY\b/.test(title),
     });
   });
   return out;
@@ -1497,25 +1493,17 @@ function groupIntoJobs(events) {
   });
 
   const jobs = Object.entries(byJobNum).map(([jobNum, jobEvents]) => {
-    // A remove-only trip or a site survey (e.g. pulling a sign down for shop
-    // refurbishment, or scoping a job before it's scheduled) shouldn't drive
-    // the production due date — that's set by the actual install/reinstall
-    // visit. Only fall back to these events if that's genuinely the only
-    // event this job number has.
-    const productionEvents = jobEvents.filter(ev => !ev.isNonProductionVisit);
-    const dateSource = productionEvents.length ? productionEvents : jobEvents;
-
-    const dates = dateSource.map(ev => ev.eventDate);
+    const dates = jobEvents.map(ev => ev.eventDate);
     const startDate = dates.reduce((a, b) => (b < a ? b : a));
     const endDate = dates.reduce((a, b) => (b > a ? b : a));
     const crew = [];
-    dateSource.forEach(ev => ev.crew.forEach(c => { if (!crew.includes(c)) crew.push(c); }));
+    jobEvents.forEach(ev => ev.crew.forEach(c => { if (!crew.includes(c)) crew.push(c); }));
 
     return {
       jobKey: jobNum,
       jobNum,
-      title: dateSource[0].title,
-      addr: dateSource[0].addr,
+      title: jobEvents[0].title,
+      addr: jobEvents[0].addr,
       crew,
       startDate,
       endDate,
