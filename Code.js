@@ -2082,6 +2082,82 @@ function squarecoilFindPdfLink_(html, jobNum) {
   return null;
 }
 
+function squarecoilFindDesignRevisions_(html, jobNum) {
+  const normalized = squarecoilDecodeHtmlEntities_(html);
+  const links = normalized.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+  const byDesignId = {};
+  const numberPattern = new RegExp('^' + String(jobNum) + '-(\\d+)$');
+
+  links.forEach(link => {
+    const hrefMatch = link.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || [];
+    const href = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || '';
+    if (!/project_designs\.php\?/i.test(href)) return;
+    const projectId = (href.match(/[?&]id=(\d+)/i) || [])[1] || '';
+    const designId = (href.match(/[?&]designid=(\d+)/i) || [])[1] || '';
+    const designNumber = squarecoilDecodeText_((link.match(/>([\s\S]*?)<\/a>/i) || [])[1]);
+    const numberMatch = designNumber.match(numberPattern);
+    if (projectId !== String(jobNum) || !designId || !numberMatch) return;
+    byDesignId[designId] = { designId, designNumber, revision: Number(numberMatch[1]) };
+  });
+
+  return Object.keys(byDesignId)
+    .map(designId => byDesignId[designId])
+    .sort((a, b) => b.revision - a.revision || Number(b.designId) - Number(a.designId));
+}
+
+function squarecoilLookupLatestJob_(jobNum, cookie) {
+  const value = String(jobNum || '').trim();
+  if (!/^\d{5,6}$/.test(value)) {
+    return { success: false, jobNum: value, stage: 'validation', error: 'Invalid Squarecoil job number' };
+  }
+
+  const listResponse = squarecoilGet_('project_designs.php?id=' + value, cookie);
+  if (listResponse.getResponseCode() !== 200) {
+    return { success: false, jobNum: value, stage: 'design_list', error: 'Squarecoil design list was not accessible' };
+  }
+  const revisions = squarecoilFindDesignRevisions_(listResponse.getContentText(), value);
+  if (!revisions.length) return { success: true, jobNum: value, fileFound: false, reason: 'no_designs' };
+
+  const latest = revisions[0];
+  const designResponse = squarecoilGet_(
+    'project_designs.php?id=' + value + '&designid=' + latest.designId,
+    cookie
+  );
+  const designHtml = designResponse.getContentText();
+  if (designResponse.getResponseCode() !== 200 || designHtml.indexOf(latest.designNumber) === -1) {
+    return { success: false, jobNum: value, stage: 'design', error: 'Latest Squarecoil design was not accessible' };
+  }
+
+  const file = squarecoilFindPdfLink_(designHtml, value);
+  if (!file) {
+    return {
+      success: true,
+      jobNum: value,
+      fileFound: false,
+      reason: 'no_pdf',
+      designNumber: latest.designNumber,
+      designId: latest.designId,
+    };
+  }
+
+  const download = squarecoilGet_(
+    'download_design_file.php?file_id=' + file.fileId + '&project_id=' + value,
+    cookie
+  );
+  const bytes = download.getBlob().getBytes();
+  return {
+    success: download.getResponseCode() === 200 && squarecoilLooksLikePdf_(bytes),
+    jobNum: value,
+    designNumber: latest.designNumber,
+    designId: latest.designId,
+    fileId: file.fileId,
+    fileName: file.name,
+    responseCode: download.getResponseCode(),
+    bytes: bytes.length,
+    pdfValid: squarecoilLooksLikePdf_(bytes),
+  };
+}
+
 function squarecoilDesignDiagnostics_(html, responseCode) {
   const value = String(html || '');
   return {
@@ -2148,6 +2224,29 @@ function testSquarecoilLogin() {
   } catch (err) {
     const result = { success: false, stage: 'login', error: String((err && err.message) || err || 'Squarecoil probe failed').slice(0, 200) };
     return squarecoilProbeResult_(result);
+  }
+}
+
+function testSquarecoilJobLookup() {
+  const props = PropertiesService.getScriptProperties();
+  const username = props.getProperty('SQUARECOIL_USERNAME') || '';
+  const password = props.getProperty('SQUARECOIL_PASSWORD') || '';
+  if (!username || !password) {
+    return squarecoilProbeResult_({ success: false, stage: 'configuration', error: 'Squarecoil credentials are not configured' });
+  }
+
+  try {
+    const cookie = squarecoilLoginForProbe_(username, password);
+    return squarecoilProbeResult_([
+      squarecoilLookupLatestJob_('251785', cookie),
+      squarecoilLookupLatestJob_('261364', cookie),
+    ]);
+  } catch (err) {
+    return squarecoilProbeResult_({
+      success: false,
+      stage: 'login',
+      error: String((err && err.message) || err || 'Squarecoil job lookup failed').slice(0, 200),
+    });
   }
 }
 
