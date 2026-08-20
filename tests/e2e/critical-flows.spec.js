@@ -165,17 +165,17 @@ test('a signed-in user can search archived jobs and open their retained history'
   await expect(page.getByText('Museum monument ready for pickup')).toBeVisible();
 });
 
-test('a current-week Production File opens the preloaded original in one tap', async ({ page }) => {
+test('a current-week Production File opens full quality and zooms inside the app', async ({ page }) => {
   await mockBackend(page, { productionPdf: onePagePdfBase64() });
   await login(page);
   await page.getByRole('button', { name: /Open 260001/ }).click();
   await expect(page.getByRole('button', { name: 'View Production File' }))
-    .toHaveAttribute('data-viewer-mode', 'original');
-  const popupPromise = page.waitForEvent('popup');
+    .toHaveAttribute('data-viewer-mode', 'preview');
   await page.getByRole('button', { name: 'View Production File' }).click();
-  const original = await popupPromise;
-  await expect(page.locator('#proof-viewer-overlay')).not.toHaveClass(/open/);
-  await original.close();
+  await expect(page.locator('#proof-viewer-overlay')).toHaveClass(/open/);
+  await expect(page.locator('.proof-viewer-page')).toBeVisible();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.locator('#proof-viewer-zoom-label')).toHaveText('125%');
 });
 
 test('a Production File three weeks out keeps the preview and original-file controls', async ({ page }) => {

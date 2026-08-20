@@ -51,9 +51,10 @@ test('PDF validation rejects error pages and accepts PDF signatures', async () =
   assert.equal(looksLikePdfBytes(new Uint8Array()), false);
 });
 
-test('the PDF engine is self-hosted and the viewer exposes zoom and original-file controls', async () => {
+test('the PDF engine is self-hosted and Production Files stay in the zoomable in-app viewer', async () => {
   const fs = await import('node:fs/promises');
   const viewerSource = await fs.readFile(new URL('../js/pdfViewer.js', import.meta.url), 'utf8');
+  const jobDetailSource = await fs.readFile(new URL('../js/components/jobDetail.js', import.meta.url), 'utf8');
   const html = await fs.readFile(new URL('../index.html', import.meta.url), 'utf8');
   const buildSource = await fs.readFile(new URL('../scripts/build-pages.mjs', import.meta.url), 'utf8');
 
@@ -61,7 +62,9 @@ test('the PDF engine is self-hosted and the viewer exposes zoom and original-fil
   assert.doesNotMatch(viewerSource, /cdn\.jsdelivr\.net/);
   assert.match(viewerSource, /IntersectionObserver/);
   assert.match(html, /id="proof-viewer-zoom-in"/);
-  assert.match(html, /id="proof-viewer-open-original"/);
+  assert.doesNotMatch(jobDetailSource, /openOriginalPdf/);
+  assert.doesNotMatch(jobDetailSource, /dataset\.viewerMode\s*=\s*['"]original/);
+  assert.match(jobDetailSource, /openBtn\.onclick\s*=\s*\(\)\s*=>\s*openProofViewer/);
   assert.match(buildSource, /'vendor'/);
 });
 
