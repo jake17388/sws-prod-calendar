@@ -2069,9 +2069,11 @@ function squarecoilDecodeText_(value) {
 
 function squarecoilFindPdfLink_(html, jobNum) {
   const normalized = squarecoilDecodeHtmlEntities_(html);
-  const links = normalized.match(/<a\b[^>]*href=["'][^"']*download_design_file\.php\?[^"']+["'][^>]*>[\s\S]*?<\/a>/gi) || [];
+  const links = normalized.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
   for (let i = 0; i < links.length; i++) {
-    const href = (links[i].match(/href=["']([^"']+)["']/i) || [])[1] || '';
+    const hrefMatch = links[i].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || [];
+    const href = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || '';
+    if (!/download_design_file\.php\?/i.test(href)) continue;
     const fileId = (href.match(/[?&]file_id=(\d+)/i) || [])[1] || '';
     const projectId = (href.match(/[?&]project_id=(\d+)/i) || [])[1] || '';
     const name = squarecoilDecodeText_((links[i].match(/>([\s\S]*?)<\/a>/i) || [])[1]);
