@@ -2454,7 +2454,9 @@ function refreshSquarecoilProductionFiles() {
     ]);
     refreshed++;
   });
-  return { success: true, checked: jobNums.length, refreshed, unavailable, failed };
+  const summary = { success: true, checked: jobNums.length, refreshed, unavailable, failed };
+  Logger.log(JSON.stringify(summary));
+  return summary;
 }
 
 function evictSquarecoilFileCache(jobNum) {
