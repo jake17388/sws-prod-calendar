@@ -276,8 +276,8 @@ export function closeProofViewer() {
 }
 
 // Fetched live on open rather than kept with the job list — see
-// getDropboxProofFile in Code.js for why. jobKey is a job's job number, so
-// a job with no Dropbox folder match (or no PDF in its Proofs folder) just
+// getSquarecoilProductionFile in Code.js for why. jobKey is a job's job number,
+// so a job with no DESIGN revision (or no PDF on its latest revision) just
 // reports { available: false } and this shows "No File Available". The PDF
 // itself only renders full-screen, on demand, when "View Production File"
 // is tapped — not inline in the (fairly small) job detail panel.

@@ -80,3 +80,45 @@ test('cached Squarecoil production files keep the existing viewer response contr
     base64: Buffer.from('%PDF-cached').toString('base64'),
   });
 });
+
+test('bulk Squarecoil resolution selects the newest revision and preserves the no-design state', () => {
+  const context = loadBackend();
+  const response = (code, html) => ({ getResponseCode: () => code, getContentText: () => html });
+  const calls = [];
+  context.squarecoilGetBatch_ = paths => {
+    calls.push(paths.slice());
+    if (calls.length === 1) {
+      return [
+        response(200, [
+          '<a href="project_designs.php?id=251785&amp;designid=29249">251785-10</a>',
+          '<a href="project_designs.php?id=251785&amp;designid=29290">251785-11</a>',
+        ].join('')),
+        response(200, '<h1>261364</h1><a href="new_design.php?project_id=261364">New</a>'),
+      ];
+    }
+    return [response(200, [
+      '<strong>251785-11</strong>',
+      '<a href=download_design_file.php?file_id=44379&amp;project_id=251785>',
+      '251785_Prod_HarmondAscendPropPkg_v9.pdf</a>',
+    ].join(''))];
+  };
+
+  const result = context.squarecoilResolveFilesBatch_(['251785', '261364'], 'session-cookie');
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    251785: {
+      success: true,
+      fileFound: true,
+      jobNum: '251785',
+      designNumber: '251785-11',
+      designId: '29290',
+      fileId: '44379',
+      fileName: '251785_Prod_HarmondAscendPropPkg_v9.pdf',
+    },
+    261364: { success: true, jobNum: '261364', fileFound: false, reason: 'no_designs' },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ['project_designs.php?id=251785', 'project_designs.php?id=261364'],
+    ['project_designs.php?id=251785&designid=29290'],
+  ]);
+});

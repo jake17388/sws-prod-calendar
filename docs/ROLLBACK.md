@@ -39,7 +39,7 @@ sanitized configuration snapshot. Seven days (168 hourly copies of each type)
 are retained in the `SWS Prod Calendar - Tracking Backups` Drive folder. This
 meets the business target of losing no more than one hour of production
 updates. Configuration snapshots contain names, departments, and common task
-phrases, but never PIN hashes, Dropbox tokens, or application secrets.
+phrases, but never PIN hashes, Squarecoil credentials, or application secrets.
 
 For protection from losing the Apps Script owner's Google account, create a
 Drive folder owned by a second company-controlled account, share it with the

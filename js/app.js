@@ -5,7 +5,7 @@ import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
 import { preloadCurrentAndNextWeekProofs } from './currentWeekProofPreload.mjs';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
-import { initDropboxSettings, refreshDropboxSettingsUI } from './components/dropboxSettings.js';
+import { initSquarecoilSettings, refreshSquarecoilSettingsUI } from './components/squarecoilSettings.js';
 import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
 import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
@@ -333,7 +333,7 @@ function openSettings(forcePinChange = false) {
   pinField.value = '';
   pinField.placeholder = 'New 6-digit PIN';
 
-  refreshDropboxSettingsUI();
+  refreshSquarecoilSettingsUI();
   refreshSystemHealthUI();
   if (required) setTimeout(() => pinField.focus(), 0);
 }
@@ -442,7 +442,7 @@ function boot() {
   });
   initUserManagement();
   initCommonTaskManagement();
-  initDropboxSettings();
+  initSquarecoilSettings();
   initSystemHealth();
   if (canAssignDepartments()) refreshCommonTasks().catch(() => {});
   document.getElementById('zoom-in-btn').addEventListener('click', () => {

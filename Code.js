@@ -13,26 +13,8 @@ function normalizeCrew(names) {
 }
 
 const DUE_DATE_BUSINESS_DAYS = 2;
-
-// Where job folders live in the company Dropbox — see the Dropbox proofs
-// section below. Job folders (e.g. "251509_Laveen Traditional Academy -
-// EMC's") sit inside numbered range subfolders under this path.
-const DROPBOX_ORDERS_PATH = '/Summit West Signs Team Folder/01 Orders';
-// This script runs on a consumer (@gmail.com) account, which allows only 90
-// minutes of TOTAL trigger runtime per day. refreshDropboxProofs is the only
-// time-driven trigger here and it's expensive (a folder walk plus a PDF
-// download per changed job), so the interval directly sets how much of that
-// daily budget it can consume:
-//   hourly  = 24 runs/day → 3.75 min/run before the budget is gone
-//   6-hourly = 4 runs/day → 22.5 min/run, i.e. comfortably under the 6-minute
-//                           per-execution ceiling even in the worst case
-// Blowing the daily budget silently stops ALL triggers for the rest of the
-// day, so this stays conservative. A stale proof cache is cheap — see
-// getDropboxProofFile, which falls back to a live Dropbox fetch.
-// NOTE: changing this constant does not by itself re-schedule an existing
-// trigger — ensureDropboxRefreshTrigger() self-heals on the next call, or run
-// resetDropboxRefreshTrigger() manually from the Apps Script editor.
-const DROPBOX_PROOFS_REFRESH_HOURS = 6;
+const SQUARECOIL_FILES_REFRESH_HOURS = 6;
+const SQUARECOIL_BATCH_CHUNK_SIZE = 15;
 
 // ── Users & roles ────────────────────────────────────────────────────────────
 // Each user is { id, name, department, pinSalt, pinHash, authVersion } stored as
@@ -760,19 +742,6 @@ function doPost(e) {
 
 function routeGet(e) {
   const params = (e && e.parameter) || {};
-  // Dropbox's OAuth redirect lands here with no `action` of ours — it's
-  // e.parameter.code/state instead. Must be checked before action routing.
-  // This branch returns HTML on purpose (a human is looking at it), so it
-  // handles its own errors rather than falling through to the JSON wrapper.
-  if (params.code && params.state) {
-    try {
-      return handleDropboxOAuthCallback(e, ScriptApp.getService().getUrl());
-    } catch (err) {
-      console.error('Dropbox OAuth callback failed: %s\n%s', err && err.message, err && err.stack);
-      return HtmlService.createHtmlOutput('<p>Dropbox connection failed. Close this tab and try again from Settings.</p>');
-    }
-  }
-
   const action = params.action;
 
   if (action === 'getProductionJobs') {
@@ -812,29 +781,22 @@ function routeGet(e) {
     const jobNum = String(e.parameter.jobNum || '');
     if (!validJobKey(jobNum)) return json({ error: 'bad_request', message: 'Invalid job number' });
     if (!canAccessJobKey(actor, jobNum)) return json({ error: 'forbidden' });
-    return json(getDropboxProofFile(jobNum));
+    return json(getSquarecoilProductionFile(jobNum));
   }
   if (action === 'getAdditionalFile') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
     return json(getAdditionalFile(actor, params));
   }
-  if (action === 'getDropboxStatus') {
+  if (action === 'getSquarecoilStatus') {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
-    return json({ connected: isDropboxConnected(), hasCredentials: !!dropboxCredentials().appKey });
+    return json({ connected: isSquarecoilConfigured_() });
   }
   if (action === 'getSystemHealth') {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
     return json(getSystemHealth());
-  }
-  if (action === 'getDropboxAuthUrl') {
-    const actor = resolveActor(e.parameter.token);
-    if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
-    const url = dropboxAuthUrl(ScriptApp.getService().getUrl());
-    if (!url) return json({ error: 'App key/secret not set yet' });
-    return json({ url });
   }
   // The app itself is hosted on GitHub Pages, not here
   return ContentService.createTextOutput(
@@ -888,8 +850,8 @@ function routePost(e) {
         completed: !!data.completed,
         ...(archiveSnapshot ? { archiveSnapshot } : {}),
       }, user);
-      if (result.success && data.completed && isDropboxConnected()) {
-        try { evictProofCache(data.jobKey); } catch (err) { /* best-effort */ }
+      if (result.success && data.completed) {
+        try { evictSquarecoilFileCache(data.jobKey); } catch (err) { /* best-effort */ }
       }
       return result;
     });
@@ -915,30 +877,11 @@ function routePost(e) {
   if (data.action === 'saveCommonTasks') return respond(() => saveCommonTasks(actor, data));
   if (data.action === 'addAdditionalFile') return respond(() => addAdditionalFile(actor, data));
   if (data.action === 'deleteAdditionalFile') return respond(() => deleteAdditionalFile(actor, data));
-  if (data.action === 'setDropboxCredentials') {
+  if (data.action === 'refreshSquarecoilFilesNow') {
     return respond(() => {
       if (actor.department !== 'Admin') return { error: 'forbidden' };
-      if (String(data.appKey || '').length > 200 || String(data.appSecret || '').length > 500) return { success: false, error: 'Dropbox credential value is too long' };
-      const props = PropertiesService.getScriptProperties();
-      props.setProperty('DROPBOX_APP_KEY', String(data.appKey || '').trim());
-      props.setProperty('DROPBOX_APP_SECRET', String(data.appSecret || '').trim());
-      return { success: true };
-    });
-  }
-  if (data.action === 'disconnectDropbox') {
-    return respond(() => {
-      if (actor.department !== 'Admin') return { error: 'forbidden' };
-      const props = PropertiesService.getScriptProperties();
-      props.deleteProperty('DROPBOX_REFRESH_TOKEN');
-      CacheService.getScriptCache().remove('dropbox_access_token');
-      return { success: true };
-    });
-  }
-  if (data.action === 'refreshDropboxProofsNow') {
-    return respond(() => {
-      if (actor.department !== 'Admin') return { error: 'forbidden' };
-      if (!isDropboxConnected()) return { success: false, error: 'Dropbox not connected' };
-      try { refreshDropboxProofs(); } catch (err) { return { success: false, error: err.message }; }
+      if (!isSquarecoilConfigured_()) return { success: false, error: 'Squarecoil credentials are not configured' };
+      try { refreshSquarecoilProductionFiles(); } catch (err) { return { success: false, error: err.message }; }
       return { success: true };
     });
   }
@@ -1551,7 +1494,7 @@ function normalizeDateCell(val) {
 // ── Tracking (completed / notes / checklist) ────────────────────────────────
 // Lazily creates its own spreadsheet on first use and remembers the ID in
 // Script Properties, so there's no manual Sheet-ID setup step. Shared with
-// the Dropbox proofs cache below (a second tab in the same spreadsheet)
+// the Squarecoil Production File cache below (a second tab in the same spreadsheet)
 // rather than a separate file, so there's still only one Sheet-ID to manage.
 function getTrackingSpreadsheet() {
   const props = PropertiesService.getScriptProperties();
@@ -1952,12 +1895,23 @@ function deleteAdditionalFile(actor, data) {
   return { ...result, additionalFiles: additionalFilesForClient(result.additionalFiles) };
 }
 
-// ── Squarecoil credential probe ─────────────────────────────────────────────
-// Temporary, read-only integration probe. Credentials live only in Script
-// Properties and are never returned or logged. This verifies that Apps Script
-// can establish a reusable Squarecoil PHP session, read one known DESIGN
-// record, and download its PDF without relying on a browser session.
+// ── Squarecoil Production Files ─────────────────────────────────────────────
+// Credentials live only in Script Properties and are never returned or logged.
+// One authenticated PHP session is reused across each lookup or cache refresh.
 const SQUARECOIL_BASE_URL = 'https://summitwestsigns.squarecoil.net';
+
+function squarecoilCredentials_() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    username: props.getProperty('SQUARECOIL_USERNAME') || '',
+    password: props.getProperty('SQUARECOIL_PASSWORD') || '',
+  };
+}
+
+function isSquarecoilConfigured_() {
+  const credentials = squarecoilCredentials_();
+  return !!(credentials.username && credentials.password);
+}
 
 function squarecoilResponseHeader_(response, name) {
   const headers = response.getAllHeaders ? response.getAllHeaders() : response.getHeaders();
@@ -2003,7 +1957,29 @@ function squarecoilGet_(path, cookie) {
   });
 }
 
-function squarecoilLoginForProbe_(username, password) {
+function squarecoilGetBatch_(paths, cookie) {
+  const results = [];
+  for (let i = 0; i < paths.length; i += SQUARECOIL_BATCH_CHUNK_SIZE) {
+    const chunk = paths.slice(i, i + SQUARECOIL_BATCH_CHUNK_SIZE);
+    const requests = chunk.map(path => ({
+      url: squarecoilUrl_(path),
+      method: 'get',
+      headers: {
+        Cookie: cookie,
+        Accept: 'text/html,application/xhtml+xml,application/pdf',
+        'User-Agent': 'Mozilla/5.0 (compatible; SWS-Production-Calendar/1.0)',
+      },
+      followRedirects: false,
+      muteHttpExceptions: true,
+    }));
+    let responses;
+    try { responses = UrlFetchApp.fetchAll(requests); } catch (err) { responses = chunk.map(() => null); }
+    responses.forEach(response => results.push(response));
+  }
+  return results;
+}
+
+function squarecoilLogin_(username, password) {
   const initial = UrlFetchApp.fetch(SQUARECOIL_BASE_URL + '/login.php', {
     method: 'get',
     followRedirects: false,
@@ -2106,6 +2082,28 @@ function squarecoilFindDesignRevisions_(html, jobNum) {
 }
 
 function squarecoilLookupLatestJob_(jobNum, cookie) {
+  const resolved = squarecoilResolveLatestFile_(jobNum, cookie);
+  if (!resolved.success || !resolved.fileFound) return resolved;
+
+  const download = squarecoilGet_(
+    'download_design_file.php?file_id=' + resolved.fileId + '&project_id=' + resolved.jobNum,
+    cookie
+  );
+  const bytes = download.getBlob().getBytes();
+  return {
+    success: download.getResponseCode() === 200 && squarecoilLooksLikePdf_(bytes),
+    jobNum: resolved.jobNum,
+    designNumber: resolved.designNumber,
+    designId: resolved.designId,
+    fileId: resolved.fileId,
+    fileName: resolved.fileName,
+    responseCode: download.getResponseCode(),
+    bytes: bytes.length,
+    pdfValid: squarecoilLooksLikePdf_(bytes),
+  };
+}
+
+function squarecoilResolveLatestFile_(jobNum, cookie) {
   const value = String(jobNum || '').trim();
   if (!/^\d{5,6}$/.test(value)) {
     return { success: false, jobNum: value, stage: 'validation', error: 'Invalid Squarecoil job number' };
@@ -2139,22 +2137,14 @@ function squarecoilLookupLatestJob_(jobNum, cookie) {
       designId: latest.designId,
     };
   }
-
-  const download = squarecoilGet_(
-    'download_design_file.php?file_id=' + file.fileId + '&project_id=' + value,
-    cookie
-  );
-  const bytes = download.getBlob().getBytes();
   return {
-    success: download.getResponseCode() === 200 && squarecoilLooksLikePdf_(bytes),
+    success: true,
+    fileFound: true,
     jobNum: value,
     designNumber: latest.designNumber,
     designId: latest.designId,
     fileId: file.fileId,
     fileName: file.name,
-    responseCode: download.getResponseCode(),
-    bytes: bytes.length,
-    pdfValid: squarecoilLooksLikePdf_(bytes),
   };
 }
 
@@ -2191,7 +2181,7 @@ function testSquarecoilLogin() {
   const designNumber = '260262-04';
   const designId = '30216';
   try {
-    const cookie = squarecoilLoginForProbe_(username, password);
+    const cookie = squarecoilLogin_(username, password);
     const design = squarecoilGet_('project_designs.php?id=' + jobNum + '&designid=' + designId, cookie);
     const designHtml = design.getContentText();
     if (design.getResponseCode() !== 200 || designHtml.indexOf(designNumber) === -1) {
@@ -2236,7 +2226,7 @@ function testSquarecoilJobLookup() {
   }
 
   try {
-    const cookie = squarecoilLoginForProbe_(username, password);
+    const cookie = squarecoilLogin_(username, password);
     return squarecoilProbeResult_([
       squarecoilLookupLatestJob_('251785', cookie),
       squarecoilLookupLatestJob_('261364', cookie),
@@ -2250,561 +2240,311 @@ function testSquarecoilJobLookup() {
   }
 }
 
-// ── Dropbox proofs ───────────────────────────────────────────────────────────
-// Matches each job's Dropbox folder by job number (under DROPBOX_ORDERS_PATH)
-// and caches the path to the newest PDF in its Proofs subfolder, so opening
-// a job in the app is instant — the folder search itself only runs on a
-// time-driven trigger (see ensureDropboxRefreshTrigger), never per-request.
-// The actual PDF bytes are fetched live, on demand, only when someone opens
-// a job's Proof section — that's a single small download, not worth caching
-// against the cache's freshness.
-//
-// Connected once from Settings (Admin only) via a standard OAuth2
-// authorization-code flow requesting offline access, so the refresh token
-// it returns keeps working indefinitely without the Admin re-approving.
+function squarecoilResolveFilesBatch_(jobNums, cookie) {
+  const unique = Array.from(new Set((jobNums || []).map(value => String(value || '').trim()).filter(value => /^\d{5,6}$/.test(value))));
+  const resolved = {};
+  const listResponses = squarecoilGetBatch_(unique.map(jobNum => 'project_designs.php?id=' + jobNum), cookie);
+  const detailJobs = [];
 
-function dropboxCredentials() {
-  const props = PropertiesService.getScriptProperties();
-  return {
-    appKey: props.getProperty('DROPBOX_APP_KEY') || '',
-    appSecret: props.getProperty('DROPBOX_APP_SECRET') || '',
-    refreshToken: props.getProperty('DROPBOX_REFRESH_TOKEN') || '',
-  };
-}
-
-function isDropboxConnected() {
-  const c = dropboxCredentials();
-  return !!(c.appKey && c.appSecret && c.refreshToken);
-}
-
-// Dropbox access tokens last ~4 hours — cached under that so a proof-file
-// request doesn't pay for a token refresh round-trip every time.
-function getDropboxAccessToken() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('dropbox_access_token');
-  if (cached) return cached;
-
-  const { appKey, appSecret, refreshToken } = dropboxCredentials();
-  if (!appKey || !appSecret || !refreshToken) return null;
-
-  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/oauth2/token', {
-    method: 'post',
-    payload: { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: appKey, client_secret: appSecret },
-    muteHttpExceptions: true,
-  });
-  let body;
-  try { body = JSON.parse(resp.getContentText()); } catch (err) { return null; }
-  if (!body.access_token) return null;
-  cache.put('dropbox_access_token', body.access_token, 3300); // 55 min
-  return body.access_token;
-}
-
-// Dropbox Business accounts on the newer "Team Space" model keep shared
-// Team Folders in a namespace separate from the member's own personal one
-// — the web UI merges them into one "All files" view, but the API's
-// default root only sees the personal namespace, so a plain path like
-// "/Summit West Signs Team Folder/..." 404s there even though it's exactly
-// what's shown in the browser. Explicitly selecting the account's root
-// namespace via this header (cached — it never changes for a given
-// account) makes the same paths resolve the way the UI shows them. Fine to
-// pass this header even for personal/non-team accounts — Dropbox ignores
-// it when the account has no team.
-function getDropboxPathRootHeader(accessToken) {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get('dropbox_path_root_header');
-  if (cached) return cached === 'none' ? null : cached;
-
-  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/users/get_current_account', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + accessToken },
-    payload: 'null',
-    muteHttpExceptions: true,
-  });
-  if (resp.getResponseCode() !== 200) return null;
-  let account;
-  try { account = JSON.parse(resp.getContentText()); } catch (err) { return null; }
-  const namespaceId = account.root_info && account.root_info.root_namespace_id;
-  if (!namespaceId) { cache.put('dropbox_path_root_header', 'none', 3300); return null; }
-
-  const header = JSON.stringify({ '.tag': 'root', root: namespaceId });
-  cache.put('dropbox_path_root_header', header, 3300); // 55 min, matches the access token's cache lifetime
-  return header;
-}
-
-function dropboxApiCall(accessToken, endpoint, payload) {
-  const pathRoot = getDropboxPathRootHeader(accessToken);
-  const headers = { Authorization: 'Bearer ' + accessToken };
-  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
-  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/2/' + endpoint, {
-    method: 'post',
-    contentType: 'application/json',
-    headers,
-    payload: JSON.stringify(payload || {}),
-    muteHttpExceptions: true,
-  });
-  const code = resp.getResponseCode();
-  if (code < 200 || code >= 300) return null;
-  try { return JSON.parse(resp.getContentText()); } catch (err) { return null; }
-}
-
-// Runs many independent Dropbox calls concurrently via UrlFetchApp.fetchAll
-// instead of one at a time — the bulk refresh (refreshDropboxProofs) is
-// dominated by this being the only thing that cuts its wall-clock time,
-// since a single job's own 3-call chain (bucket → job folder → Proofs
-// folder) is inherently sequential. Chunked well under Apps Script's
-// concurrent-URL-Fetch ceiling (undocumented exact number, but batches
-// above ~50 have been reported to throw) — a chunk that does throw is
-// caught so the rest of the refresh still completes instead of the whole
-// thing failing. `calls` is [{endpoint, payload}]; returns parsed bodies in
-// the same order, null for any call that errored.
-const DROPBOX_BATCH_CHUNK_SIZE = 15;
-function dropboxApiCallBatch(accessToken, calls) {
-  if (!calls.length) return [];
-  const pathRoot = getDropboxPathRootHeader(accessToken);
-  const headers = { Authorization: 'Bearer ' + accessToken };
-  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
-
-  const results = [];
-  for (let i = 0; i < calls.length; i += DROPBOX_BATCH_CHUNK_SIZE) {
-    const chunk = calls.slice(i, i + DROPBOX_BATCH_CHUNK_SIZE);
-    const requests = chunk.map(c => ({
-      url: 'https://api.dropboxapi.com/2/' + c.endpoint,
-      method: 'post',
-      contentType: 'application/json',
-      headers,
-      payload: JSON.stringify(c.payload || {}),
-      muteHttpExceptions: true,
-    }));
-    let responses;
-    try { responses = UrlFetchApp.fetchAll(requests); } catch (err) { chunk.forEach(() => results.push(null)); continue; }
-    responses.forEach(resp => {
-      const code = resp.getResponseCode();
-      if (code < 200 || code >= 300) { results.push(null); return; }
-      try { results.push(JSON.parse(resp.getContentText())); } catch (err) { results.push(null); }
-    });
-  }
-  return results;
-}
-
-// Picks the newest PDF out of a Proofs folder's file listing. Proof
-// filenames follow "..._v{N}.pdf" — the highest N wins; falls back to most
-// recently modified when a name doesn't fit that pattern. Shared by the
-// single-job path (findLatestProof) and the batched bulk-refresh path
-// (findLatestProofsBatch) so the two can't drift apart.
-function pickWinnerPdf(pdfs) {
-  if (!pdfs.length) return null;
-  const versioned = pdfs
-    .map(f => ({ file: f, version: (f.name.match(/_v(\d+)\.pdf$/i) || [])[1] }))
-    .filter(f => f.version);
-  const pool = versioned.length ? versioned : pdfs.map(f => ({ file: f, version: null }));
-  pool.sort((a, b) => (a.version && b.version)
-    ? (+b.version) - (+a.version)
-    : new Date(b.file.server_modified) - new Date(a.file.server_modified));
-  const winner = pool[0].file;
-  return { id: winner.id, name: winner.name, modified: winner.server_modified };
-}
-
-// files/search_v2 scoped to DROPBOX_ORDERS_PATH turned out to return zero
-// matches for job folders that plainly exist there (confirmed via the
-// Settings debug tool) — Dropbox's search index apparently isn't reliable
-// for this path/account, so folder lookup is done by direct traversal
-// instead: list the range folders directly under DROPBOX_ORDERS_PATH once
-// per refresh (e.g. "_260200 - 260299", every job number 100-wide bucket),
-// pick out the pair of numbers in each one's name, and check which
-// range(s) bracket the job number. Range-folder naming isn't fully
-// consistent (spacing/hyphen conventions vary, and old buckets are
-// sometimes duplicated or off by a digit), so this parses whatever two
-// 5-6 digit numbers appear in the name rather than assuming an exact
-// pattern, and checks every bracketing range if more than one matches.
-function listDropboxRangeFolders(accessToken) {
-  const folders = [];
-  let cursor = null;
-  do {
-    const resp = cursor
-      ? dropboxApiCall(accessToken, 'files/list_folder/continue', { cursor })
-      : dropboxApiCall(accessToken, 'files/list_folder', { path: DROPBOX_ORDERS_PATH });
-    if (!resp) break;
-    resp.entries.forEach(en => {
-      if (en['.tag'] !== 'folder') return;
-      const nums = en.name.match(/\d{5,6}/g);
-      if (!nums || nums.length < 2) return;
-      folders.push({ name: en.name, path_lower: en.path_lower, lo: Math.min(+nums[0], +nums[1]), hi: Math.max(+nums[0], +nums[1]) });
-    });
-    cursor = resp.has_more ? resp.cursor : null;
-  } while (cursor);
-  return folders;
-}
-
-// Finds jobNum's folder among the range folders bracketing it (there can be
-// more than one candidate — duplicated/overlapping ranges exist in the
-// archive — so every bracketing range is checked until one actually
-// contains the job's subfolder).
-function findJobFolder(accessToken, jobNum, rangeFolders) {
-  const n = +jobNum;
-  const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
-  for (let i = 0; i < candidates.length; i++) {
-    const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: candidates[i].path_lower });
-    if (!listing || !listing.entries) continue;
-    const match = listing.entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
-    if (match) return match;
-  }
-  return null;
-}
-
-// Finds the newest PDF in jobNum's Proofs subfolder. Proof filenames follow
-// "..._v{N}.pdf" — the highest N wins; falls back to most recently modified
-// when a name doesn't fit that pattern.
-function findLatestProof(accessToken, jobNum, rangeFolders) {
-  const folderMatch = findJobFolder(accessToken, jobNum, rangeFolders);
-  if (!folderMatch) return null;
-
-  const listing = dropboxApiCall(accessToken, 'files/list_folder', { path: folderMatch.path_lower });
-  if (!listing || !listing.entries) return null;
-  const proofsFolder = listing.entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
-  if (!proofsFolder) return null;
-
-  const proofsListing = dropboxApiCall(accessToken, 'files/list_folder', { path: proofsFolder.path_lower });
-  if (!proofsListing || !proofsListing.entries) return null;
-  const pdfs = proofsListing.entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
-  return pickWinnerPdf(pdfs);
-}
-
-// Bulk equivalent of findLatestProof for many jobs at once — instead of
-// each job running its own sequential 3-call chain, this runs the whole
-// job list in three concurrent waves (bucket folders → job folders →
-// Proofs folders), deduping repeated folder paths so jobs sharing a bucket
-// only fetch it once. Returns { [jobNum]: proof-or-null }.
-function findLatestProofsBatch(accessToken, jobNums, rangeFolders) {
-  const result = {};
-
-  // Wave 1: list every distinct range-bucket folder that brackets any of
-  // these jobs (jobs sharing a bucket, e.g. two jobs both in
-  // "_260200 - 260299", reuse the same listing instead of each re-fetching it).
-  const candidatesByJobNum = {};
-  const bucketPaths = new Set();
-  jobNums.forEach(jobNum => {
-    const n = +jobNum;
-    const candidates = rangeFolders.filter(r => n >= r.lo && n <= r.hi);
-    candidatesByJobNum[jobNum] = candidates;
-    candidates.forEach(c => bucketPaths.add(c.path_lower));
-  });
-  const bucketPathList = Array.from(bucketPaths);
-  const bucketListings = dropboxApiCallBatch(accessToken, bucketPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
-  const entriesByBucketPath = {};
-  bucketPathList.forEach((path, i) => { entriesByBucketPath[path] = (bucketListings[i] && bucketListings[i].entries) || []; });
-
-  // Wave 2: find each job's own folder inside its bracketing bucket(s)
-  // (already fetched above, no extra calls), then batch-list every
-  // distinct job folder found.
-  const jobFolderByJobNum = {};
-  const jobFolderPaths = new Set();
-  jobNums.forEach(jobNum => {
-    const candidates = candidatesByJobNum[jobNum];
-    for (let i = 0; i < candidates.length; i++) {
-      const entries = entriesByBucketPath[candidates[i].path_lower];
-      const match = entries.find(en => en['.tag'] === 'folder' && new RegExp('^' + jobNum + '[_ ]').test(en.name));
-      if (match) { jobFolderByJobNum[jobNum] = match; jobFolderPaths.add(match.path_lower); break; }
+  unique.forEach((jobNum, index) => {
+    const response = listResponses[index];
+    if (!response || response.getResponseCode() !== 200) {
+      resolved[jobNum] = { success: false, jobNum, stage: 'design_list' };
+      return;
     }
-  });
-  const jobFolderPathList = Array.from(jobFolderPaths);
-  const jobFolderListings = dropboxApiCallBatch(accessToken, jobFolderPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
-  const entriesByJobFolderPath = {};
-  jobFolderPathList.forEach((path, i) => { entriesByJobFolderPath[path] = (jobFolderListings[i] && jobFolderListings[i].entries) || []; });
-
-  // Wave 3: find each job's Proofs subfolder, then batch-list every
-  // distinct one found.
-  const proofsFolderByJobNum = {};
-  const proofsFolderPaths = new Set();
-  jobNums.forEach(jobNum => {
-    const jobFolder = jobFolderByJobNum[jobNum];
-    if (!jobFolder) return;
-    const entries = entriesByJobFolderPath[jobFolder.path_lower];
-    const proofsFolder = entries.find(en => en['.tag'] === 'folder' && en.name.toLowerCase() === 'proofs');
-    if (proofsFolder) { proofsFolderByJobNum[jobNum] = proofsFolder; proofsFolderPaths.add(proofsFolder.path_lower); }
-  });
-  const proofsFolderPathList = Array.from(proofsFolderPaths);
-  const proofsListings = dropboxApiCallBatch(accessToken, proofsFolderPathList.map(path => ({ endpoint: 'files/list_folder', payload: { path } })));
-  const entriesByProofsPath = {};
-  proofsFolderPathList.forEach((path, i) => { entriesByProofsPath[path] = (proofsListings[i] && proofsListings[i].entries) || []; });
-
-  jobNums.forEach(jobNum => {
-    const proofsFolder = proofsFolderByJobNum[jobNum];
-    if (!proofsFolder) { result[jobNum] = null; return; }
-    const entries = entriesByProofsPath[proofsFolder.path_lower];
-    const pdfs = entries.filter(en => en['.tag'] === 'file' && /\.pdf$/i.test(en.name));
-    result[jobNum] = pickWinnerPdf(pdfs);
+    const revisions = squarecoilFindDesignRevisions_(response.getContentText(), jobNum);
+    if (!revisions.length) {
+      resolved[jobNum] = { success: true, jobNum, fileFound: false, reason: 'no_designs' };
+      return;
+    }
+    detailJobs.push({ jobNum, latest: revisions[0] });
   });
 
-  return result;
+  const detailResponses = squarecoilGetBatch_(detailJobs.map(item => (
+    'project_designs.php?id=' + item.jobNum + '&designid=' + item.latest.designId
+  )), cookie);
+  detailJobs.forEach((item, index) => {
+    const response = detailResponses[index];
+    if (!response || response.getResponseCode() !== 200) {
+      resolved[item.jobNum] = { success: false, jobNum: item.jobNum, stage: 'design' };
+      return;
+    }
+    const file = squarecoilFindPdfLink_(response.getContentText(), item.jobNum);
+    if (!file) {
+      resolved[item.jobNum] = {
+        success: true,
+        jobNum: item.jobNum,
+        fileFound: false,
+        reason: 'no_pdf',
+        designNumber: item.latest.designNumber,
+        designId: item.latest.designId,
+      };
+      return;
+    }
+    resolved[item.jobNum] = {
+      success: true,
+      fileFound: true,
+      jobNum: item.jobNum,
+      designNumber: item.latest.designNumber,
+      designId: item.latest.designId,
+      fileId: file.fileId,
+      fileName: file.name,
+    };
+  });
+  return resolved;
 }
 
-function getDropboxProofsSheet() {
+function getSquarecoilFilesSheet_() {
   const ss = getTrackingSpreadsheet();
-  let sheet = ss.getSheetByName('DropboxProofs');
+  let sheet = ss.getSheetByName('SquarecoilFiles');
   if (!sheet) {
-    sheet = ss.insertSheet('DropboxProofs');
-    sheet.appendRow(['job_num', 'file_id', 'file_name', 'modified', 'checked_at', 'drive_file_id']);
+    sheet = ss.insertSheet('SquarecoilFiles');
+    sheet.appendRow(['job_num', 'design_id', 'design_number', 'file_id', 'file_name', 'checked_at', 'drive_file_id']);
   }
   return sheet;
 }
 
-// Drive folder holding pre-fetched PDF bytes for active jobs' proofs, so
-// opening a job is instant for everyone — not just whoever happens to view
-// it first — since up to a dozen people can be working the same job at
-// once. Populated during refreshDropboxProofs, evicted the moment a job is
-// marked complete (see the toggleComplete handler above). Needs the full
-// `drive` scope, not the narrower drive.file — Apps Script's DriveApp
-// service requires it for creating files/folders from scratch (drive.file
-// only covers files opened via a picker), even though this script only
-// ever touches this one folder in practice.
-function getProofCacheFolder() {
+function getProductionFileCacheFolder_() {
   const props = PropertiesService.getScriptProperties();
   const folderId = props.getProperty('PROOF_CACHE_FOLDER_ID');
   if (folderId) {
     try { return DriveApp.getFolderById(folderId); } catch (err) { /* recreate below */ }
   }
-  const folder = DriveApp.createFolder('SWS Prod Calendar - Cached Proofs');
+  const folder = DriveApp.createFolder('SWS Prod Calendar - Cached Production Files');
   props.setProperty('PROOF_CACHE_FOLDER_ID', folder.getId());
   return folder;
 }
 
-// Downloads a file's raw bytes from Dropbox by id. Shared by the
-// cache-warming path (refreshDropboxProofs) and the live-fallback path
-// (getDropboxProofFile) so they can't drift apart.
-function downloadDropboxFileBytes(accessToken, fileId) {
-  const pathRoot = getDropboxPathRootHeader(accessToken);
-  const headers = {
-    Authorization: 'Bearer ' + accessToken,
-    'Dropbox-API-Arg': JSON.stringify({ path: fileId }),
-  };
-  if (pathRoot) headers['Dropbox-API-Path-Root'] = pathRoot;
-  const resp = UrlFetchApp.fetch('https://content.dropboxapi.com/2/files/download', {
-    method: 'post',
-    headers,
-    muteHttpExceptions: true,
-  });
-  if (resp.getResponseCode() !== 200) return null;
-  return resp.getBlob();
-}
-
-// Re-searches Dropbox for every job currently in the app's default calendar
-// window and refreshes its cached proof pointer — and, unless the winning
-// file is unchanged since last time, pre-downloads it into Drive so the
-// next person to open that job gets it instantly instead of waiting on a
-// live Dropbox round-trip. Runs on an hourly trigger (see
-// ensureDropboxRefreshTrigger) plus once right after connecting, and can be
-// kicked manually from Settings.
-function refreshDropboxProofs() {
-  const accessToken = getDropboxAccessToken();
-  if (!accessToken) return;
-
-  const { start, end } = defaultCalendarWindow();
-  const tracking = getAllTracking();
-  // Completed jobs don't need their proof re-checked every refresh — this
-  // is the main lever on runtime, since each remaining job costs a few
-  // serial Dropbox API calls (range folder lookup, job folder, Proofs
-  // folder) with no concurrency available in Apps Script.
-  const jobNums = getCalendarJobs(start, end)
-    .filter(j => !(tracking[j.jobNum] && tracking[j.jobNum].completed))
-    .map(j => j.jobNum);
-  const rangeFolders = listDropboxRangeFolders(accessToken);
-  let proofByJobNum = {};
-  try { proofByJobNum = findLatestProofsBatch(accessToken, jobNums, rangeFolders); } catch (err) { proofByJobNum = {}; }
-
-  const sheet = getDropboxProofsSheet();
+function squarecoilCacheRows_(sheet) {
   const data = sheet.getDataRange().getValues();
-  const rowByJobNum = {};
-  for (let i = 1; i < data.length; i++) rowByJobNum[String(data[i][0])] = i + 1;
-
-  let folder = null;
-  const checkedAt = new Date().toISOString();
-  jobNums.forEach(jobNum => {
-    const proof = proofByJobNum[jobNum] || null;
-    const rowIndex = rowByJobNum[jobNum];
-    const prevRow = rowIndex ? data[rowIndex - 1] : null;
-    const prevFileId = prevRow ? prevRow[1] : '';
-    const prevDriveFileId = prevRow ? prevRow[5] : '';
-
-    let driveFileId = '';
-    if (proof && proof.id === prevFileId && prevDriveFileId) {
-      // Unchanged since last refresh — no need to re-download/re-upload
-      // the same bytes.
-      driveFileId = prevDriveFileId;
-    } else if (proof) {
-      try {
-        if (!folder) folder = getProofCacheFolder();
-        const blob = downloadDropboxFileBytes(accessToken, proof.id);
-        if (blob) {
-          if (prevDriveFileId) { try { DriveApp.getFileById(prevDriveFileId).setTrashed(true); } catch (err) { /* already gone */ } }
-          driveFileId = folder.createFile(blob.setName(jobNum + '.pdf')).getId();
-        }
-      } catch (err) {
-        // Pre-caching is best-effort — getDropboxProofFile falls back to a
-        // live Dropbox fetch when there's no cached copy, so a failure
-        // here (e.g. the Drive scope hasn't been authorized yet) just
-        // means that job's proof loads a bit slower on first view instead
-        // of instantly, not a broken feature.
-        driveFileId = '';
-      }
-    } else if (prevDriveFileId) {
-      // No longer has a matching proof — drop the stale cached copy.
-      try { DriveApp.getFileById(prevDriveFileId).setTrashed(true); } catch (err) { /* already gone */ }
-    }
-
-    const row = [jobNum, proof ? proof.id : '', proof ? proof.name : '', proof ? proof.modified : '', checkedAt, driveFileId];
-    if (rowIndex) {
-      sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
-    } else {
-      sheet.appendRow(row);
-    }
-  });
-}
-
-// Drops a job's pre-fetched proof cache — called the moment it's marked
-// complete (see the toggleComplete handler above), since a completed job no
-// longer needs to be instantly available for a dozen people at once.
-function evictProofCache(jobNum) {
-  const sheet = getDropboxProofsSheet();
-  const data = sheet.getDataRange().getValues();
+  const rows = {};
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(jobNum)) {
-      const driveFileId = data[i][5];
-      if (driveFileId) {
-        try { DriveApp.getFileById(driveFileId).setTrashed(true); } catch (err) { /* already gone */ }
-        sheet.getRange(i + 1, 6).setValue('');
-      }
-      return;
-    }
+    rows[String(data[i][0])] = { rowIndex: i + 1, values: data[i] };
   }
+  return rows;
 }
 
-function getCachedProof(jobNum) {
-  const sheet = getDropboxProofsSheet();
+function writeSquarecoilCacheRow_(sheet, rowIndex, values) {
+  if (rowIndex) sheet.getRange(rowIndex, 1, 1, values.length).setValues([values]);
+  else sheet.appendRow(values);
+}
+
+function trashDriveFile_(fileId) {
+  if (!fileId) return;
+  try { DriveApp.getFileById(fileId).setTrashed(true); } catch (err) { /* already gone */ }
+}
+
+function getCachedSquarecoilFile_(jobNum) {
+  const sheet = getSquarecoilFilesSheet_();
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(jobNum) && data[i][1]) {
-      return { id: data[i][1], name: data[i][2], driveFileId: data[i][5] || '' };
+    if (String(data[i][0]) === String(jobNum) && data[i][3]) {
+      return {
+        designId: String(data[i][1] || ''),
+        designNumber: String(data[i][2] || ''),
+        fileId: String(data[i][3] || ''),
+        name: String(data[i][4] || ''),
+        checkedAt: String(data[i][5] || ''),
+        driveFileId: String(data[i][6] || ''),
+      };
     }
   }
   return null;
 }
 
-// Fetches the actual PDF bytes — only called when someone opens a job's
-// Proof section, never as part of the main job list (that's the one call in
-// this feature too slow to run for every job on every load). Serves from
-// the pre-fetched Drive copy when there is one (instant, no Dropbox
-// round-trip — the common case for an active job someone else already
-// opened first); falls back to a live Dropbox download otherwise (a brand
-// new job that hasn't had its first refresh yet, or a completed job whose
-// cache was evicted).
-function getDropboxProofFile(jobNum) {
-  if (!jobNum || !isDropboxConnected()) return { available: false };
-  const proof = getCachedProof(jobNum);
-  if (!proof) return { available: false };
+function cacheSquarecoilFile_(resolved, blob) {
+  const sheet = getSquarecoilFilesSheet_();
+  const rows = squarecoilCacheRows_(sheet);
+  const previous = rows[resolved.jobNum];
+  const previousDriveFileId = previous ? previous.values[6] : '';
+  let driveFileId = '';
+  try {
+    const folder = getProductionFileCacheFolder_();
+    driveFileId = folder.createFile(blob.setName(resolved.jobNum + '.pdf')).getId();
+    if (previousDriveFileId && previousDriveFileId !== driveFileId) trashDriveFile_(previousDriveFileId);
+  } catch (err) {
+    driveFileId = '';
+  }
+  writeSquarecoilCacheRow_(sheet, previous && previous.rowIndex, [
+    resolved.jobNum,
+    resolved.designId,
+    resolved.designNumber,
+    resolved.fileId,
+    resolved.fileName,
+    new Date().toISOString(),
+    driveFileId,
+  ]);
+  return driveFileId;
+}
 
-  if (proof.driveFileId) {
+function refreshSquarecoilProductionFiles() {
+  const credentials = squarecoilCredentials_();
+  if (!credentials.username || !credentials.password) throw new Error('Squarecoil credentials are not configured');
+
+  const range = defaultCalendarWindow();
+  const tracking = getAllTracking();
+  const jobNums = Array.from(new Set(getCalendarJobs(range.start, range.end)
+    .filter(job => !(tracking[job.jobNum] && tracking[job.jobNum].completed))
+    .map(job => String(job.jobNum))));
+  const cookie = squarecoilLogin_(credentials.username, credentials.password);
+  const resolvedByJob = squarecoilResolveFilesBatch_(jobNums, cookie);
+  const sheet = getSquarecoilFilesSheet_();
+  const rows = squarecoilCacheRows_(sheet);
+  const changed = [];
+
+  jobNums.forEach(jobNum => {
+    const resolved = resolvedByJob[jobNum];
+    const previous = rows[jobNum];
+    if (!resolved || !resolved.success || !resolved.fileFound) return;
+    const previousFileId = previous ? String(previous.values[3] || '') : '';
+    const previousDriveFileId = previous ? String(previous.values[6] || '') : '';
+    if (resolved.fileId !== previousFileId || !previousDriveFileId) changed.push(resolved);
+  });
+
+  const downloads = squarecoilGetBatch_(changed.map(resolved => (
+    'download_design_file.php?file_id=' + resolved.fileId + '&project_id=' + resolved.jobNum
+  )), cookie);
+  const downloadByJob = {};
+  changed.forEach((resolved, index) => { downloadByJob[resolved.jobNum] = downloads[index] || null; });
+
+  let folder = null;
+  let refreshed = 0;
+  let unavailable = 0;
+  let failed = 0;
+  const checkedAt = new Date().toISOString();
+  jobNums.forEach(jobNum => {
+    const resolved = resolvedByJob[jobNum];
+    const previous = rows[jobNum];
+    if (!resolved || !resolved.success) { failed++; return; }
+
+    const previousDriveFileId = previous ? String(previous.values[6] || '') : '';
+    if (!resolved.fileFound) {
+      trashDriveFile_(previousDriveFileId);
+      writeSquarecoilCacheRow_(sheet, previous && previous.rowIndex, [jobNum, '', '', '', '', checkedAt, '']);
+      unavailable++;
+      return;
+    }
+
+    const previousFileId = previous ? String(previous.values[3] || '') : '';
+    let driveFileId = previousDriveFileId;
+    if (resolved.fileId !== previousFileId || !driveFileId) {
+      const response = downloadByJob[jobNum];
+      const bytes = response && response.getResponseCode() === 200 ? response.getBlob().getBytes() : null;
+      if (!squarecoilLooksLikePdf_(bytes)) { failed++; return; }
+      try {
+        if (!folder) folder = getProductionFileCacheFolder_();
+        const blob = response.getBlob().setName(jobNum + '.pdf');
+        const nextDriveFileId = folder.createFile(blob).getId();
+        trashDriveFile_(previousDriveFileId);
+        driveFileId = nextDriveFileId;
+      } catch (err) {
+        failed++;
+        return;
+      }
+    }
+
+    writeSquarecoilCacheRow_(sheet, previous && previous.rowIndex, [
+      jobNum,
+      resolved.designId,
+      resolved.designNumber,
+      resolved.fileId,
+      resolved.fileName,
+      checkedAt,
+      driveFileId,
+    ]);
+    refreshed++;
+  });
+  return { success: true, checked: jobNums.length, refreshed, unavailable, failed };
+}
+
+function evictSquarecoilFileCache(jobNum) {
+  const sheet = getSquarecoilFilesSheet_();
+  const rows = squarecoilCacheRows_(sheet);
+  const row = rows[String(jobNum)];
+  if (!row) return;
+  trashDriveFile_(row.values[6]);
+  sheet.getRange(row.rowIndex, 7).setValue('');
+}
+
+function getSquarecoilProductionFile(jobNum) {
+  if (!jobNum || !isSquarecoilConfigured_()) return { available: false };
+  let cached = null;
+  try { cached = getCachedSquarecoilFile_(jobNum); } catch (err) {
+    console.warn('Squarecoil Production File cache read failed for %s: %s', jobNum, err && err.message);
+  }
+  if (cached && cached.driveFileId) {
     try {
-      const blob = DriveApp.getFileById(proof.driveFileId).getBlob();
-      return { available: true, name: proof.name, base64: Utilities.base64Encode(blob.getBytes()) };
+      const blob = DriveApp.getFileById(cached.driveFileId).getBlob();
+      const bytes = blob.getBytes();
+      if (squarecoilLooksLikePdf_(bytes)) {
+        return { available: true, name: cached.name, base64: Utilities.base64Encode(bytes) };
+      }
     } catch (err) {
-      // Cached copy missing/inaccessible — fall through to a live fetch.
+      // Missing or invalid Drive copy falls through to a live Squarecoil fetch.
     }
   }
 
-  const accessToken = getDropboxAccessToken();
-  if (!accessToken) return { available: false };
-  const blob = downloadDropboxFileBytes(accessToken, proof.id);
-  if (!blob) return { available: false };
-  return { available: true, name: proof.name, base64: Utilities.base64Encode(blob.getBytes()) };
+  try {
+    const credentials = squarecoilCredentials_();
+    const cookie = squarecoilLogin_(credentials.username, credentials.password);
+    const resolved = squarecoilResolveLatestFile_(jobNum, cookie);
+    if (!resolved.success || !resolved.fileFound) return { available: false };
+    const response = squarecoilGet_(
+      'download_design_file.php?file_id=' + resolved.fileId + '&project_id=' + resolved.jobNum,
+      cookie
+    );
+    const blob = response.getBlob();
+    const bytes = blob.getBytes();
+    if (response.getResponseCode() !== 200 || !squarecoilLooksLikePdf_(bytes)) return { available: false };
+    cacheSquarecoilFile_(resolved, blob);
+    return { available: true, name: resolved.fileName, base64: Utilities.base64Encode(bytes) };
+  } catch (err) {
+    console.warn('Squarecoil Production File lookup failed for %s: %s', jobNum, err && err.message);
+    return { available: false };
+  }
 }
 
-// Apps Script gives no way to read an existing trigger's interval back, so the
-// interval it was created with is recorded alongside it. When
-// DROPBOX_PROOFS_REFRESH_HOURS changes, the stored value no longer matches and
-// the trigger is rebuilt — otherwise editing the constant would have no effect
-// on an already-scheduled trigger, and the quota reasoning above would be
-// silently wrong in production.
-const DROPBOX_TRIGGER_HOURS_PROP = 'DROPBOX_TRIGGER_HOURS';
+const SQUARECOIL_TRIGGER_HOURS_PROP = 'SQUARECOIL_TRIGGER_HOURS';
 
-function scheduledDropboxProofRefresh() {
+function scheduledSquarecoilFileRefresh() {
   try {
-    const result = refreshDropboxProofs();
-    clearOperationalFailure('dropbox-refresh');
+    const result = refreshSquarecoilProductionFiles();
+    clearOperationalFailure('squarecoil-refresh');
     return result;
   } catch (err) {
-    recordOperationalFailure('dropbox-refresh', err);
+    recordOperationalFailure('squarecoil-refresh', err);
     throw err;
   }
 }
 
-function ensureDropboxRefreshTrigger() {
+function ensureSquarecoilRefreshTrigger() {
   const props = PropertiesService.getScriptProperties();
-  const existing = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'scheduledDropboxProofRefresh');
-  const legacy = ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'refreshDropboxProofs');
-  const scheduledHours = +(props.getProperty(DROPBOX_TRIGGER_HOURS_PROP) || 0);
-  if (existing.length === 1 && !legacy.length && scheduledHours === DROPBOX_PROOFS_REFRESH_HOURS) return;
-  resetDropboxRefreshTrigger();
+  const triggers = ScriptApp.getProjectTriggers();
+  const current = triggers.filter(trigger => trigger.getHandlerFunction() === 'scheduledSquarecoilFileRefresh');
+  const legacy = triggers.filter(trigger => ['refreshDropboxProofs', 'scheduledDropboxProofRefresh'].indexOf(trigger.getHandlerFunction()) !== -1);
+  const scheduledHours = +(props.getProperty(SQUARECOIL_TRIGGER_HOURS_PROP) || 0);
+  if (current.length === 1 && !legacy.length && scheduledHours === SQUARECOIL_FILES_REFRESH_HOURS) return;
+  resetSquarecoilRefreshTrigger();
 }
 
-// Deletes every refreshDropboxProofs trigger and creates exactly one at the
-// current interval. Safe to run by hand from the Apps Script editor
-// (Run > resetDropboxRefreshTrigger) — that's the fastest way to apply an
-// interval change to an already-deployed script.
-function resetDropboxRefreshTrigger() {
+function resetSquarecoilRefreshTrigger() {
   ScriptApp.getProjectTriggers()
-    .filter(t => ['refreshDropboxProofs', 'scheduledDropboxProofRefresh'].indexOf(t.getHandlerFunction()) !== -1)
-    .forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('scheduledDropboxProofRefresh').timeBased().everyHours(DROPBOX_PROOFS_REFRESH_HOURS).create();
-  PropertiesService.getScriptProperties().setProperty(DROPBOX_TRIGGER_HOURS_PROP, String(DROPBOX_PROOFS_REFRESH_HOURS));
-  Logger.log('refreshDropboxProofs trigger set to every %s hour(s)', DROPBOX_PROOFS_REFRESH_HOURS);
+    .filter(trigger => [
+      'refreshDropboxProofs',
+      'scheduledDropboxProofRefresh',
+      'refreshSquarecoilProductionFiles',
+      'scheduledSquarecoilFileRefresh',
+    ].indexOf(trigger.getHandlerFunction()) !== -1)
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger('scheduledSquarecoilFileRefresh').timeBased().everyHours(SQUARECOIL_FILES_REFRESH_HOURS).create();
+  PropertiesService.getScriptProperties().setProperty(SQUARECOIL_TRIGGER_HOURS_PROP, String(SQUARECOIL_FILES_REFRESH_HOURS));
+  Logger.log('Squarecoil Production File refresh trigger set to every %s hour(s)', SQUARECOIL_FILES_REFRESH_HOURS);
 }
 
-// ── Dropbox OAuth connect (Settings → Admin only) ───────────────────────────
-function dropboxAuthUrl(scriptUrl) {
-  const { appKey } = dropboxCredentials();
-  if (!appKey) return null;
-  const state = Utilities.getUuid();
-  PropertiesService.getScriptProperties().setProperty('DROPBOX_OAUTH_STATE', state);
-  const params = {
-    client_id: appKey,
-    response_type: 'code',
-    token_access_type: 'offline',
-    redirect_uri: scriptUrl,
-    state,
-  };
-  const qs = Object.entries(params).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
-  return 'https://www.dropbox.com/oauth2/authorize?' + qs;
-}
-
-// Dropbox's redirect back to our /exec URL lands here with no token of ours
-// — `state` is our only CSRF defense, so it must match what dropboxAuthUrl
-// just stored before the code is trusted.
-function handleDropboxOAuthCallback(e, scriptUrl) {
-  const expectedState = PropertiesService.getScriptProperties().getProperty('DROPBOX_OAUTH_STATE');
-  if (!e.parameter.code || !expectedState || e.parameter.state !== expectedState) {
-    return HtmlService.createHtmlOutput('<p>Dropbox connection failed (invalid or expired request). Close this tab and try again from Settings.</p>');
-  }
-  const { appKey, appSecret } = dropboxCredentials();
-  const resp = UrlFetchApp.fetch('https://api.dropboxapi.com/oauth2/token', {
-    method: 'post',
-    payload: { code: e.parameter.code, grant_type: 'authorization_code', client_id: appKey, client_secret: appSecret, redirect_uri: scriptUrl },
-    muteHttpExceptions: true,
-  });
-  let body;
-  try { body = JSON.parse(resp.getContentText()); } catch (err) { body = {}; }
-  if (!body.refresh_token) {
-    return HtmlService.createHtmlOutput('<p>Dropbox connection failed: ' + (body.error_description || body.error || 'unknown error') + '. Close this tab and try again from Settings.</p>');
-  }
-  const props = PropertiesService.getScriptProperties();
-  props.setProperty('DROPBOX_REFRESH_TOKEN', body.refresh_token);
-  props.deleteProperty('DROPBOX_OAUTH_STATE');
-  CacheService.getScriptCache().remove('dropbox_access_token');
-  ensureDropboxRefreshTrigger();
-  try { refreshDropboxProofs(); } catch (err) { /* best-effort; the hourly trigger will catch up */ }
-  return HtmlService.createHtmlOutput('<p>Dropbox connected. You can close this tab and go back to the app.</p>');
-}
-
+// Existing installations may run one old handler before normal app traffic
+// replaces its trigger. Keep these aliases source-safe during that migration.
+function refreshDropboxProofs() { return refreshSquarecoilProductionFiles(); }
+function scheduledDropboxProofRefresh() { return scheduledSquarecoilFileRefresh(); }
 
 // ── Backups ─────────────────────────────────────────────────────────────────
 // The tracking spreadsheet holds every note, checklist, completion record and
@@ -2888,7 +2628,7 @@ function clearOperationalFailure(area) {
 
 // Credentials are intentionally omitted. A disaster restore recreates the
 // roster with temporary PINs that each user must replace, rather than copying
-// hashes, Dropbox tokens, or application secrets into Drive.
+// hashes, Squarecoil credentials, or application secrets into Drive.
 function configurationSnapshot() {
   return {
     schemaVersion: 1,
@@ -3002,7 +2742,7 @@ function getSystemHealth() {
       recoveryPointHours: BACKUP_INTERVAL_HOURS,
     },
     trackingConfigured: !!props.getProperty('TRACKING_SHEET_ID'),
-    dropboxConnected: isDropboxConnected(),
+    squarecoilConnected: isSquarecoilConfigured_(),
     lastFailure,
   };
 }
@@ -3014,7 +2754,7 @@ function getSystemHealth() {
 //
 // Both are idempotent — running this repeatedly won't stack duplicate triggers.
 function setupAllTriggers() {
-  ensureDropboxRefreshTrigger();
+  ensureSquarecoilRefreshTrigger();
   ensureBackupTrigger();
   const summary = ScriptApp.getProjectTriggers()
     .map(t => t.getHandlerFunction())
@@ -3030,6 +2770,7 @@ function ensureOperationalTriggersOnce() {
   const cache = CacheService.getScriptCache();
   if (cache.get('operational_triggers_checked')) return;
   try {
+    ensureSquarecoilRefreshTrigger();
     ensureBackupTrigger();
     clearOperationalFailure('trigger-setup');
     cache.put('operational_triggers_checked', '1', 3600);

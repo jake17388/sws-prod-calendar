@@ -69,8 +69,8 @@ department: `Admin`, `Manager`, `Viewer`, or one of the production
 departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 `Routing`).
 
-- **Admin** — full access, including managing every other account, Dropbox
-  settings, due-date overrides, and session revocation
+- **Admin** — full access, including managing every other account, Squarecoil
+  Production File refreshes, due-date overrides, and session revocation
 - **Manager** — can add/edit/delete any account except Admin, Manager, or
   Viewer accounts (and can't see Admin/Viewer accounts in the list at all)
 - **Viewer** and the production departments — no user-management access
@@ -140,7 +140,11 @@ department. Older records created before archive snapshots were introduced
 remain searchable by their job number and saved history. There is no automatic
 purge.
 
-The job screen calls the Dropbox-sourced proof the **Production File**. Admins,
+The job screen uses the PDF on the newest Squarecoil DESIGN revision as the
+**Production File**. Squarecoil credentials are stored only in Apps Script
+Script Properties as `SQUARECOIL_USERNAME` and `SQUARECOIL_PASSWORD`. Active
+jobs are refreshed into the shared Drive cache every six hours, with a live
+lookup fallback for uncached jobs. Admins,
 Managers, and Viewers can add up to 50 additional project files (8 MB each) by
 choosing or dragging them into the project. Everyone who can view the project
 can download those files and see who added each one and when. Only Admins can

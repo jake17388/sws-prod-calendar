@@ -569,8 +569,7 @@ main.view-area {
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
-/* Author CSS beats the UA [hidden] rule — needed since dropbox-credentials-fields
-   reuses this class and gets toggled with the `hidden` attribute from JS. */
+/* Author CSS beats the UA [hidden] rule for settings field groups toggled by JS. */
 .my-account-fields[hidden] { display: none; }
 .settings-field {
   display: flex;

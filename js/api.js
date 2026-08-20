@@ -111,16 +111,8 @@ export const fetchAdditionalFile = (jobKey, fileId) =>
 export const deleteAdditionalFile = (jobKey, fileId) =>
   scriptPost({ action: 'deleteAdditionalFile', jobKey, fileId });
 
-export const fetchDropboxStatus = () => scriptGet('getDropboxStatus');
+export const fetchSquarecoilStatus = () => scriptGet('getSquarecoilStatus');
 
 export const fetchSystemHealth = () => scriptGet('getSystemHealth');
 
-/** @returns {Promise<{url?: string, error?: string}>} */
-export const fetchDropboxAuthUrl = () => scriptGet('getDropboxAuthUrl');
-
-export const setDropboxCredentials = (appKey, appSecret) =>
-  scriptPost({ action: 'setDropboxCredentials', appKey, appSecret });
-
-export const disconnectDropbox = () => scriptPost({ action: 'disconnectDropbox' });
-
-export const refreshDropboxProofsNow = () => scriptPost({ action: 'refreshDropboxProofsNow' });
+export const refreshSquarecoilFilesNow = () => scriptPost({ action: 'refreshSquarecoilFilesNow' });

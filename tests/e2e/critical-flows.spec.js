@@ -63,7 +63,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       };
     } else if (action === 'getCommonTasks') {
       body = { tasks: [] };
-    } else if (action === 'getDropboxStatus') {
+    } else if (action === 'getSquarecoilStatus') {
       body = { connected: false, hasCredentials: false };
     } else if (action === 'getSystemHealth') {
       body = { healthy: true, backup: { current: true, lastAt: '2026-08-10T11:00:00.000Z', triggerInstalled: true }, trackingConfigured: true, lastFailure: null };
