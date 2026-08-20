@@ -62,6 +62,7 @@ test('the PDF engine is self-hosted and Production Files stay in the zoomable in
   assert.doesNotMatch(viewerSource, /cdn\.jsdelivr\.net/);
   assert.match(viewerSource, /IntersectionObserver/);
   assert.match(html, /id="proof-viewer-zoom-in"/);
+  assert.doesNotMatch(html, /proof-viewer-open-original/);
   assert.doesNotMatch(jobDetailSource, /openOriginalPdf/);
   assert.doesNotMatch(jobDetailSource, /dataset\.viewerMode\s*=\s*['"]original/);
   assert.match(jobDetailSource, /openBtn\.onclick\s*=\s*\(\)\s*=>\s*openProofViewer/);

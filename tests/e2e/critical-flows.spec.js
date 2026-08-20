@@ -178,7 +178,7 @@ test('a current-week Production File opens full quality and zooms inside the app
   await expect(page.locator('#proof-viewer-zoom-label')).toHaveText('125%');
 });
 
-test('a Production File three weeks out keeps the preview and original-file controls', async ({ page }) => {
+test('a Production File three weeks out uses the same in-app source-quality viewer', async ({ page }) => {
   const later = new Date();
   later.setDate(later.getDate() + 21);
   await mockBackend(page, { productionPdf: onePagePdfBase64(), jobDueDate: later.toISOString().slice(0, 10) });
@@ -189,7 +189,7 @@ test('a Production File three weeks out keeps the preview and original-file cont
   await expect(page.locator('.proof-viewer-page')).toBeVisible();
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect(page.locator('#proof-viewer-zoom-label')).toHaveText('125%');
-  await expect(page.locator('#proof-viewer-open-original')).toHaveAttribute('href', /^blob:/);
+  await expect(page.locator('#proof-viewer-open-original')).toHaveCount(0);
 });
 
 test('a Viewer can add to the same project notes timeline', async ({ page }) => {

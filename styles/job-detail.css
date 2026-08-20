@@ -552,7 +552,6 @@
 }
 .proof-viewer-toolbar button:disabled { opacity: 0.45; cursor: wait; }
 #proof-viewer-zoom-label { min-width: 50px; text-align: center; font-variant-numeric: tabular-nums; }
-#proof-viewer-open-original { color: var(--accent-solid); }
 
 /* Pages render as plain block content (one canvas per page) in a scrolling
    column — deliberately not an iframe: mobile Safari's native PDF-in-iframe

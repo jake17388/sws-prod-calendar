@@ -10,7 +10,7 @@ import { beginRequest, isLatestRequest } from '../requestSequence.js';
 import { setHeaderDimmed } from '../headerDim.js';
 import { looksLikePdfBytes, renderPdfPages, resetPdfViewerEngine } from '../pdfViewer.js';
 import { cacheProofFile, deleteCachedProofFile, getCachedProofFile } from '../proofCache.mjs';
-import { isJobInPreloadedOriginalWindow, productionProofCacheKey } from '../currentWeekProofPreload.mjs';
+import { productionProofCacheKey } from '../currentWeekProofPreload.mjs';
 import { deleteStoredProof, readStoredProof, storeProof } from '../proofDiskCache.mjs';
 import { queueJobCompletion } from '../jobCompletion.js';
 
@@ -18,7 +18,6 @@ let currentProofBytes = null;
 let proofRequestToken = 0;
 let viewerRequestToken = 0;
 let viewerObjectUrl = null;
-let directOriginalObjectUrl = null;
 let viewerRenderController = null;
 let activeJobKey = null;
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
@@ -55,34 +54,10 @@ function destroyViewerDocument() {
   viewerRenderController = null;
 }
 
-function attachOriginalFile(bytes, mimeType, name) {
+function createViewerObjectUrl(bytes, mimeType) {
   if (viewerObjectUrl) URL.revokeObjectURL(viewerObjectUrl);
   viewerObjectUrl = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
-  const original = document.getElementById('proof-viewer-open-original');
-  original.href = viewerObjectUrl;
-  original.removeAttribute('download');
   return viewerObjectUrl;
-}
-
-function openOriginalPdf(bytes, name) {
-  if (directOriginalObjectUrl) URL.revokeObjectURL(directOriginalObjectUrl);
-  const fileName = name || 'Production File.pdf';
-  const file = typeof File === 'function'
-    ? new File([bytes], fileName, { type: 'application/pdf' })
-    : new Blob([bytes], { type: 'application/pdf' });
-  directOriginalObjectUrl = URL.createObjectURL(file);
-
-  // A real link activation keeps this inside the user's tap gesture, which is
-  // required for iOS/iPadOS to open its native full-quality PDF viewer rather
-  // than treating it as a blocked popup.
-  const link = document.createElement('a');
-  link.href = directOriginalObjectUrl;
-  link.target = '_blank';
-  link.rel = 'noopener';
-  link.setAttribute('aria-label', `Open original ${fileName}`);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
 }
 
 function updateZoomControls(enabled, zoom = 1) {
@@ -149,7 +124,6 @@ function openProofViewer(job, bytes, name, repair, title = job.title) {
     destroyViewerDocument();
     loading.hidden = false;
     loading.textContent = allowRepair ? 'Loading…' : 'Loading fresh copy…';
-    attachOriginalFile(activeBytes, 'application/pdf', name || 'Production File.pdf');
     try {
       const controller = await renderPdfPages(
         pages,
@@ -215,7 +189,7 @@ function openAdditionalFileViewer(job, file, response, bytes, repair) {
 
   const { pages, loading, token } = prepareFileViewer(job, name);
 
-  const url = attachOriginalFile(bytes, mimeType, name);
+  const url = createViewerObjectUrl(bytes, mimeType);
 
   if (mimeType.startsWith('image/')) {
     const image = document.createElement('img');
@@ -318,13 +292,9 @@ function renderProofSection(job) {
     cacheProofFile(cacheKey, proof);
     empty.hidden = true;
     openBtn.hidden = false;
-    const oneTapOriginal = isJobInPreloadedOriginalWindow(job);
-    openBtn.dataset.viewerMode = oneTapOriginal ? 'original' : 'preview';
-    openBtn.title = oneTapOriginal ? 'Open the preloaded original PDF' : 'Preview this Production File';
-    openBtn.onclick = () => {
-      if (oneTapOriginal) openOriginalPdf(currentProofBytes, proof.name);
-      else openProofViewer(job, currentProofBytes, proof.name, repairProof);
-    };
+    openBtn.dataset.viewerMode = 'preview';
+    openBtn.title = 'View the full-quality Production File inside the app';
+    openBtn.onclick = () => openProofViewer(job, currentProofBytes, proof.name, repairProof);
   };
   const cached = getCachedProofFile(cacheKey);
   if (cached) {

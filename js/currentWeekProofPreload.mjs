@@ -40,11 +40,6 @@ export function selectCurrentWeekProofJobs(jobs, now = new Date()) {
   return selectProofJobsForWeek(jobs, 0, now);
 }
 
-export function isJobInPreloadedOriginalWindow(job, now = new Date()) {
-  return selectProofJobsForWeek([job], 0, now).length === 1
-    || selectProofJobsForWeek([job], 1, now).length === 1;
-}
-
 async function preloadProofTargets(targets, options, concurrency) {
   const readStored = options.readStored || readStoredProof;
   const fetchProof = options.fetchProof || defaultFetchProof;

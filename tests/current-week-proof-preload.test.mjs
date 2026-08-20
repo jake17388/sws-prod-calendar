@@ -35,17 +35,6 @@ test('following-week preloading selects only the next Sunday through Saturday', 
   );
 });
 
-test('only current-week and following-week jobs use one-tap original viewing', async () => {
-  const { isJobInPreloadedOriginalWindow } = await import('../js/currentWeekProofPreload.mjs');
-  const now = new Date(2026, 7, 10);
-
-  assert.equal(isJobInPreloadedOriginalWindow({ jobNum: 'current', dueDate: '2026-08-10' }, now), true);
-  assert.equal(isJobInPreloadedOriginalWindow({ jobNum: 'next', dueDate: '2026-08-22' }, now), true);
-  assert.equal(isJobInPreloadedOriginalWindow({ jobNum: 'later', dueDate: '2026-08-23' }, now), false);
-  assert.equal(isJobInPreloadedOriginalWindow({ jobNum: 'old', dueDate: '2026-08-08' }, now), false);
-  assert.equal(isJobInPreloadedOriginalWindow({ jobNum: 'missing' }, now), false);
-});
-
 test('two-week preloading finishes the current week before loading the following week', async () => {
   const { preloadCurrentAndNextWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
   const jobs = [
