@@ -250,7 +250,7 @@ test('User Management shows which accounts still have temporary PINs', async ({ 
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('button', { name: 'User Management' }).click();
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
-  await expect(page.getByText('Temporary PIN', { exact: true })).toBeVisible();
+  await expect(page.locator('.user-row-training-status', { hasText: 'Temporary PIN' })).toBeVisible();
 });
 
 test('an Admin can reset an account with a regular PIN', async ({ page }) => {
