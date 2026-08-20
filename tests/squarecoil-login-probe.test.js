@@ -119,6 +119,22 @@ test('Squarecoil PDF parser accepts numeric HTML encoding from the raw design re
   });
 });
 
+test('Squarecoil PDF parser accepts an unquoted href from the raw PHP response', () => {
+  const { context } = loadBackend({}, []);
+  const html = [
+    '<strong>260262-04</strong>',
+    '<a target=_blank href=download_design_file.php?file_id=45528&amp;project_id=260262>',
+    '260262_Prod_TelaVerdeApts_v4.pdf</a>',
+  ].join('');
+
+  const result = context.squarecoilFindPdfLink_(html, '260262');
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    fileId: '45528',
+    name: '260262_Prod_TelaVerdeApts_v4.pdf',
+  });
+});
+
 test('Squarecoil probe reports sanitized parser diagnostics when a design has no PDF link', () => {
   const designHtml = '<strong>260262-04</strong><a href="project_designs.php?id=260262">Design</a>';
   const responses = [
