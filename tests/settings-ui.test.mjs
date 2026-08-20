@@ -21,14 +21,17 @@ test('text size spans 50 through 200 percent', () => {
   assert.match(app, /ZOOM_STEPS\s*=\s*\[50,[^\]]*200\]/);
 });
 
-test('Dropbox debug controls are removed and proof refresh comes first', () => {
+test('Settings exposes Squarecoil status and refresh without Dropbox credentials', () => {
   const html = read('index.html');
-  const component = read('js/components/dropboxSettings.js');
+  const component = read('js/components/squarecoilSettings.js');
   const api = read('js/api.js');
-  assert.doesNotMatch(html, /dropbox-debug|Debug proof lookup/);
-  assert.doesNotMatch(component, /debugDropboxProof|handleDebug|dropbox-debug/);
-  assert.doesNotMatch(api, /debugDropboxProof/);
-  assert.ok(html.indexOf('dropbox-refresh-btn') < html.indexOf('dropbox-credentials-fields'));
+  assert.match(html, /id="squarecoil-settings-section"/);
+  assert.match(html, /Squarecoil Integration/);
+  assert.match(html, /id="squarecoil-refresh-btn"/);
+  assert.match(component, /refreshSquarecoilSettingsUI/);
+  assert.match(component, /refreshSquarecoilFilesNow/);
+  assert.match(api, /fetchSquarecoilStatus/);
+  assert.doesNotMatch(html + component + api, /Dropbox Integration|DROPBOX_APP_KEY|dropbox-app-secret|fetchDropboxAuthUrl/);
 });
 
 test('My Account only lets Admins edit names while every role can edit its PIN', () => {
