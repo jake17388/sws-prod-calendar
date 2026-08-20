@@ -36,6 +36,16 @@ function showRowHint(row, text, isError) {
   if (!isError) setTimeout(() => { hint.textContent = ''; }, 1500);
 }
 
+function syncTemporaryPinBadge(row, temporary) {
+  const nameWrap = row.querySelector('.user-row-name-wrap');
+  const existing = row.querySelector('.user-row-training-status');
+  if (temporary && !existing) {
+    nameWrap.insertAdjacentHTML('beforeend', '<span class="user-row-training-status">Temporary PIN</span>');
+  } else if (!temporary && existing) {
+    existing.remove();
+  }
+}
+
 function renderLockedRow(user) {
   const row = document.createElement('div');
   row.className = 'user-row user-row-locked';
@@ -56,6 +66,7 @@ function renderEditableRow(user, actorDept) {
   row.setAttribute('aria-label', `${user.name}, ${user.department}. Open user options.`);
   const adminCanSeePins = currentDepartment() === 'Admin';
   const adminCanEditNames = actorDept === 'Admin';
+  const adminCanChoosePinType = actorDept === 'Admin';
   const currentPin = adminCanSeePins && typeof user.pin === 'string' ? user.pin : '';
   const pinType = adminCanSeePins ? 'text' : 'password';
   row.innerHTML = `
@@ -64,7 +75,15 @@ function renderEditableRow(user, actorDept) {
       ${user.mustChangePin ? '<span class="user-row-training-status">Temporary PIN</span>' : ''}
     </label>
     <select class="user-row-dept">${departmentOptionsHtml(actorDept, user.department)}</select>
-    <input type="${pinType}" class="user-row-pin" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
+    <span class="user-row-pin-controls">
+      <input type="${pinType}" class="user-row-pin" aria-label="PIN for ${escapeAttr(user.name)}" inputmode="numeric" maxlength="6" value="${escapeAttr(currentPin)}" placeholder="${adminCanSeePins ? 'Unavailable — reset PIN' : 'New PIN'}" title="${adminCanSeePins ? 'Current PIN; edit to reset it' : 'Enter a new 6-digit PIN'}" autocomplete="off" />
+      ${adminCanChoosePinType ? `
+        <select class="user-row-pin-mode" aria-label="PIN type for ${escapeAttr(user.name)}">
+          <option value="temporary" selected>Temporary PIN</option>
+          <option value="regular">Regular PIN</option>
+        </select>
+      ` : ''}
+    </span>
     <span class="user-row-actions">
       <button class="user-row-open" type="button" aria-label="Open options for ${escapeAttr(user.name)}">•••</button>
       <button class="user-row-delete" aria-label="Delete user">&times;</button>
@@ -102,7 +121,10 @@ function renderEditableRow(user, actorDept) {
       if (adminCanSeePins) user.pin = pin;
       return;
     }
-    updateUserApi(user.id, { pin }).then(res => {
+    const pinMode = row.querySelector('.user-row-pin-mode');
+    const temporaryPin = !pinMode || pinMode.value !== 'regular';
+    const patch = adminCanChoosePinType ? { pin, temporaryPin } : { pin };
+    updateUserApi(user.id, patch).then(res => {
       if (!res.success) {
         showRowHint(row, res.error || 'Failed to save', true);
         e.target.value = '';
@@ -114,12 +136,10 @@ function renderEditableRow(user, actorDept) {
       } else {
         e.target.value = '';
       }
-      if (res.token) updateAuthProfile({ token: res.token });
+      if (res.token) updateAuthProfile({ token: res.token, mustChangePin: !!(res.user && res.user.mustChangePin) });
       user.mustChangePin = !!(res.user && res.user.mustChangePin);
-      if (user.mustChangePin && !row.querySelector('.user-row-training-status')) {
-        row.querySelector('.user-row-name-wrap').insertAdjacentHTML('beforeend', '<span class="user-row-training-status">Temporary PIN</span>');
-      }
-      showRowHint(row, 'PIN updated');
+      syncTemporaryPinBadge(row, user.mustChangePin);
+      showRowHint(row, user.mustChangePin ? 'Temporary PIN updated' : 'Regular PIN updated');
     }).catch(() => { e.target.value = ''; showRowHint(row, 'Network error — try again', true); });
   });
 

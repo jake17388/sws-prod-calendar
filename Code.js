@@ -350,6 +350,13 @@ function addUser(actor, data) {
 function updateUser(actor, data) {
   if (!canAccessUserManagement(actor.department)) return { success: false, error: 'forbidden' };
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(data.id || ''))) return { success: false, error: 'Invalid user id' };
+  if (data.temporaryPin !== undefined && actor.department !== 'Admin') return { success: false, error: 'forbidden' };
+  if (data.temporaryPin !== undefined && typeof data.temporaryPin !== 'boolean') {
+    return { success: false, error: 'Invalid PIN type' };
+  }
+  if (data.temporaryPin !== undefined && data.pin === undefined) {
+    return { success: false, error: 'PIN is required when choosing PIN type' };
+  }
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -381,7 +388,9 @@ function updateUser(actor, data) {
       if (pinAlreadyUsed(users, pin, target.id)) return { success: false, error: 'That PIN is already in use' };
       Object.assign(next, withNewPin(next, pin));
       next.authVersion = (+next.authVersion || 1) + 1;
-      next.mustChangePin = true;
+      // Resets remain temporary by default for compatibility and safety.
+      // Only an Admin may explicitly issue a regular PIN.
+      next.mustChangePin = actor.department === 'Admin' ? data.temporaryPin !== false : true;
       delete next.previousAuthVersion;
       delete next.previousAuthExpiresAt;
       pinChanged = true;

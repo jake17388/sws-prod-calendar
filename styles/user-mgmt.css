@@ -113,6 +113,12 @@
 .user-row input:focus,
 .user-row select:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
 .user-row-name-wrap { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
+.user-row-pin-controls { display: grid; min-width: 0; gap: var(--space-1); }
+.user-row-pin-controls .user-row-pin-mode {
+  min-height: 30px;
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+}
 .user-row-training-status {
   align-self: flex-start;
   padding: 2px var(--space-2);

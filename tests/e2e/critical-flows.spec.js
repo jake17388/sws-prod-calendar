@@ -264,6 +264,6 @@ test('an Admin can reset an account with a regular PIN', async ({ page }) => {
   await row.locator('.user-row-pin').fill('654321');
   await row.locator('.user-row-pin').press('Tab');
 
-  await expect(row.getByText('Temporary PIN', { exact: true })).toHaveCount(0);
+  await expect(row.locator('.user-row-training-status')).toHaveCount(0);
   await expect(row.getByText('Regular PIN updated')).toBeVisible();
 });

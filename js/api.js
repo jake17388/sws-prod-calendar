@@ -64,7 +64,7 @@ export const saveCommonTasks = tasks =>
 export const addUser = (name, department, pin) =>
   scriptPost({ action: 'addUser', name, department, pin });
 
-/** @param {string} id @param {{name?: string, department?: string, pin?: string}} patch */
+/** @param {string} id @param {{name?: string, department?: string, pin?: string, temporaryPin?: boolean}} patch */
 export const updateUser = (id, patch) =>
   scriptPost({ action: 'updateUser', id, ...patch });
 
