@@ -169,3 +169,85 @@ test('Squarecoil probe reports sanitized parser diagnostics when a design has no
   assert.equal(logs[0], JSON.stringify(result));
   assert.doesNotMatch(logs[0], /integration-user|do-not-log-this|PHPSESSID/);
 });
+
+test('Squarecoil revision parser selects revision 11 and ignores duplicate date links', () => {
+  const { context } = loadBackend({}, []);
+  const html = [
+    '<a href="project_designs.php?id=251785&amp;designid=28492">11/24/2025</a>',
+    '<a href="project_designs.php?id=251785&amp;designid=28492">251785-01</a>',
+    '<a href="project_designs.php?id=251785&amp;designid=29249">03/09/2026</a>',
+    '<a href="project_designs.php?id=251785&amp;designid=29249">251785-10</a>',
+    '<a href=project_designs.php?id=251785&amp;designid=29290>03/13/2026</a>',
+    '<a href=project_designs.php?id=251785&amp;designid=29290>251785-11</a>',
+  ].join('');
+
+  const revisions = context.squarecoilFindDesignRevisions_(html, '251785');
+
+  assert.deepEqual(JSON.parse(JSON.stringify(revisions)), [
+    { designId: '29290', designNumber: '251785-11', revision: 11 },
+    { designId: '29249', designNumber: '251785-10', revision: 10 },
+    { designId: '28492', designNumber: '251785-01', revision: 1 },
+  ]);
+});
+
+test('general Squarecoil probe downloads the latest revision and handles a job with no designs', () => {
+  const username = 'integration-user';
+  const password = 'do-not-log-this';
+  const revisionList = [
+    '<a href="project_designs.php?id=251785&amp;designid=28492">251785-01</a>',
+    '<a href="project_designs.php?id=251785&amp;designid=29249">251785-10</a>',
+    '<a href="project_designs.php?id=251785&amp;designid=29290">251785-11</a>',
+  ].join('');
+  const responses = [
+    response(200, '<form action="login.php"><input name="username"></form>', {
+      'Set-Cookie': 'PHPSESSID=anonymous; Path=/; HttpOnly',
+    }),
+    response(302, '', {
+      'Set-Cookie': 'PHPSESSID=authenticated; Path=/; HttpOnly',
+      Location: 'dashboard.php',
+    }),
+    response(200, '<a href="dashboard.php">Dashboard</a>'),
+    response(200, revisionList),
+    response(200, [
+      '<strong>251785-11</strong>',
+      '<a target=_blank href=download_design_file.php?file_id=44379&amp;project_id=251785>',
+      '251785_Prod_HarmondAscendPropPkg_v9.pdf</a>',
+    ].join('')),
+    response(200, '', { 'Content-Type': 'application/pdf' }, Buffer.from('%PDF-1.7\nlatest')),
+    response(200, '<h1>261364</h1><div>Designs</div><a href="new_design.php?project_id=261364">New</a>'),
+  ];
+  const { context, requests, logs } = loadBackend({
+    SQUARECOIL_USERNAME: username,
+    SQUARECOIL_PASSWORD: password,
+  }, responses);
+
+  const result = context.testSquarecoilJobLookup();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), [
+    {
+      success: true,
+      jobNum: '251785',
+      designNumber: '251785-11',
+      designId: '29290',
+      fileId: '44379',
+      fileName: '251785_Prod_HarmondAscendPropPkg_v9.pdf',
+      responseCode: 200,
+      bytes: 15,
+      pdfValid: true,
+    },
+    {
+      success: true,
+      jobNum: '261364',
+      fileFound: false,
+      reason: 'no_designs',
+    },
+  ]);
+  assert.match(requests[3].url, /project_designs\.php\?id=251785$/);
+  assert.match(requests[4].url, /id=251785&designid=29290$/);
+  assert.match(requests[5].url, /file_id=44379&project_id=251785$/);
+  assert.match(requests[6].url, /project_designs\.php\?id=261364$/);
+  const observable = JSON.stringify(result) + logs.join('\n');
+  assert.doesNotMatch(observable, new RegExp(username));
+  assert.doesNotMatch(observable, new RegExp(password));
+  assert.doesNotMatch(observable, /PHPSESSID/);
+});
