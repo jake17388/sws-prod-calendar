@@ -34,6 +34,17 @@ test('user management reveals PINs to Admins and puts session revocation in a us
   assert.match(users, /user\.pin/);
 });
 
+test('Admins can choose a temporary or regular PIN when resetting an account', () => {
+  const api = read('js/api.js');
+  const users = read('js/components/userManagement.js');
+
+  assert.match(api, /temporaryPin\?: boolean/);
+  assert.match(users, /Temporary PIN/);
+  assert.match(users, /Regular PIN/);
+  assert.match(users, /temporaryPin/);
+  assert.match(users, /currentDepartment\(\) === 'Admin'/);
+});
+
 test('My Account submits a PIN from the keyboard and preserves the replacement session token', () => {
   const app = read('js/app.js');
   assert.match(app, /my-account-pin'[\s\S]*keydown[\s\S]*saveMyAccount/);

@@ -82,6 +82,17 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       };
     } else if (action === 'getUsers') {
       body = { users: [{ id: 'worker', name: 'Alex Worker', department: 'Paint', pin: '000001', mustChangePin: true }] };
+    } else if (action === 'updateUser') {
+      body = {
+        success: true,
+        user: {
+          id: payload.id,
+          name: 'Alex Worker',
+          department: 'Paint',
+          pin: payload.pin,
+          mustChangePin: payload.temporaryPin !== false,
+        },
+      };
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
@@ -240,4 +251,19 @@ test('User Management shows which accounts still have temporary PINs', async ({ 
   await page.getByRole('button', { name: 'User Management' }).click();
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
   await expect(page.getByText('Temporary PIN', { exact: true })).toBeVisible();
+});
+
+test('an Admin can reset an account with a regular PIN', async ({ page }) => {
+  await mockBackend(page);
+  await login(page);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'User Management' }).click();
+
+  const row = page.getByRole('group', { name: /Alex Worker, Paint/ });
+  await row.getByLabel('PIN type for Alex Worker').selectOption('regular');
+  await row.locator('.user-row-pin').fill('654321');
+  await row.locator('.user-row-pin').press('Tab');
+
+  await expect(row.getByText('Temporary PIN', { exact: true })).toHaveCount(0);
+  await expect(row.getByText('Regular PIN updated')).toBeVisible();
 });

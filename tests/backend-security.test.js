@@ -141,6 +141,50 @@ test('temporary PIN users must choose a different PIN before the requirement cle
   assert.equal(context.checkPin('654321', 'ipad-1').mustChangePin, false);
 });
 
+test('an Admin can choose whether a reset PIN is temporary or regular', () => {
+  const original = [
+    { id: 'admin', name: 'Jake', department: 'Admin', pin: '111111', authVersion: 1 },
+    { id: 'worker', name: 'Pat', department: 'Paint', pin: '222222', authVersion: 1, mustChangePin: false },
+  ];
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+    PIN_CHANGE_STATUS_BATCH: '2026-08-10-required-pin-change',
+  });
+  const admin = { id: 'admin', department: 'Admin' };
+
+  const temporary = context.updateUser(admin, { id: 'worker', pin: '333333', temporaryPin: true });
+  assert.equal(temporary.success, true);
+  assert.equal(temporary.user.mustChangePin, true);
+  assert.equal(context.checkPin('333333', 'ipad-temp').mustChangePin, true);
+
+  const regular = context.updateUser(admin, { id: 'worker', pin: '444444', temporaryPin: false });
+  assert.equal(regular.success, true);
+  assert.equal(regular.user.mustChangePin, false);
+  assert.equal(context.checkPin('444444', 'ipad-regular').mustChangePin, false);
+});
+
+test('only an Admin can mark a reset PIN as regular', () => {
+  const original = [
+    { id: 'manager', name: 'Manager', department: 'Manager', pin: '111111', authVersion: 1 },
+    { id: 'worker', name: 'Pat', department: 'Paint', pin: '222222', authVersion: 1, mustChangePin: false },
+  ];
+  const { context } = loadBackend({
+    USERS: JSON.stringify(original),
+    TRAINING_PIN_BATCH: '2026-08-07-six-digit',
+    PIN_CHANGE_STATUS_BATCH: '2026-08-10-required-pin-change',
+  });
+  const manager = { id: 'manager', department: 'Manager' };
+
+  assert.equal(
+    context.updateUser(manager, { id: 'worker', pin: '333333', temporaryPin: false }).error,
+    'forbidden',
+  );
+  const defaultReset = context.updateUser(manager, { id: 'worker', pin: '333333' });
+  assert.equal(defaultReset.success, true);
+  assert.equal(defaultReset.user.mustChangePin, true);
+});
+
 test('only Admins can rename accounts', () => {
   const original = [
     { id: 'admin', name: 'Admin', department: 'Admin', pin: '111111', authVersion: 1 },
