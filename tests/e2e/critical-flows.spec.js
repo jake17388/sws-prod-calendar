@@ -249,7 +249,6 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
 
   await expect(page.getByRole('button', { name: 'Job Selector' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Jobs to Assign' })).toBeHidden();
-  await page.getByRole('button', { name: 'Job Selector' }).click();
   await expect(page.getByRole('heading', { name: 'What job are you beginning work on?' })).toBeVisible();
 
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();

@@ -50,11 +50,11 @@ function isJobSelectorMounted(container) {
   return !!container.querySelector('.job-selector-shell');
 }
 
-function beginJob(container, jobs, jobNum, source) {
+function beginJob(container, jobs, jobNum, source, jobName) {
   if (actionBusy) return;
   setBusy(container, true);
   showHint(container, 'Saving start time…');
-  startJobTime(jobNum, source)
+  startJobTime(jobNum, source, jobName)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not start job');
       activeEntry = result.active;
@@ -128,7 +128,11 @@ function runLookup(container, jobs) {
 
 function bindJobSelector(container, jobs) {
   container.querySelectorAll('.job-selector-job').forEach(button => {
-    button.addEventListener('click', () => beginJob(container, jobs, button.dataset.jobNum, 'assigned'));
+    button.addEventListener('click', () => {
+      const taskLabel = button.querySelector('.job-selector-job-tasks');
+      if (taskLabel) taskLabel.textContent = 'Starting…';
+      beginJob(container, jobs, button.dataset.jobNum, 'assigned', button.dataset.jobName);
+    });
   });
   container.querySelector('.job-selector-stop')?.addEventListener('click', () => endWork(container, jobs));
   container.querySelector('.job-selector-lookup')?.addEventListener('click', () => runLookup(container, jobs));
@@ -136,7 +140,7 @@ function bindJobSelector(container, jobs) {
     if (event.key === 'Enter') runLookup(container, jobs);
   });
   container.querySelector('.job-selector-other-confirm button')?.addEventListener('click', () => {
-    beginJob(container, jobs, lookupResult.jobNum, 'other');
+    beginJob(container, jobs, lookupResult.jobNum, 'other', lookupResult.name);
   });
 }
 
@@ -158,7 +162,7 @@ function paintJobSelector(container, jobs) {
     ? selectable.map(job => {
       const isActive = activeEntry && String(activeEntry.jobNum) === String(job.jobNum);
       const taskLabel = `${job.openTaskCount} open task${job.openTaskCount === 1 ? '' : 's'}`;
-      return `<button class="job-selector-job${isActive ? ' is-active' : ''}" type="button" data-job-num="${escapeAttr(job.jobNum)}" ${isActive ? 'disabled' : ''}>
+      return `<button class="job-selector-job${isActive ? ' is-active' : ''}" type="button" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.title)}" ${isActive ? 'disabled' : ''}>
         <span class="job-selector-job-number">${escapeHtml(job.jobNum)}</span>
         <span class="job-selector-job-name">${escapeHtml(job.title)}</span>
         <span class="job-selector-job-tasks">${escapeHtml(isActive ? 'Active now' : taskLabel)}</span>

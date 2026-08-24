@@ -44,8 +44,8 @@ export const fetchJobTimeStatus = () => scriptGet('getJobTimeStatus');
 
 export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
 
-export const startJobTime = (jobNum, source) =>
-  scriptPost({ action: 'startJobTime', jobNum, source });
+export const startJobTime = (jobNum, source, jobName) =>
+  scriptPost({ action: 'startJobTime', jobNum, source, jobName });
 
 export const stopJobTime = () => scriptPost({ action: 'stopJobTime' });
 

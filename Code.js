@@ -2010,12 +2010,16 @@ function resolveJobTimeSelection_(actor, data) {
     return { jobNum, jobName: result.job.name, source };
   }
 
-  const job = (getProductionJobs(null, actor).jobs || []).find(candidate => String(candidate.jobNum) === jobNum);
-  const openTasks = job && !job.completed && (job.departments || []).indexOf(actor.department) !== -1
-    ? ((job.departmentChecklists && job.departmentChecklists[actor.department]) || []).filter(item => !item.done)
+  // Assigned starts only need the tracking record to verify authorization.
+  // Rebuilding the Calendar-backed production list here added seconds to the
+  // shop-floor tap path even though the user had already loaded that list.
+  const tracking = getAllTracking()[jobNum] || null;
+  const openTasks = tracking && !tracking.completed && (tracking.departments || []).indexOf(actor.department) !== -1
+    ? ((tracking.departmentChecklists && tracking.departmentChecklists[actor.department]) || []).filter(item => !item.done)
     : [];
-  if (!job || !openTasks.length) return { error: 'This job no longer has open tasks for ' + actor.department };
-  return { jobNum, jobName: String(job.title || ('Job ' + jobNum)).slice(0, 300), source };
+  if (!tracking || !openTasks.length) return { error: 'This job no longer has open tasks for ' + actor.department };
+  const jobName = String((data && data.jobName) || '').trim().slice(0, 300) || ('Job ' + jobNum);
+  return { jobNum, jobName, source };
 }
 
 function getJobTimeStatus(actor) {

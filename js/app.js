@@ -387,6 +387,9 @@ function saveMyAccount() {
 }
 
 function boot() {
+  // Job selection is the production crew's primary clock-in workflow. Take
+  // them straight there; managers and other roles keep the calendar default.
+  activeView = canUseJobSelector() ? 'jobSelector' : 'week';
   // Warm the PDF engine in parallel with the first jobs request. This does
   // not block app startup, but removes a cold CDN/module load from the first
   // Production File the user opens.
