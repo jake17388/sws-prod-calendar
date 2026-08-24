@@ -56,3 +56,10 @@ test('interactive controls expose tactile, saving, skeleton, and reduced-motion 
   assert.match(assignment, /taskToggleDebouncer/);
   assert.match(departments, /checklist-check\.saving/);
 });
+
+test('open job editing suppresses global saving noise and background replacement refreshes', () => {
+  const app = read('js/app.js');
+  assert.match(app, /isJobDetailOpen\(\)/);
+  assert.match(app, /showStatus\s*=\s*pending[\s\S]{0,160}!isJobDetailOpen\(\)/);
+  assert.match(app, /if\s*\(isJobDetailOpen\(\)[^)]*\)[^{]*return/);
+});

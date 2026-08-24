@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, currentDepartments = null } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -47,6 +47,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     };
   }
   let activeJobTime = null;
+  let remainingDepartmentConflicts = departmentConflictOnce ? 1 : 0;
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
     let action;
@@ -118,6 +119,29 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
+    } else if (action === 'updateJobDepartments') {
+      if (departmentSaveDelayMs) await new Promise(resolve => setTimeout(resolve, departmentSaveDelayMs));
+      if (remainingDepartmentConflicts > 0) {
+        remainingDepartmentConflicts--;
+        currentJob = { ...currentJob, updatedAt: '2026-08-10T12:00:30.000Z' };
+        body = {
+          success: false,
+          error: 'conflict',
+          departments: currentJob.departments,
+          currentDepartments: currentJob.currentDepartments,
+          departmentChecklists: currentJob.departmentChecklists,
+          updatedAt: currentJob.updatedAt,
+        };
+      } else {
+        currentJob = {
+          ...currentJob,
+          departments: payload.departments,
+          currentDepartments: payload.currentDepartments,
+          departmentChecklists: payload.departmentChecklists,
+          updatedAt: '2026-08-10T12:01:00.000Z',
+        };
+        body = { success: true, ...currentJob };
+      }
     } else if (action === 'startJobTime') {
       if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
       activeJobTime = {
@@ -288,6 +312,43 @@ test('a TV account shows only a compact, readable current-week display', async (
   expect(order.indexOf('last-updated')).toBeLessThan(order.indexOf('refresh-btn'));
   expect(order.indexOf('refresh-btn')).toBeLessThan(order.indexOf('user-badge'));
   await expect(page.locator('.job-card-title')).toHaveCSS('-webkit-line-clamp', 'none');
+});
+
+test('a Manager can assign departments and keep typing while the save finishes', async ({ page }) => {
+  await mockBackend(page, { department: 'Manager', departmentSaveDelayMs: 700 });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+
+  const departments = page.locator('#job-detail-departments');
+  for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
+    await departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox').check();
+  }
+  const manufacturing = departments.locator('.dept-assign-item').filter({ hasText: 'Manufacturing' });
+  const draft = manufacturing.getByPlaceholder('Add item…');
+  await draft.fill('Cut aluminum returns to field measurements');
+
+  await expect(page.locator('#save-status')).toBeHidden();
+  await page.waitForTimeout(1000);
+  await expect(draft).toHaveValue('Cut aluminum returns to field measurements');
+  for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
+    await expect(departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox')).toBeChecked();
+  }
+});
+
+test('a stale save rebases rapid Manager selections instead of erasing them', async ({ page }) => {
+  await mockBackend(page, { department: 'Manager', departmentSaveDelayMs: 400, departmentConflictOnce: true });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+
+  const departments = page.locator('#job-detail-departments');
+  for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
+    await departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox').check();
+  }
+  await page.waitForTimeout(1200);
+
+  for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
+    await expect(departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox')).toBeChecked();
+  }
 });
 
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
