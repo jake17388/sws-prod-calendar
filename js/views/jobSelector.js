@@ -12,6 +12,9 @@ let actionBusy = false;
 let statusRevision = 0;
 
 export function resetJobSelectorStatus() {
+  // A user may switch tabs while the background save is still running. Keep
+  // the optimistic state intact if they return before that request settles.
+  if (actionBusy) return;
   statusRevision += 1;
   activeEntry = null;
   statusLoaded = false;
@@ -233,7 +236,7 @@ export function renderJobSelector(container, _refDate, jobs) {
   paintJobSelector(container, jobs);
   if (statusLoaded || statusPromise) return;
   const requestRevision = statusRevision;
-  statusPromise = fetchJobTimeStatus()
+  const request = fetchJobTimeStatus()
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not load current job');
       if (requestRevision !== statusRevision) return;
@@ -248,8 +251,12 @@ export function renderJobSelector(container, _refDate, jobs) {
         paintJobSelector(container, jobs);
         showHint(container, err.message || 'Could not load current job', true);
       }
-    })
-    .finally(() => { statusPromise = null; });
+    });
+  statusPromise = request;
+  request.finally(() => {
+    // A navigation can start a newer status request before this one settles.
+    if (statusPromise === request) statusPromise = null;
+  });
 }
 
 export function jobSelectorRangeLabel() {
