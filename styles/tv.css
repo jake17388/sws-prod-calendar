@@ -20,6 +20,7 @@ body.tv-mode #header-count {
   color: rgba(255, 255, 255, 0.72);
   font-size: 12px;
 }
+body.tv-mode #header-count { display: none !important; }
 body.tv-mode #refresh-btn {
   display: inline-flex;
   align-items: center;
@@ -33,22 +34,14 @@ body.tv-mode #user-badge {
   font-size: 12px;
 }
 
-body.tv-mode #stats-bar {
-  min-height: 44px;
-  padding: 5px 12px;
-  gap: 7px;
-}
-body.tv-mode .stat-chip { padding: 5px 9px; gap: 6px; }
-body.tv-mode .stat-chip-value { font-size: 14px; }
-body.tv-mode .stat-chip-label,
-body.tv-mode .stats-bar-total { font-size: 11px; }
+body.tv-mode #stats-bar { display: none !important; }
 
 body.tv-mode main.view-area { overflow: hidden; }
 body.tv-mode .week-grid {
   width: 100%;
   height: 100%;
   min-height: 0;
-  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  grid-template-columns: var(--week-cols) !important;
 }
 body.tv-mode .week-day-col { min-height: 0; overflow: hidden; }
 body.tv-mode .week-day-header {
@@ -88,9 +81,23 @@ body.tv-mode .job-card-title {
   line-height: 1.18;
   overflow-wrap: anywhere;
 }
-body.tv-mode .job-card-dept-badges { display: none; }
+body.tv-mode .job-card-dept-badges {
+  display: flex;
+  max-width: 100px;
+  gap: 3px;
+}
+body.tv-mode .job-card-dept-row { gap: 0; }
+body.tv-mode .job-card-dept-progress { display: none; }
+body.tv-mode .job-card-dept-badge {
+  max-width: 96px;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+body.tv-mode .job-card-dept-current-dot {
+  width: 10px;
+  height: 10px;
+}
 
 @media (max-width: 900px) {
-  body.tv-mode #header-count { display: none; }
   body.tv-mode .job-card-title { font-size: 12px; }
 }
