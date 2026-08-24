@@ -18,7 +18,7 @@ const desiredJobOrder = [
 test('department selectors use the production workflow order', () => {
   assert.deepEqual(JOB_TAGS, desiredJobOrder);
   assert.deepEqual(JOB_DEPARTMENTS, desiredJobOrder.slice(0, -1));
-  assert.deepEqual(DEPARTMENTS.slice(3), desiredJobOrder.slice(0, -1));
+  assert.deepEqual(DEPARTMENTS.slice(4), desiredJobOrder.slice(0, -1));
 });
 
 test('the backend mirrors the same production department order', () => {

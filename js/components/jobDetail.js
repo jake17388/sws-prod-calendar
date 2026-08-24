@@ -1,7 +1,7 @@
 import { updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
 import { findJob, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
-import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin } from '../auth.js';
+import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin, isTvDisplay } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { renderNotes } from './notes.js';
@@ -647,7 +647,7 @@ export function openJobDetail(jobKey) {
     });
   } : null;
 
-  renderNotes(document.getElementById('job-detail-notes'), job, { canWrite: true });
+  renderNotes(document.getElementById('job-detail-notes'), job, { canWrite: !isTvDisplay() });
 
   document.getElementById('job-detail-overlay').classList.add('open');
   setHeaderDimmed(true);

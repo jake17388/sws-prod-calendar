@@ -14,7 +14,7 @@ function readAuth() {
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return null;
     let stored = JSON.parse(raw);
-    if (stored && stored.lastActiveAt && Date.now() - stored.lastActiveAt > INACTIVITY_TTL_MS) {
+    if (stored && stored.department !== 'TV' && stored.lastActiveAt && Date.now() - stored.lastActiveAt > INACTIVITY_TTL_MS) {
       localStorage.removeItem(AUTH_KEY);
       return null;
     }
@@ -49,6 +49,7 @@ export const getAuth = () => auth;
 export const currentUser = () => auth ? auth.user : null;
 export const currentUserId = () => auth ? auth.userId : null;
 export const currentDepartment = () => auth ? auth.department : null;
+export const isTvDisplay = () => !!auth && auth.department === 'TV';
 // Derived from department, matching canEditDueDates() in Code.js. This used to
 // read a name-based `isDueDateEditor` flag baked into the session at login —
 // see the Code.js comment for why keying a permission off an editable name was
@@ -137,7 +138,7 @@ export function initAuth(onLogin) {
   });
   ['pointerdown', 'keydown'].forEach(eventName => document.addEventListener(eventName, touchSession, { passive: true }));
   setInterval(() => {
-    if (auth && auth.lastActiveAt && Date.now() - auth.lastActiveAt > INACTIVITY_TTL_MS) signOut();
+    if (auth && auth.department !== 'TV' && auth.lastActiveAt && Date.now() - auth.lastActiveAt > INACTIVITY_TTL_MS) signOut();
   }, 60000);
 
   if (auth) {

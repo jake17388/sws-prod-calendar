@@ -14,6 +14,6 @@ test('the job screen has one shared notes timeline and no department note contro
 
   assert.doesNotMatch(departments, /renderDeptNotes|dept-assign-notes/);
   assert.doesNotMatch(notes, /departmentNotes|scope === 'project'/);
-  assert.match(jobDetail, /renderNotes\([^\n]+\{ canWrite: true \}\)/);
+  assert.match(jobDetail, /renderNotes\([^\n]+\{ canWrite: !isTvDisplay\(\) \}\)/);
   assert.doesNotMatch(auth, /canAddProjectNotes/);
 });

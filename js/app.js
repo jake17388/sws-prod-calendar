@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canUseJobSelector, updateAuthProfile, signOut, isAdmin, mustChangePin } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canUseJobSelector, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
@@ -52,6 +52,31 @@ window.addEventListener('beforeunload', event => {
 
 let activeView = 'week';
 let refDate = new Date();
+let tvDayKey = '';
+
+function localDayKey(date = new Date()) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function configureHeaderForRole() {
+  const tv = isTvDisplay();
+  document.body.classList.toggle('tv-mode', tv);
+  const toolbar = document.querySelector('.toolbar-left');
+  const cluster = document.querySelector('.header-user-cluster');
+  const updated = document.getElementById('last-updated');
+  const sync = document.getElementById('sync-status');
+  const saving = document.getElementById('save-status');
+  const count = document.getElementById('header-count');
+  const refresh = document.getElementById('refresh-btn');
+  const user = document.getElementById('user-badge');
+
+  if (tv) {
+    // At-a-glance status, then Refresh, then Prod TV — all on the top line.
+    [updated, sync, saving, count, refresh].forEach(element => cluster.insertBefore(element, user));
+  } else {
+    [refresh, updated, sync, saving, count].forEach(element => toolbar.appendChild(element));
+  }
+}
 
 // Which anchor the NEXT schedule render should scroll to, or null to leave the
 // scroll position alone. Set only by deliberate navigation (entering the view,
@@ -82,6 +107,11 @@ function applyScheduleScroll(container) {
 }
 
 function renderActiveView() {
+  if (isTvDisplay()) {
+    activeView = 'week';
+    refDate = new Date();
+    tvDayKey = localDayKey(refDate);
+  }
   const view = VIEWS[activeView];
   const container = document.getElementById('view-area');
   view.render(container, refDate, getJobs());
@@ -101,6 +131,7 @@ function renderActiveView() {
 }
 
 function switchView(view) {
+  if (isTvDisplay() && view !== 'week') return;
   const container = document.getElementById('view-area');
   container.classList.remove('view-enter');
   activeView = view;
@@ -397,6 +428,8 @@ function boot() {
   // Job selection is the production crew's primary clock-in workflow. Take
   // them straight there; managers and other roles keep the calendar default.
   activeView = canUseJobSelector() ? 'jobSelector' : 'week';
+  if (isTvDisplay()) activeView = 'week';
+  configureHeaderForRole();
   // Warm the PDF engine in parallel with the first jobs request. This does
   // not block app startup, but removes a cold CDN/module load from the first
   // Production File the user opens.
@@ -405,7 +438,7 @@ function boot() {
   const deptBadge = document.getElementById('dept-badge');
   const department = currentDepartment();
   deptBadge.textContent = department || '';
-  deptBadge.hidden = !department || department === 'Viewer';
+  deptBadge.hidden = !department || department === 'Viewer' || department === 'TV';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
   document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments());
@@ -521,6 +554,7 @@ updateOnlineState();
 // focus/visibility so the update banner reliably shows up.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
+    if (isTvDisplay() && localDayKey() !== tvDayKey) renderActiveView();
     checkForUpdate();
     checkForTrackingUpdate();
     startPolling();
@@ -528,6 +562,12 @@ document.addEventListener('visibilitychange', () => {
     stopPolling();
   }
 });
+
+// A production TV can remain open across Sunday/week boundaries. Keep its
+// date anchored to the real current week without requiring a reload.
+setInterval(() => {
+  if (isTvDisplay() && localDayKey() !== tvDayKey) renderActiveView();
+}, 60000);
 
 // See sw.js — forces every fetch to the network so a deploy is never left
 // partially stale by the browser/CDN cache.

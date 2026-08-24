@@ -23,6 +23,7 @@ export function renderWeek(container, refDate, jobs) {
     const jobsWrap = document.createElement('div');
     jobsWrap.className = 'week-day-jobs';
     const dayJobs = jobsByDate[iso] || [];
+    jobsWrap.style.setProperty('--tv-day-jobs', String(Math.max(dayJobs.length, 1)));
     if (!dayJobs.length) {
       jobsWrap.innerHTML = '<div class="week-day-empty">—</div>';
     } else {

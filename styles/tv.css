@@ -1,0 +1,96 @@
+/* Permanent production-floor display. The TV role is intentionally isolated
+   behind a body class so touch/phone layouts keep their existing behavior. */
+body.tv-mode .toolbar-row,
+body.tv-mode .nav-row,
+body.tv-mode .mobile-view-switcher {
+  display: none !important;
+}
+
+body.tv-mode .brand-row {
+  min-height: 48px;
+  padding: 5px 18px;
+}
+
+body.tv-mode .brand-mark { width: 25px; }
+body.tv-mode .brand-eyebrow { display: none; }
+body.tv-mode .brand-name { font-size: 13px; }
+body.tv-mode .header-user-cluster { gap: 10px; }
+body.tv-mode #last-updated,
+body.tv-mode #header-count {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+body.tv-mode #refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 10px;
+}
+body.tv-mode #user-badge {
+  min-height: 32px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+body.tv-mode #stats-bar {
+  min-height: 44px;
+  padding: 5px 12px;
+  gap: 7px;
+}
+body.tv-mode .stat-chip { padding: 5px 9px; gap: 6px; }
+body.tv-mode .stat-chip-value { font-size: 14px; }
+body.tv-mode .stat-chip-label,
+body.tv-mode .stats-bar-total { font-size: 11px; }
+
+body.tv-mode main.view-area { overflow: hidden; }
+body.tv-mode .week-grid {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+}
+body.tv-mode .week-day-col { min-height: 0; overflow: hidden; }
+body.tv-mode .week-day-header {
+  position: static;
+  padding: 5px 6px;
+  text-align: center;
+}
+body.tv-mode .week-day-header .dow { font-size: 11px; }
+body.tv-mode .week-day-header .dom { font-size: 19px; margin-top: 0; }
+body.tv-mode .week-day-jobs {
+  display: grid;
+  grid-template-rows: repeat(var(--tv-day-jobs), minmax(0, 1fr));
+  min-height: 0;
+  padding: 5px;
+  gap: 5px;
+  overflow: hidden;
+}
+body.tv-mode .job-card {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  gap: 7px;
+  padding: 7px 7px 7px 9px;
+  border-left-width: 4px;
+  align-items: flex-start;
+}
+body.tv-mode .job-card-checkbox {
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+}
+body.tv-mode .job-card-title {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  font-size: clamp(12px, 0.9vw, 17px);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+body.tv-mode .job-card-dept-badges { display: none; }
+
+@media (max-width: 900px) {
+  body.tv-mode #header-count { display: none; }
+  body.tv-mode .job-card-title { font-size: 12px; }
+}

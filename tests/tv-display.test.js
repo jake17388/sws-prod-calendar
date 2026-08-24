@@ -19,7 +19,7 @@ test('TV is an Admin-managed display role with all-job visibility and no write a
   assert.equal(vm.runInContext("DEPARTMENTS.includes('TV')", context), true);
   assert.equal(context.canManageDepartment('Admin', 'TV'), true);
   assert.equal(context.canManageDepartment('Manager', 'TV'), false);
-  assert.equal(context.canAccessJobKey(tv, { departments: ['Paint'] }), true);
+  assert.equal(context.canAccessJobKey(tv, '260001'), true);
   assert.equal(context.canAssignDepartments('TV'), false);
   assert.equal(context.canUseJobSelector('TV'), false);
   assert.equal(context.canUploadAdditionalFiles('TV'), false);
@@ -36,6 +36,7 @@ test('TV frontend locks the account to a compact current-week display', () => {
   assert.match(config, /DEPARTMENTS\s*=\s*\[[^\]]*'TV'/);
   assert.match(auth, /isTvDisplay/);
   assert.match(auth, /department\s*!==\s*'TV'/);
+  assert.match(fs.readFileSync(path.join(root, 'Code.js'), 'utf8'), /user\.department === 'TV' \? TV_TOKEN_TTL_MS/);
   assert.match(app, /classList\.toggle\('tv-mode'/);
   assert.match(app, /if\s*\(isTvDisplay\(\)\)[\s\S]{0,180}activeView\s*=\s*'week'/);
   assert.match(app, /last-updated[\s\S]{0,500}refresh-btn[\s\S]{0,500}user-badge/);
