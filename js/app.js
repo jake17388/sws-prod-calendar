@@ -482,6 +482,7 @@ function boot() {
   });
   document.getElementById('refresh-btn').addEventListener('click', () => refreshJobs(true));
   document.getElementById('job-detail-close').addEventListener('click', closeJobDetail);
+  document.getElementById('job-detail-save-close').addEventListener('click', closeJobDetail);
   document.getElementById('job-detail-overlay').addEventListener('click', e => {
     if (e.target.id === 'job-detail-overlay') closeJobDetail();
   });

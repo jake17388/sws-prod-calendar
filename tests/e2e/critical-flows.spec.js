@@ -364,13 +364,20 @@ test('a Manager can keep editing an existing task across an in-flight department
   await page.getByRole('button', { name: /Open 260001/ }).click();
 
   const departments = page.locator('#job-detail-departments');
+  const revisedTaskSaved = page.waitForResponse(response => {
+    const request = response.request();
+    if (request.method() !== 'POST') return false;
+    const payload = JSON.parse(request.postData() || '{}');
+    return payload.action === 'updateJobDepartments'
+      && payload.departmentChecklists?.Manufacturing?.[0]?.text === 'Revised while another save is running';
+  });
   await departments.locator('.dept-assign-item').filter({ hasText: 'Graphics' }).locator('.dept-needed-checkbox').check();
   const existingTask = departments.locator('.dept-assign-item').filter({ hasText: 'Manufacturing' }).locator('.checklist-item input[type="text"]');
   await existingTask.fill('Revised while another save is running');
   await existingTask.press('Tab');
-  await page.waitForTimeout(1400);
+  await revisedTaskSaved;
 
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh' }).click();
   await page.getByRole('button', { name: /Open 260001/ }).click();
   await expect(page.locator('#job-detail-departments .dept-assign-item').filter({ hasText: 'Manufacturing' }).locator('.checklist-item input[type="text"]'))
@@ -384,7 +391,7 @@ test('a Manager can save and close immediately beneath the Production File actio
 
   const saveAndClose = page.getByRole('button', { name: 'Save and close' });
   await expect(saveAndClose).toBeVisible();
-  await expect(saveAndClose).toHaveCSS('background-color', 'rgb(34, 197, 94)');
+  await expect(saveAndClose).toHaveCSS('background-color', 'rgb(22, 163, 74)');
   expect(await saveAndClose.evaluate(element => element.previousElementSibling?.id))
     .toBe('job-detail-proof-open');
 

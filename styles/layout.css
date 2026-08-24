@@ -563,6 +563,8 @@ main.view-area {
 .settings-action.danger:hover { background: var(--status-critical-bg); }
 .settings-action.primary { background: var(--accent-solid); color: #fff; border-color: var(--accent-solid); }
 .settings-action.primary:hover { background: var(--accent-solid-hover); }
+.settings-action.success { background: var(--status-success-solid); color: #fff; border-color: var(--status-success-solid); }
+.settings-action.success:hover { background: color-mix(in srgb, var(--status-success-solid) 88%, #000); }
 
 .my-account-fields {
   display: grid;
