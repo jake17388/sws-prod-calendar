@@ -44,7 +44,11 @@ test('TV frontend locks the account to a compact current-week display', () => {
   assert.match(tvCss, /body\.tv-mode\s+\.toolbar-row[\s\S]{0,300}display:\s*none/);
   assert.match(tvCss, /body\.tv-mode\s+\.nav-row[\s\S]{0,300}display:\s*none/);
   assert.match(tvCss, /body\.tv-mode\s+\.mobile-view-switcher[\s\S]{0,300}display:\s*none/);
-  assert.match(tvCss, /grid-template-columns:\s*repeat\(7/);
-  assert.match(tvCss, /body\.tv-mode\s+\.job-card-dept-badges[\s\S]{0,100}display:\s*none/);
+  assert.match(tvCss, /body\.tv-mode\s+#stats-bar[\s\S]{0,100}display:\s*none/);
+  assert.match(tvCss, /body\.tv-mode\s+#header-count[\s\S]{0,100}display:\s*none/);
+  assert.match(tvCss, /grid-template-columns:\s*var\(--week-cols\)/);
+  assert.doesNotMatch(tvCss, /body\.tv-mode\s+\.job-card-dept-badges\s*\{\s*display:\s*none/);
+  assert.match(tvCss, /body\.tv-mode\s+\.job-card-dept-badges[\s\S]{0,160}display:\s*flex/);
+  assert.match(tvCss, /body\.tv-mode\s+\.job-card-dept-current-dot/);
   assert.match(tvCss, /-webkit-line-clamp:\s*unset/);
 });

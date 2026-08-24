@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, currentDepartments = null } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -36,6 +36,14 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       departments: [department],
       currentDepartments: [department],
       departmentChecklists: { [department]: [{ id: 'task-1', text: 'Open production task', done: false }] },
+    };
+  }
+  if (jobDepartments) {
+    currentJob = {
+      ...currentJob,
+      departments: jobDepartments,
+      currentDepartments: currentDepartments || [],
+      departmentChecklists: Object.fromEntries(jobDepartments.map(role => [role, []])),
     };
   }
   let activeJobTime = null;
@@ -251,6 +259,8 @@ test('a TV account shows only a compact, readable current-week display', async (
     department: 'TV',
     user: 'Prod TV',
     jobTitle: 'Canyon Ridge Community Center Monument and Directional Sign Package',
+    jobDepartments: ['Assembly', 'Paint'],
+    currentDepartments: ['Assembly'],
   });
   await login(page);
 
@@ -260,7 +270,18 @@ test('a TV account shows only a compact, readable current-week display', async (
   await expect(page.locator('.toolbar-row')).toBeHidden();
   await expect(page.locator('.nav-row')).toBeHidden();
   await expect(page.locator('.mobile-view-switcher')).toBeHidden();
-  await expect(page.locator('.job-card-dept-badges')).toBeHidden();
+  await expect(page.locator('#stats-bar')).toBeHidden();
+  await expect(page.locator('#header-count')).toBeHidden();
+  await expect(page.locator('.job-card-dept-badges')).toBeVisible();
+  await expect(page.locator('.job-card-dept-badge', { hasText: 'Assembly' })).toBeVisible();
+  await expect(page.locator('.job-card-dept-badge', { hasText: 'Paint' })).toBeVisible();
+  await expect(page.locator('.job-card-dept-badge-wrap', { hasText: 'Assembly' }).locator('.job-card-dept-current-dot')).toBeVisible();
+  await expect(page.locator('.job-card-dept-badge-wrap', { hasText: 'Paint' }).locator('.job-card-dept-current-dot')).toHaveCount(0);
+
+  const dayWidths = await page.locator('.week-day-col').evaluateAll(columns =>
+    columns.map(column => column.getBoundingClientRect().width));
+  expect(dayWidths[1]).toBeGreaterThan(dayWidths[0] * 2.5);
+  expect(dayWidths[5]).toBeGreaterThan(dayWidths[6] * 2.5);
 
   const order = await page.locator('.header-user-cluster > *').evaluateAll(elements =>
     elements.map(element => element.id).filter(Boolean));
