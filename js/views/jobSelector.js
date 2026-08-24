@@ -9,8 +9,10 @@ let statusLoaded = false;
 let statusPromise = null;
 let lookupResult = null;
 let actionBusy = false;
+let statusRevision = 0;
 
 export function resetJobSelectorStatus() {
+  statusRevision += 1;
   activeEntry = null;
   statusLoaded = false;
   statusPromise = null;
@@ -52,8 +54,17 @@ function isJobSelectorMounted(container) {
 
 function beginJob(container, jobs, jobNum, source, jobName) {
   if (actionBusy) return;
-  setBusy(container, true);
-  showHint(container, 'Saving start time…');
+  const previousEntry = activeEntry;
+  const optimisticEntry = {
+    entryId: '', jobNum, jobName, source,
+    startedAt: new Date().toISOString(), pending: true,
+  };
+  statusRevision += 1;
+  activeEntry = optimisticEntry;
+  statusLoaded = true;
+  lookupResult = null;
+  actionBusy = true;
+  if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
   startJobTime(jobNum, source, jobName)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not start job');
@@ -65,18 +76,24 @@ function beginJob(container, jobs, jobNum, source, jobName) {
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
+      activeEntry = previousEntry;
       actionBusy = false;
       if (isJobSelectorMounted(container)) {
-        setBusy(container, false);
+        paintJobSelector(container, jobs);
         showHint(container, err.message || 'Could not start job — try again', true);
       }
+      showToast('Start time was not saved — try again', 'error');
     });
 }
 
 function endWork(container, jobs) {
   if (actionBusy || !activeEntry) return;
-  setBusy(container, true);
-  showHint(container, 'Saving stop time…');
+  const previousEntry = activeEntry;
+  statusRevision += 1;
+  activeEntry = null;
+  statusLoaded = true;
+  actionBusy = true;
+  if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
   stopJobTime()
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not stop work');
@@ -87,11 +104,13 @@ function endWork(container, jobs) {
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
+      activeEntry = previousEntry;
       actionBusy = false;
       if (isJobSelectorMounted(container)) {
-        setBusy(container, false);
+        paintJobSelector(container, jobs);
         showHint(container, err.message || 'Could not stop work — try again', true);
       }
+      showToast('Stop time was not saved — try again', 'error');
     });
 }
 
@@ -204,23 +223,26 @@ function paintJobSelector(container, jobs) {
     </section>
     <div class="job-selector-hint" role="status" aria-live="polite"></div>
   </div>`;
-  container.setAttribute('aria-busy', 'false');
-  actionBusy = false;
   bindJobSelector(container, jobs);
+  if (actionBusy) setBusy(container, true);
+  else container.setAttribute('aria-busy', 'false');
 }
 
 export function renderJobSelector(container, _refDate, jobs) {
   if (actionBusy && isJobSelectorMounted(container)) return;
   paintJobSelector(container, jobs);
   if (statusLoaded || statusPromise) return;
+  const requestRevision = statusRevision;
   statusPromise = fetchJobTimeStatus()
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not load current job');
+      if (requestRevision !== statusRevision) return;
       activeEntry = result.active || null;
       statusLoaded = true;
       if (container.querySelector('.job-selector-shell')) paintJobSelector(container, jobs);
     })
     .catch(err => {
+      if (requestRevision !== statusRevision) return;
       statusLoaded = true;
       if (container.querySelector('.job-selector-shell')) {
         paintJobSelector(container, jobs);

@@ -31,12 +31,18 @@ const VIEWS = {
   archive: { render: renderArchive, label: () => 'Archive', step: d => d },
 };
 
-subscribePendingWrites(pending => {
+function renderPendingWriteStatus(pending = hasPendingWrites()) {
   const status = document.getElementById('save-status');
   if (!status) return;
-  status.hidden = !pending;
+  // Job starts/stops paint optimistically in their own screen. Keep the
+  // global red write indicator for editor workflows, but do not make a shop
+  // employee wait on a backend detail they do not need to watch.
+  const showStatus = pending && activeView !== 'jobSelector';
+  status.hidden = !showStatus;
   status.textContent = pending ? 'Saving…' : '';
-});
+}
+
+subscribePendingWrites(renderPendingWriteStatus);
 
 window.addEventListener('beforeunload', event => {
   if (!hasPendingWrites()) return;
@@ -90,6 +96,7 @@ function renderActiveView() {
   const isFocusedScreen = activeView === 'archive' || activeView === 'jobSelector';
   document.querySelector('.date-nav').hidden = isFocusedScreen;
   document.getElementById('stats-bar').hidden = isFocusedScreen;
+  renderPendingWriteStatus();
   applyScheduleScroll(container);
 }
 
