@@ -103,25 +103,28 @@ test('the blank JobTimeEntries tab receives a stable costing header without repl
 test('assigned selections require an unfinished task in the signed-in department', () => {
   const context = loadBackend();
   const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
-  context.getProductionJobs = () => ({
-    jobs: [
-      {
-        jobNum: '260101', title: 'Open Paint Job', completed: false,
-        departments: ['Paint'], departmentChecklists: { Paint: [{ id: 'p1', done: false }] },
-      },
-      {
-        jobNum: '260102', title: 'Finished Paint Job', completed: false,
-        departments: ['Paint'], departmentChecklists: { Paint: [{ id: 'p2', done: true }] },
-      },
-    ],
+  context.getProductionJobs = () => { throw new Error('starting a timer must not rebuild the calendar'); };
+  context.getAllTracking = () => ({
+    '260101': {
+      completed: false,
+      departments: ['Paint'], departmentChecklists: { Paint: [{ id: 'p1', done: false }] },
+    },
+    '260102': {
+      completed: false,
+      departments: ['Paint'], departmentChecklists: { Paint: [{ id: 'p2', done: true }] },
+    },
   });
 
   assert.deepEqual(
-    JSON.parse(JSON.stringify(context.resolveJobTimeSelection_(actor, { jobNum: '260101', source: 'assigned' }))),
+    JSON.parse(JSON.stringify(context.resolveJobTimeSelection_(actor, {
+      jobNum: '260101', jobName: 'Open Paint Job', source: 'assigned',
+    }))),
     { jobNum: '260101', jobName: 'Open Paint Job', source: 'assigned' },
   );
   assert.equal(
-    context.resolveJobTimeSelection_(actor, { jobNum: '260102', source: 'assigned' }).error,
+    context.resolveJobTimeSelection_(actor, {
+      jobNum: '260102', jobName: 'Finished Paint Job', source: 'assigned',
+    }).error,
     'This job no longer has open tasks for Paint',
   );
 });

@@ -33,6 +33,17 @@ test('production workers get Job Selector in the manager action location', () =>
   assert.match(auth, /canUseJobSelector/);
 });
 
+test('production workers land on Job Selector and assigned starts include the displayed job name', () => {
+  const app = read('js/app.js');
+  const view = read('js/views/jobSelector.js');
+  const api = read('js/api.js');
+
+  assert.match(app, /activeView\s*=\s*canUseJobSelector\(\)\s*\?\s*['"]jobSelector['"]\s*:\s*['"]week['"]/);
+  assert.match(view, /data-job-name=/);
+  assert.match(view, /startJobTime\(jobNum,\s*source,\s*jobName\)/);
+  assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName\)/);
+});
+
 test('the Job Selector screen includes assigned jobs, Other lookup, active status, and Stop Work', () => {
   const view = read('js/views/jobSelector.js');
   const api = read('js/api.js');
