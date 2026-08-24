@@ -31,13 +31,17 @@ const VIEWS = {
   archive: { render: renderArchive, label: () => 'Archive', step: d => d },
 };
 
+function isJobDetailOpen() {
+  return document.getElementById('job-detail-overlay')?.classList.contains('open') || false;
+}
+
 function renderPendingWriteStatus(pending = hasPendingWrites()) {
   const status = document.getElementById('save-status');
   if (!status) return;
-  // Job starts/stops paint optimistically in their own screen. Keep the
-  // global red write indicator for editor workflows, but do not make a shop
-  // employee wait on a backend detail they do not need to watch.
-  const showStatus = pending && activeView !== 'jobSelector';
+  // Job starts/stops and manager edits paint optimistically in their own
+  // screens. Keep backend activity out of the way while those interactions
+  // are already visibly reflected in place.
+  const showStatus = pending && activeView !== 'jobSelector' && !isJobDetailOpen();
   status.hidden = !showStatus;
   status.textContent = pending ? 'Saving…' : '';
 }
@@ -272,6 +276,11 @@ function nextPollDelay() {
 }
 
 function checkForTrackingUpdate() {
+  // Never replace the job collection under an open editor or an in-flight
+  // local write. The cheap version check resumes on the next poll, preserving
+  // near-real-time updates everywhere else without interrupting fast entry.
+  if (isJobDetailOpen()) return Promise.resolve();
+  if (hasPendingWrites()) return Promise.resolve();
   return fetchTrackingVersion()
     .then(version => {
       reportSyncSuccess();

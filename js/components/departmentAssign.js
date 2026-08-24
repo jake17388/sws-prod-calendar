@@ -37,13 +37,39 @@ function clearTaskSaving(job) {
   Object.values(job.departmentChecklists || {}).flat().forEach(item => markTaskSaving(item, false));
 }
 
+function settleTaskSavingUi() {
+  document.querySelectorAll('#job-detail-departments .checklist-item.is-saving').forEach(row => row.classList.remove('is-saving'));
+  document.querySelectorAll('#job-detail-departments .checklist-check.saving').forEach(button => {
+    button.classList.remove('saving');
+    button.setAttribute('aria-busy', 'false');
+  });
+}
+
+function editorHasActiveTextInput() {
+  const active = document.activeElement;
+  return !!active && active.matches('#job-detail-departments input[type="text"]');
+}
+
+function reconcileDepartmentChecklists(localByDepartment, serverByDepartment) {
+  const reconciled = {};
+  Object.entries(serverByDepartment || {}).forEach(([department, serverItems]) => {
+    const localItemsById = new Map((localByDepartment[department] || []).map(item => [item.id, item]));
+    reconciled[department] = serverItems.map(serverItem => {
+      const localItem = localItemsById.get(serverItem.id);
+      if (!localItem) return serverItem;
+      Object.assign(localItem, serverItem);
+      return localItem;
+    });
+  });
+  return reconciled;
+}
+
 // Persists the job's full departments/departmentChecklists/currentDepartments
 // state after any change — used by the Admin/Manager editor, which owns the
 // whole thing. Reconciles with the server's response afterward since it's
 // the source of truth for who/when completed each task.
-// `rerender`, when given, repaints the caller's view from the reconciled
-// `job` — needed on a conflict (someone else's edit landed first, so the
-// server's version wins) since it differs from what's already painted.
+// `rerender`, when given, is reserved for server-side structural workflow
+// changes. Normal saves and conflicts leave the editor DOM in place.
 //
 // Every call sends the job's `updatedAt` as an optimistic-concurrency
 // token, and the server rejects a stale one with a 'conflict'. Two of our
@@ -71,15 +97,32 @@ function sendPersist(job, queue) {
   queue.saving = true;
   queue.dirty = false;
   const expectedUpdatedAt = job.updatedAt;
-  updateJobDepartments(job.jobKey, job.departments, job.departmentChecklists, job.currentDepartments, expectedUpdatedAt)
+  // Freeze the outgoing payload. The manager is free to keep changing the
+  // live job object while this request is in flight; those newer edits set
+  // queue.dirty and are sent as the next snapshot.
+  const sent = {
+    departments: [...job.departments],
+    departmentChecklists: JSON.parse(JSON.stringify(job.departmentChecklists)),
+    currentDepartments: [...job.currentDepartments],
+  };
+  updateJobDepartments(job.jobKey, sent.departments, sent.departmentChecklists, sent.currentDepartments, expectedUpdatedAt)
     .then(res => {
-      if (!res.success && res.error !== 'conflict') {
+      if (res.error === 'conflict') {
+        // A note or another editor moved updatedAt first. Keep every local
+        // click and draft exactly where it is, adopt the fresh concurrency
+        // token, and resend the latest local snapshot. Repainting with the
+        // conflict response here used to erase all rapid department choices.
+        job.updatedAt = res.updatedAt || job.updatedAt;
+        queue.dirty = true;
+        return;
+      }
+      if (!res.success) {
         // A rejected save (job locked, permission denied, validation) used to
         // return here silently, leaving the optimistic local edit on screen as
         // though it had been written. The next poll would quietly revert it.
         showToast(res.error || "Couldn't save department changes", 'error');
         clearTaskSaving(job);
-        if (queue.rerender) queue.rerender();
+        settleTaskSavingUi();
         return;
       }
       job.updatedAt = res.updatedAt;
@@ -87,19 +130,23 @@ function sendPersist(job, queue) {
       // state already supersedes this response, so don't let this response
       // stomp it. It'll be sent (with the now-current updatedAt) below.
       if (queue.dirty) return;
-      // The server silently drops a department from currentDepartments the
-      // moment its last open task gets checked off (see
-      // updateJobDepartments/toggleDepartmentTaskDone in Code.js) — that
-      // isn't reflected by the caller's own optimistic re-render (which only
-      // repaints the checklist it just edited, not the sibling "Currently
-      // has it" checkbox), so force a full rerender whenever this response's
-      // currentDepartments differs from what was sent.
-      job.departments = res.departments;
-      job.departmentChecklists = res.departmentChecklists;
-      job.currentDepartments = res.currentDepartments;
+      const serverDepartments = Array.isArray(res.departments) ? res.departments : sent.departments;
+      const serverChecklists = res.departmentChecklists || sent.departmentChecklists;
+      const serverCurrentDepartments = Array.isArray(res.currentDepartments) ? res.currentDepartments : sent.currentDepartments;
+      const structuralChange = JSON.stringify(sent.departments) !== JSON.stringify(serverDepartments)
+        || JSON.stringify(sent.currentDepartments) !== JSON.stringify(serverCurrentDepartments);
+      job.departments = serverDepartments;
+      // Keep existing task objects alive so input listeners that are already
+      // on screen continue editing the canonical job after this response.
+      job.departmentChecklists = reconcileDepartmentChecklists(job.departmentChecklists, serverChecklists);
+      job.currentDepartments = serverCurrentDepartments;
       clearTaskSaving(job);
-      patchJob(job.jobKey, { departments: res.departments, departmentChecklists: res.departmentChecklists, currentDepartments: res.currentDepartments, updatedAt: res.updatedAt });
-      if (queue.rerender) queue.rerender();
+      settleTaskSavingUi();
+      patchJob(job.jobKey, { departments: job.departments, departmentChecklists: job.departmentChecklists, currentDepartments: job.currentDepartments, updatedAt: res.updatedAt });
+      // Ordinary saves never rebuild the editor. A backend workflow transition
+      // (for example Paint handing off to Assembly) may need a structural
+      // repaint, but even that waits until the manager is not actively typing.
+      if (structuralChange && !editorHasActiveTextInput() && queue.rerender) queue.rerender();
     })
     .catch(err => {
       // Network failure on a write. The edit is still sitting on screen looking
@@ -108,7 +155,7 @@ function sendPersist(job, queue) {
       console.error('Failed to save department changes:', err);
       showToast("Couldn't save department changes — check your connection", 'error');
       clearTaskSaving(job);
-      if (queue.rerender) queue.rerender();
+      settleTaskSavingUi();
     })
     .finally(() => {
       queue.saving = false;
@@ -171,8 +218,13 @@ function renderEditableChecklist(container, job, dept) {
         syncCurrentButtonState(container, job, dept);
       });
     }
-    row.querySelector('input[type="text"]').addEventListener('change', e => {
+    const textInput = row.querySelector('input[type="text"]');
+    textInput.addEventListener('input', e => {
+      item.text = e.target.value;
+    });
+    textInput.addEventListener('change', e => {
       item.text = e.target.value.trim();
+      e.target.value = item.text;
       persist(job, () => renderEditableChecklist(container, job, dept));
     });
     if (!locked) {

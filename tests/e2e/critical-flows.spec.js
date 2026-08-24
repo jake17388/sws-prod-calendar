@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -43,7 +43,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       ...currentJob,
       departments: jobDepartments,
       currentDepartments: currentDepartments || [],
-      departmentChecklists: Object.fromEntries(jobDepartments.map(role => [role, []])),
+      departmentChecklists: jobDepartmentChecklists || Object.fromEntries(jobDepartments.map(role => [role, []])),
     };
   }
   let activeJobTime = null;
@@ -349,6 +349,32 @@ test('a stale save rebases rapid Manager selections instead of erasing them', as
   for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
     await expect(departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox')).toBeChecked();
   }
+});
+
+test('a Manager can keep editing an existing task across an in-flight department save', async ({ page }) => {
+  await mockBackend(page, {
+    department: 'Manager',
+    departmentSaveDelayMs: 500,
+    jobDepartments: ['Manufacturing'],
+    jobDepartmentChecklists: {
+      Manufacturing: [{ id: 'task-1', text: 'Original task', done: false }],
+    },
+  });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+
+  const departments = page.locator('#job-detail-departments');
+  await departments.locator('.dept-assign-item').filter({ hasText: 'Graphics' }).locator('.dept-needed-checkbox').check();
+  const existingTask = departments.locator('.dept-assign-item').filter({ hasText: 'Manufacturing' }).locator('.checklist-item input[type="text"]');
+  await existingTask.fill('Revised while another save is running');
+  await existingTask.press('Tab');
+  await page.waitForTimeout(1400);
+
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.locator('#job-detail-departments .dept-assign-item').filter({ hasText: 'Manufacturing' }).locator('.checklist-item input[type="text"]'))
+    .toHaveValue('Revised while another save is running');
 });
 
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
