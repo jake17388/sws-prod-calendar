@@ -377,6 +377,33 @@ test('a Manager can keep editing an existing task across an in-flight department
     .toHaveValue('Revised while another save is running');
 });
 
+test('a Manager can save and close immediately beneath the Production File action', async ({ page }) => {
+  await mockBackend(page, { department: 'Manager', departmentSaveDelayMs: 500 });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+
+  const saveAndClose = page.getByRole('button', { name: 'Save and close' });
+  await expect(saveAndClose).toBeVisible();
+  await expect(saveAndClose).toHaveCSS('background-color', 'rgb(34, 197, 94)');
+  expect(await saveAndClose.evaluate(element => element.previousElementSibling?.id))
+    .toBe('job-detail-proof-open');
+
+  await page.locator('#job-detail-departments .dept-assign-item')
+    .filter({ hasText: 'Manufacturing' })
+    .locator('.dept-needed-checkbox')
+    .check();
+  await saveAndClose.click();
+  await expect(page.locator('#job-detail-overlay')).not.toHaveClass(/open/);
+
+  await page.waitForTimeout(900);
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.locator('#job-detail-departments .dept-assign-item')
+    .filter({ hasText: 'Manufacturing' })
+    .locator('.dept-needed-checkbox'))
+    .toBeChecked();
+});
+
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
   await mockBackend(page, { department: 'Paint', jobTimeDelayMs: 800 });
   await login(page);
