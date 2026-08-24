@@ -28,8 +28,8 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0 } = {}) {
-  let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}) };
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null } = {}) {
+  let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
       ...currentJob,
@@ -54,7 +54,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     if (action === 'login') {
       body = expectedPin && payload.pin !== expectedPin
         ? { ok: false }
-        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user: 'Test User', department, canManageUsers: department === 'Admin', mustChangePin };
+        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', mustChangePin };
     } else if (action === 'getProductionJobs') {
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
@@ -243,6 +243,30 @@ test('a Viewer can add to the same project notes timeline', async ({ page }) => 
   await page.getByPlaceholder('Add a note…').fill('Viewer update');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Viewer update')).toBeVisible();
+});
+
+test('a TV account shows only a compact, readable current-week display', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await mockBackend(page, {
+    department: 'TV',
+    user: 'Prod TV',
+    jobTitle: 'Canyon Ridge Community Center Monument and Directional Sign Package',
+  });
+  await login(page);
+
+  await expect(page.locator('body')).toHaveClass(/tv-mode/);
+  await expect(page.locator('.week-grid')).toBeVisible();
+  await expect(page.getByText('Canyon Ridge Community Center Monument and Directional Sign Package')).toBeVisible();
+  await expect(page.locator('.toolbar-row')).toBeHidden();
+  await expect(page.locator('.nav-row')).toBeHidden();
+  await expect(page.locator('.mobile-view-switcher')).toBeHidden();
+  await expect(page.locator('.job-card-dept-badges')).toBeHidden();
+
+  const order = await page.locator('.header-user-cluster > *').evaluateAll(elements =>
+    elements.map(element => element.id).filter(Boolean));
+  expect(order.indexOf('last-updated')).toBeLessThan(order.indexOf('refresh-btn'));
+  expect(order.indexOf('refresh-btn')).toBeLessThan(order.indexOf('user-badge'));
+  await expect(page.locator('.job-card-title')).toHaveCSS('-webkit-line-clamp', 'none');
 });
 
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
