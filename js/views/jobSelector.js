@@ -46,6 +46,10 @@ function showHint(container, message, isError = false) {
   hint.classList.toggle('is-error', isError);
 }
 
+function isJobSelectorMounted(container) {
+  return !!container.querySelector('.job-selector-shell');
+}
+
 function beginJob(container, jobs, jobNum, source) {
   if (actionBusy) return;
   setBusy(container, true);
@@ -56,12 +60,16 @@ function beginJob(container, jobs, jobNum, source) {
       activeEntry = result.active;
       statusLoaded = true;
       lookupResult = null;
+      actionBusy = false;
       showToast(result.alreadyActive ? `Already working on ${jobNum}` : `Started job ${jobNum}`);
-      paintJobSelector(container, jobs);
+      if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
-      setBusy(container, false);
-      showHint(container, err.message || 'Could not start job — try again', true);
+      actionBusy = false;
+      if (isJobSelectorMounted(container)) {
+        setBusy(container, false);
+        showHint(container, err.message || 'Could not start job — try again', true);
+      }
     });
 }
 
@@ -74,12 +82,16 @@ function endWork(container, jobs) {
       if (!result.success) throw new Error(result.error || 'Could not stop work');
       activeEntry = null;
       statusLoaded = true;
+      actionBusy = false;
       showToast('Work timer stopped');
-      paintJobSelector(container, jobs);
+      if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
-      setBusy(container, false);
-      showHint(container, err.message || 'Could not stop work — try again', true);
+      actionBusy = false;
+      if (isJobSelectorMounted(container)) {
+        setBusy(container, false);
+        showHint(container, err.message || 'Could not stop work — try again', true);
+      }
     });
 }
 
@@ -99,12 +111,18 @@ function runLookup(container, jobs) {
     .then(result => {
       if (!result.success || !result.found) throw new Error(result.error || 'Squarecoil job was not found');
       lookupResult = result.job;
-      paintJobSelector(container, jobs);
-      container.querySelector('.job-selector-other-confirm button')?.focus();
+      actionBusy = false;
+      if (isJobSelectorMounted(container)) {
+        paintJobSelector(container, jobs);
+        container.querySelector('.job-selector-other-confirm button')?.focus();
+      }
     })
     .catch(err => {
-      setBusy(container, false);
-      showHint(container, err.message || 'Could not look up that job', true);
+      actionBusy = false;
+      if (isJobSelectorMounted(container)) {
+        setBusy(container, false);
+        showHint(container, err.message || 'Could not look up that job', true);
+      }
     });
 }
 
@@ -188,6 +206,7 @@ function paintJobSelector(container, jobs) {
 }
 
 export function renderJobSelector(container, _refDate, jobs) {
+  if (actionBusy && isJobSelectorMounted(container)) return;
   paintJobSelector(container, jobs);
   if (statusLoaded || statusPromise) return;
   statusPromise = fetchJobTimeStatus()
