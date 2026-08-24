@@ -30,6 +30,15 @@ function onePagePdfBase64() {
 
 async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null, jobDueDate = null } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}) };
+  if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
+    currentJob = {
+      ...currentJob,
+      departments: [department],
+      currentDepartments: [department],
+      departmentChecklists: { [department]: [{ id: 'task-1', text: 'Open production task', done: false }] },
+    };
+  }
+  let activeJobTime = null;
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
     let action;
@@ -50,6 +59,11 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
       body = { version: 1 };
+    } else if (action === 'getJobTimeStatus') {
+      body = { success: true, active: activeJobTime };
+    } else if (action === 'lookupSquarecoilJob') {
+      const jobNum = new URL(request.url()).searchParams.get('jobNum');
+      body = { success: true, found: true, job: { jobNum, name: 'Squarecoil Other Job' } };
     } else if (action === 'getProofFile') {
       body = productionPdf
         ? { available: true, name: '260001-production.pdf', base64: productionPdf }
@@ -96,6 +110,21 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
+    } else if (action === 'startJobTime') {
+      activeJobTime = {
+        entryId: `entry-${payload.jobNum}`,
+        userId: 'admin',
+        employee: 'Test User',
+        department,
+        jobNum: payload.jobNum,
+        jobName: payload.source === 'other' ? 'Squarecoil Other Job' : currentJob.title,
+        source: payload.source,
+        startedAt: '2026-08-24T14:00:00.000Z',
+      };
+      body = { success: true, active: activeJobTime };
+    } else if (action === 'stopJobTime') {
+      activeJobTime = null;
+      body = { success: true, stopped: true, active: null };
     } else if (action === 'addAdditionalFile') {
       currentJob = {
         ...currentJob,
@@ -212,6 +241,28 @@ test('a Viewer can add to the same project notes timeline', async ({ page }) => 
   await page.getByPlaceholder('Add a note…').fill('Viewer update');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Viewer update')).toBeVisible();
+});
+
+test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
+  await mockBackend(page, { department: 'Paint' });
+  await login(page);
+
+  await expect(page.getByRole('button', { name: 'Job Selector' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Jobs to Assign' })).toBeHidden();
+  await page.getByRole('button', { name: 'Job Selector' }).click();
+  await expect(page.getByRole('heading', { name: 'What job are you beginning work on?' })).toBeVisible();
+
+  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await expect(page.getByText('260001 — Browser Test Job')).toBeVisible();
+
+  await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
+  await page.getByRole('button', { name: 'Look up job' }).click();
+  await expect(page.getByText('231180 — Squarecoil Other Job')).toBeVisible();
+  await page.getByRole('button', { name: 'Start this job' }).click();
+  await expect(page.getByText('231180 — Squarecoil Other Job')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Stop Work' }).click();
+  await expect(page.getByText('No active job')).toBeVisible();
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {

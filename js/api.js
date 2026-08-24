@@ -40,6 +40,15 @@ export const fetchProductionJobs = () =>
 /** Cheap poll target — one Script Property read, no Calendar/Sheet access. */
 export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d => d.version || 0);
 
+export const fetchJobTimeStatus = () => scriptGet('getJobTimeStatus');
+
+export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
+
+export const startJobTime = (jobNum, source) =>
+  scriptPost({ action: 'startJobTime', jobNum, source });
+
+export const stopJobTime = () => scriptPost({ action: 'stopJobTime' });
+
 export const fetchArchivedJobs = (query = '') =>
   scriptGet('getArchivedJobs', { q: query }).then(d => {
     if (d.error) throw new Error(d.error);

@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, updateAuthProfile, signOut, isAdmin, mustChangePin } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canUseJobSelector, updateAuthProfile, signOut, isAdmin, mustChangePin } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
@@ -12,6 +12,7 @@ import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
 import { renderSchedule } from './views/schedule.js';
 import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign.js';
+import { renderJobSelector, jobSelectorRangeLabel, resetJobSelectorStatus } from './views/jobSelector.js';
 import { renderArchive } from './views/archive.js';
 import { addDays } from './dates.js';
 import { showToast } from './toast.js';
@@ -26,6 +27,7 @@ const VIEWS = {
   week: { render: renderWeek, label: weekRangeLabel, step: (d, dir) => addDays(d, dir * 7) },
   schedule: { render: renderSchedule, label: () => 'Schedule', step: (d, dir) => addDays(d, dir * 30) },
   assign: { render: renderJobsToAssign, label: jobsToAssignRangeLabel, step: (d, dir) => addDays(d, dir * 30) },
+  jobSelector: { render: renderJobSelector, label: jobSelectorRangeLabel, step: d => d },
   archive: { render: renderArchive, label: () => 'Archive', step: d => d },
 };
 
@@ -84,8 +86,10 @@ function renderActiveView() {
     btn.setAttribute('aria-selected', String(isActive));
   });
   document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
-  document.querySelector('.date-nav').hidden = activeView === 'archive';
-  document.getElementById('stats-bar').hidden = activeView === 'archive';
+  document.getElementById('view-btn-job-selector').classList.toggle('active', activeView === 'jobSelector');
+  const isFocusedScreen = activeView === 'archive' || activeView === 'jobSelector';
+  document.querySelector('.date-nav').hidden = isFocusedScreen;
+  document.getElementById('stats-bar').hidden = isFocusedScreen;
   applyScheduleScroll(container);
 }
 
@@ -93,6 +97,7 @@ function switchView(view) {
   const container = document.getElementById('view-area');
   container.classList.remove('view-enter');
   activeView = view;
+  if (view === 'jobSelector') resetJobSelectorStatus();
   // Opening the schedule lands on the oldest still-open job rather than today.
   if (view === 'schedule') scheduleScrollTarget = 'open';
   renderActiveView();
@@ -395,12 +400,14 @@ function boot() {
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
   document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments());
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
+  document.getElementById('view-btn-job-selector').hidden = !canUseJobSelector();
   applyZoom();
 
   document.querySelectorAll('.view-switcher button').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
   document.getElementById('view-btn-assign').addEventListener('click', () => switchView('assign'));
+  document.getElementById('view-btn-job-selector').addEventListener('click', () => switchView('jobSelector'));
   // The arrows step by date in every view, schedule included — that's what
   // makes them meaningful there, since the schedule renders every job at once
   // and only the scroll position distinguishes one "page" from the next.

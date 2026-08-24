@@ -1,0 +1,181 @@
+.job-selector-shell {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5) var(--space-8);
+}
+
+.job-selector-heading { margin-bottom: var(--space-5); }
+.job-selector-eyebrow {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--status-warning-text);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+}
+.job-selector-heading h1 {
+  margin: 0;
+  color: var(--ink-primary);
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 4vw, 2.5rem);
+  letter-spacing: var(--tracking-tight);
+}
+.job-selector-heading p,
+.job-selector-section-heading p {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-secondary);
+  line-height: var(--line-normal);
+}
+
+.job-selector-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-md);
+  background: var(--status-success-bg);
+}
+.job-selector-current.is-idle {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+}
+.job-selector-current div { display: grid; gap: 3px; }
+.job-selector-current span,
+.job-selector-other-confirm span {
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.job-selector-current strong,
+.job-selector-other-confirm strong { color: var(--ink-primary); font-size: var(--text-lg); }
+.job-selector-current small { color: var(--ink-secondary); }
+.job-selector-current button,
+.job-selector-other-confirm button,
+.job-selector-lookup {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-4);
+  font-weight: var(--weight-bold);
+}
+.job-selector-current button {
+  border-color: var(--status-critical-border);
+  background: var(--status-critical-bg);
+  color: var(--status-critical-text);
+}
+.job-selector-current button:disabled { opacity: 0.45; cursor: default; }
+
+.job-selector-section {
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-2);
+}
+.job-selector-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.job-selector-section-heading h2 { margin: 0; color: var(--ink-primary); font-size: var(--text-lg); }
+.job-selector-section-heading > span {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  padding: 3px var(--space-3);
+  color: var(--ink-secondary);
+  font-size: var(--text-xs);
+}
+.job-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.job-selector-job {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px var(--space-3);
+  min-height: 72px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  color: var(--ink-primary);
+  text-align: left;
+  transition: border-color var(--duration-fast), background var(--duration-fast), transform var(--duration-fast);
+}
+.job-selector-job:hover:not(:disabled) {
+  border-color: var(--accent-solid);
+  background: var(--surface-card-hover);
+  transform: translateY(-1px);
+}
+.job-selector-job.is-active {
+  border-color: var(--status-success-border);
+  background: var(--status-success-bg);
+  cursor: default;
+}
+.job-selector-job-number { grid-row: span 2; color: var(--color-brand-gold); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.job-selector-job-name { overflow: hidden; font-weight: var(--weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
+.job-selector-job-tasks { color: var(--ink-secondary); font-size: var(--text-xs); }
+.job-selector-empty { padding: var(--space-5); color: var(--ink-secondary); text-align: center; }
+
+.job-selector-other-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+}
+.job-selector-other-controls label { grid-column: 1 / -1; color: var(--ink-secondary); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.job-selector-other-controls input {
+  min-height: 44px;
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  background: var(--surface-sunken);
+  color: var(--ink-primary);
+  font: inherit;
+}
+.job-selector-lookup,
+.job-selector-other-confirm button {
+  border-color: var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--ink-inverse);
+}
+.job-selector-other-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-md);
+  background: var(--status-success-bg);
+}
+.job-selector-other-confirm div { display: grid; gap: var(--space-1); }
+.job-selector-hint { min-height: 22px; margin-top: var(--space-3); color: var(--status-success-text); text-align: center; }
+.job-selector-hint.is-error { color: var(--status-critical-text); }
+
+@media (max-width: 650px) {
+  .job-selector-shell { padding: var(--space-5) var(--space-3) calc(var(--space-8) + env(safe-area-inset-bottom)); }
+  .job-selector-grid { grid-template-columns: 1fr; }
+  .job-selector-current,
+  .job-selector-other-confirm { align-items: stretch; flex-direction: column; }
+  .job-selector-current button,
+  .job-selector-other-confirm button { width: 100%; }
+  .job-selector-section { padding: var(--space-4); }
+}
+
+@media (max-width: 420px) {
+  .job-selector-other-controls { grid-template-columns: 1fr; }
+  .job-selector-other-controls label { grid-column: auto; }
+}

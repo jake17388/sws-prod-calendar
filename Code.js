@@ -45,6 +45,10 @@ function canAssignDepartments(department) {
   return department === 'Admin' || department === 'Manager';
 }
 
+function canUseJobSelector(department) {
+  return JOB_DEPARTMENTS.indexOf(String(department || '')) !== -1;
+}
+
 function canUploadAdditionalFiles(department) {
   return department === 'Admin' || department === 'Manager' || department === 'Viewer';
 }
@@ -779,6 +783,18 @@ function routeGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     return json({ version: getTrackingVersion() });
   }
+  if (action === 'getJobTimeStatus') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canUseJobSelector(actor.department)) return json({ error: 'forbidden' });
+    return json(getJobTimeStatus(actor));
+  }
+  if (action === 'lookupSquarecoilJob') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canUseJobSelector(actor.department)) return json({ error: 'forbidden' });
+    return json(lookupSquarecoilJob_(params.jobNum));
+  }
   if (action === 'getArchivedJobs') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
@@ -875,6 +891,8 @@ function routePost(e) {
   }
   if (data.action === 'updateJobDepartments') return respond(() => updateJobDepartments(actor, data));
   if (data.action === 'toggleDepartmentTaskDone') return respond(() => toggleDepartmentTaskDone(actor, data));
+  if (data.action === 'startJobTime') return respond(() => startJobTime(actor, data));
+  if (data.action === 'stopJobTime') return respond(() => stopJobTime(actor));
   if (data.action === 'addNote') return respond(() => addNote(actor, data));
   if (data.action === 'updateNote') return respond(() => updateNote(actor, data));
   if (data.action === 'deleteNote') return respond(() => deleteNote(actor, data));
@@ -1904,6 +1922,175 @@ function deleteAdditionalFile(actor, data) {
   return { ...result, additionalFiles: additionalFilesForClient(result.additionalFiles) };
 }
 
+// ── Job costing time entries ────────────────────────────────────────────────
+// Each row is one uninterrupted work segment. Starting a different job closes
+// the employee's previous open segment and appends a new row; Stop Work only
+// closes the current segment. Durable user ids preserve attribution even when
+// an Admin later renames an account.
+const JOB_TIME_SHEET_NAME = 'JobTimeEntries';
+const JOB_TIME_HEADERS = [
+  'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+  'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+];
+
+function getJobTimeEntriesSheet_() {
+  const ss = getTrackingSpreadsheet();
+  let sheet = ss.getSheetByName(JOB_TIME_SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(JOB_TIME_SHEET_NAME);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, JOB_TIME_HEADERS.length).setValues([JOB_TIME_HEADERS]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(2, 8, Math.max(1, sheet.getMaxRows ? sheet.getMaxRows() - 1 : 1), 2)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    sheet.getRange(2, 10, Math.max(1, sheet.getMaxRows ? sheet.getMaxRows() - 1 : 1), 1)
+      .setNumberFormat('0.00');
+    return sheet;
+  }
+
+  const header = (sheet.getDataRange().getValues()[0] || []).slice(0, JOB_TIME_HEADERS.length).map(String);
+  if (header.join('|') !== JOB_TIME_HEADERS.join('|')) {
+    throw new Error('JobTimeEntries sheet headers are not recognized');
+  }
+  return sheet;
+}
+
+function jobTimeNow_() {
+  return new Date();
+}
+
+function jobTimeDate_(value) {
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function jobTimeEntryFromRow_(row) {
+  const started = jobTimeDate_(row[7]);
+  return {
+    entryId: String(row[0] || ''),
+    userId: String(row[1] || ''),
+    employee: String(row[2] || ''),
+    department: String(row[3] || ''),
+    jobNum: String(row[4] || ''),
+    jobName: String(row[5] || ''),
+    source: String(row[6] || ''),
+    startedAt: started ? started.toISOString() : '',
+  };
+}
+
+function activeJobTimeRows_(rows, userId) {
+  const active = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1] || '') !== String(userId || '')) continue;
+    if (String(rows[i][10] || '') === 'active' && !rows[i][8]) active.push({ rowIndex: i + 1, row: rows[i] });
+  }
+  return active;
+}
+
+function closeActiveJobTimeRows_(sheet, activeRows, endedAt) {
+  activeRows.forEach(entry => {
+    const startedAt = jobTimeDate_(entry.row[7]);
+    const elapsed = startedAt ? Math.max(0, (endedAt.getTime() - startedAt.getTime()) / 60000) : 0;
+    const minutes = Math.round(elapsed * 100) / 100;
+    sheet.getRange(entry.rowIndex, 9, 1, 3).setValues([[endedAt, minutes, 'closed']]);
+  });
+}
+
+function resolveJobTimeSelection_(actor, data) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const jobNum = String((data && data.jobNum) || '').trim();
+  const source = String((data && data.source) || '');
+  if (!validJobKey(jobNum)) return { error: 'Invalid job number' };
+  if (source !== 'assigned' && source !== 'other') return { error: 'Invalid job source' };
+
+  if (source === 'other') {
+    const result = lookupSquarecoilJob_(jobNum);
+    if (!result.success || !result.found) return { error: result.error || 'Squarecoil job was not found' };
+    return { jobNum, jobName: result.job.name, source };
+  }
+
+  const job = (getProductionJobs(null, actor).jobs || []).find(candidate => String(candidate.jobNum) === jobNum);
+  const openTasks = job && !job.completed && (job.departments || []).indexOf(actor.department) !== -1
+    ? ((job.departmentChecklists && job.departmentChecklists[actor.department]) || []).filter(item => !item.done)
+    : [];
+  if (!job || !openTasks.length) return { error: 'This job no longer has open tasks for ' + actor.department };
+  return { jobNum, jobName: String(job.title || ('Job ' + jobNum)).slice(0, 300), source };
+}
+
+function getJobTimeStatus(actor) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  try {
+    const rows = getJobTimeEntriesSheet_().getDataRange().getValues();
+    const activeRows = activeJobTimeRows_(rows, actor.id);
+    const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
+    return { success: true, active: latest ? jobTimeEntryFromRow_(latest.row) : null };
+  } catch (err) {
+    console.error('Job time status failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not load current job' };
+  }
+}
+
+function startJobTime(actor, data) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const selection = resolveJobTimeSelection_(actor, data);
+  if (selection.error) return { success: false, error: selection.error };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getJobTimeEntriesSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const activeRows = activeJobTimeRows_(rows, actor.id);
+    const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
+    if (latest && String(latest.row[4]) === selection.jobNum) {
+      return { success: true, alreadyActive: true, active: jobTimeEntryFromRow_(latest.row) };
+    }
+
+    const startedAt = jobTimeNow_();
+    closeActiveJobTimeRows_(sheet, activeRows, startedAt);
+    const row = [
+      Utilities.getUuid(),
+      String(actor.id),
+      sanitizeSheetText(actor.name),
+      sanitizeSheetText(actor.department),
+      selection.jobNum,
+      sanitizeSheetText(selection.jobName),
+      selection.source,
+      startedAt,
+      '',
+      '',
+      'active',
+    ];
+    sheet.appendRow(row);
+    return { success: true, active: jobTimeEntryFromRow_(row) };
+  } catch (err) {
+    console.error('Start job time failed for user %s: %s\n%s', actor.id, err && err.message, err && err.stack);
+    return { success: false, error: 'Could not start job — try again' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function stopJobTime(actor) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getJobTimeEntriesSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const activeRows = activeJobTimeRows_(rows, actor.id);
+    if (!activeRows.length) return { success: true, stopped: false, active: null };
+    closeActiveJobTimeRows_(sheet, activeRows, jobTimeNow_());
+    return { success: true, stopped: true, active: null };
+  } catch (err) {
+    console.error('Stop job time failed for user %s: %s\n%s', actor.id, err && err.message, err && err.stack);
+    return { success: false, error: 'Could not stop work — try again' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // ── Squarecoil Production Files ─────────────────────────────────────────────
 // Credentials live only in Script Properties and are never returned or logged.
 // One authenticated PHP session is reused across each lookup or cache refresh.
@@ -2049,7 +2236,47 @@ function squarecoilDecodeHtmlEntities_(value) {
 function squarecoilDecodeText_(value) {
   return squarecoilDecodeHtmlEntities_(value)
     .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#0*160;|&#x0*a0;/gi, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
+}
+
+function squarecoilFindProjectName_(html, jobNum) {
+  const headings = String(html || '').match(/<h1\b[^>]*>[\s\S]*?<\/h1>/gi) || [];
+  const texts = headings.map(squarecoilDecodeText_).filter(Boolean);
+  if (texts.indexOf(String(jobNum || '')) === -1) return '';
+  return texts.find(text => text !== String(jobNum || '') && text.length <= 300) || '';
+}
+
+function lookupSquarecoilJob_(jobNum) {
+  const value = String(jobNum || '').trim();
+  if (!validJobKey(value)) return { success: false, found: false, error: 'Enter a valid five- or six-digit job number' };
+  if (!isSquarecoilConfigured_()) return { success: false, found: false, error: 'Squarecoil is not configured' };
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'squarecoil_job_' + value;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* fetch fresh below */ }
+  }
+
+  try {
+    const credentials = squarecoilCredentials_();
+    const cookie = squarecoilLogin_(credentials.username, credentials.password);
+    const response = squarecoilGet_('project.php?id=' + value, cookie);
+    const name = response.getResponseCode() === 200
+      ? squarecoilFindProjectName_(response.getContentText(), value)
+      : '';
+    const result = name
+      ? { success: true, found: true, job: { jobNum: value, name } }
+      : { success: true, found: false, error: 'No Squarecoil job was found with that number' };
+    cache.put(cacheKey, JSON.stringify(result), name ? 21600 : 300);
+    return result;
+  } catch (err) {
+    console.warn('Squarecoil job metadata lookup failed for %s: %s', value, err && err.message);
+    return { success: false, found: false, error: 'Could not reach Squarecoil — try again' };
+  }
 }
 
 function squarecoilFindPdfLink_(html, jobNum) {
