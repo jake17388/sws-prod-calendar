@@ -59,3 +59,13 @@ test('the Job Selector screen includes assigned jobs, Other lookup, active statu
   assert.match(api, /stopJobTime/);
   assert.match(css, /min-height:\s*44px/);
 });
+
+test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
+  const view = read('js/views/jobSelector.js');
+  const app = read('js/app.js');
+
+  assert.match(view, /const previousEntry\s*=\s*activeEntry/);
+  assert.match(view, /activeEntry\s*=\s*optimisticEntry/);
+  assert.match(view, /activeEntry\s*=\s*previousEntry/);
+  assert.match(app, /activeView\s*!==\s*['"]jobSelector['"]/);
+});

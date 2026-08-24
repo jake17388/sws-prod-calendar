@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null, jobDueDate = null } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0 } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -111,6 +111,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
     } else if (action === 'startJobTime') {
+      if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
       activeJobTime = {
         entryId: `entry-${payload.jobNum}`,
         userId: 'admin',
@@ -123,6 +124,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       };
       body = { success: true, active: activeJobTime };
     } else if (action === 'stopJobTime') {
+      if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
       activeJobTime = null;
       body = { success: true, stopped: true, active: null };
     } else if (action === 'addAdditionalFile') {
@@ -244,7 +246,7 @@ test('a Viewer can add to the same project notes timeline', async ({ page }) => 
 });
 
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
-  await mockBackend(page, { department: 'Paint' });
+  await mockBackend(page, { department: 'Paint', jobTimeDelayMs: 800 });
   await login(page);
 
   await expect(page.getByRole('button', { name: 'Job Selector' })).toBeVisible();
@@ -252,7 +254,8 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await expect(page.getByRole('heading', { name: 'What job are you beginning work on?' })).toBeVisible();
 
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
-  await expect(page.getByText('260001 — Browser Test Job')).toBeVisible();
+  await expect(page.getByText('260001 — Browser Test Job')).toBeVisible({ timeout: 250 });
+  await expect(page.locator('#save-status')).toBeHidden();
 
   await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
   await page.getByRole('button', { name: 'Look up job' }).click();
@@ -261,7 +264,8 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await expect(page.getByText('231180 — Squarecoil Other Job')).toBeVisible();
 
   await page.getByRole('button', { name: 'Stop Work' }).click();
-  await expect(page.getByText('No active job')).toBeVisible();
+  await expect(page.getByText('No active job')).toBeVisible({ timeout: 250 });
+  await expect(page.locator('#save-status')).toBeHidden();
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {
