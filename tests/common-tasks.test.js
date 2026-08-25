@@ -187,3 +187,68 @@ test('the management checklist editor applies the same Paint handoff rule', () =
   assert.equal(result.departmentChecklists.Assembly[0].addedBy, 'Morgan Manager');
   assert.equal(result.departmentChecklists.Assembly[0].addedAt, result.departmentChecklists.Paint[0].doneAt);
 });
+
+test('a Manager can reopen a completed assigned task without deleting its history first', () => {
+  const { context } = loadBackend();
+  const completedTask = {
+    id: 'manufacturing-1',
+    text: 'Build cabinet',
+    done: true,
+    doneBy: 'Manny Fabricator',
+    doneById: 'fabricator-1',
+    doneAt: '2026-08-25T15:00:00.000Z',
+  };
+  const current = {
+    completed: false,
+    updatedAt: 'before',
+    departments: ['Manufacturing'],
+    currentDepartments: [],
+    departmentChecklists: { Manufacturing: [completedTask] },
+  };
+  context.getAllTracking = () => ({ '260001': current });
+  context.setTracking = (jobKey, patch) => ({ success: true, jobKey, ...patch });
+
+  const result = context.updateJobDepartments(
+    { id: 'manager-1', name: 'Morgan Manager', department: 'Manager' },
+    {
+      jobKey: '260001',
+      departments: ['Manufacturing'],
+      currentDepartments: [],
+      departmentChecklists: { Manufacturing: [{ ...completedTask, done: false }] },
+      expectedUpdatedAt: 'before',
+    },
+  );
+
+  assert.equal(result.departmentChecklists.Manufacturing[0].done, false);
+  assert.equal(result.departmentChecklists.Manufacturing[0].doneBy, '');
+  assert.equal(result.departmentChecklists.Manufacturing[0].doneById, '');
+  assert.equal(result.departmentChecklists.Manufacturing[0].doneAt, '');
+});
+
+test('a Manager must reopen a completed task before deleting it', () => {
+  const { context } = loadBackend();
+  const completedTask = { id: 'manufacturing-1', text: 'Build cabinet', done: true, doneBy: 'Manny Fabricator' };
+  const current = {
+    completed: false,
+    updatedAt: 'before',
+    departments: ['Manufacturing'],
+    currentDepartments: [],
+    departmentChecklists: { Manufacturing: [completedTask] },
+  };
+  context.getAllTracking = () => ({ '260001': current });
+  context.setTracking = (jobKey, patch) => ({ success: true, jobKey, ...patch });
+
+  const result = context.updateJobDepartments(
+    { id: 'manager-1', name: 'Morgan Manager', department: 'Manager' },
+    {
+      jobKey: '260001',
+      departments: ['Manufacturing'],
+      currentDepartments: [],
+      departmentChecklists: { Manufacturing: [] },
+      expectedUpdatedAt: 'before',
+    },
+  );
+
+  assert.equal(result.departmentChecklists.Manufacturing.length, 1);
+  assert.equal(result.departmentChecklists.Manufacturing[0].id, completedTask.id);
+});

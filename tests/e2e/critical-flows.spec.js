@@ -411,6 +411,48 @@ test('a Manager can save and close immediately beneath the Production File actio
     .toBeChecked();
 });
 
+test('a Manager can unmark an assigned task as complete', async ({ page }) => {
+  await mockBackend(page, {
+    department: 'Manager',
+    jobDepartments: ['Manufacturing'],
+    jobDepartmentChecklists: {
+      Manufacturing: [{
+        id: 'manufacturing-1',
+        text: 'Build cabinet',
+        done: true,
+        doneBy: 'Manny Fabricator',
+        doneById: 'fabricator-1',
+        doneAt: '2026-08-25T15:00:00.000Z',
+      }],
+    },
+  });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+
+  const manufacturing = page.locator('#job-detail-departments .dept-assign-item')
+    .filter({ hasText: 'Manufacturing' });
+  const taskToggle = manufacturing.locator('.checklist-check');
+  const reopenedTaskSaved = page.waitForResponse(response => {
+    const request = response.request();
+    if (request.method() !== 'POST') return false;
+    const payload = JSON.parse(request.postData() || '{}');
+    return payload.action === 'updateJobDepartments'
+      && payload.departmentChecklists?.Manufacturing?.[0]?.done === false;
+  });
+  await expect(taskToggle).toBeEnabled();
+  await taskToggle.click();
+  await expect(taskToggle).not.toHaveClass(/checked/);
+  await reopenedTaskSaved;
+
+  await page.getByRole('button', { name: 'Save and close' }).click();
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.locator('#job-detail-departments .dept-assign-item')
+    .filter({ hasText: 'Manufacturing' })
+    .locator('.checklist-check'))
+    .not.toHaveClass(/checked/);
+});
+
 test('a production employee starts an assigned job, switches to a Squarecoil job, and stops work', async ({ page }) => {
   await mockBackend(page, { department: 'Paint', jobTimeDelayMs: 800 });
   await login(page);
