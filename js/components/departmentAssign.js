@@ -188,36 +188,33 @@ function syncCurrentButtonState(container, job, dept) {
 function renderEditableChecklist(container, job, dept) {
   container.innerHTML = '';
   const items = job.departmentChecklists[dept] || [];
-  // Once a task is done, only an Admin can un-check or delete it — a
-  // Manager can't erase the paper trail of who completed what and when.
-  // Mirrors the server-side enforcement in updateJobDepartments.
-  const canUndo = isAdmin();
+  // This editor is only rendered for Admins and Managers, and both can reopen
+  // a completed task. Managers must reopen one before its remove control is
+  // shown; Admins retain the ability to delete it directly.
 
   items.forEach(item => {
-    const locked = item.done && !canUndo;
+    const canDelete = !item.done || isAdmin();
     const row = document.createElement('div');
     row.className = `checklist-item ${item.done ? 'done' : ''} ${item._saving ? 'is-saving' : ''}`.trim();
     row.innerHTML = `
-      <button class="checklist-check ${item.done ? 'checked' : ''} ${item._saving ? 'saving' : ''}" aria-label="Toggle done" aria-busy="${item._saving ? 'true' : 'false'}" ${locked ? 'disabled title="Only an Admin can un-check a completed task"' : ''}></button>
+      <button class="checklist-check ${item.done ? 'checked' : ''} ${item._saving ? 'saving' : ''}" aria-label="Toggle done" aria-busy="${item._saving ? 'true' : 'false'}"></button>
       <div class="checklist-item-main">
         <input type="text" value="${escapeAttr(item.text)}" />
         ${addedStampHtml(item)}
         ${stampHtml(item)}
       </div>
-      ${locked ? '' : '<button class="checklist-remove" aria-label="Remove item">&times;</button>'}
+      ${canDelete ? '<button class="checklist-remove" aria-label="Remove item">&times;</button>' : ''}
     `;
-    if (!locked) {
-      row.querySelector('.checklist-check').addEventListener('click', () => {
-        item.done = !item.done;
-        item.doneBy = item.done ? currentUser() : '';
-        item.doneById = item.done ? currentUserId() : '';
-        item.doneAt = item.done ? new Date().toISOString() : '';
-        markTaskSaving(item, true);
-        persist(job, () => renderEditableChecklist(container, job, dept));
-        renderEditableChecklist(container, job, dept);
-        syncCurrentButtonState(container, job, dept);
-      });
-    }
+    row.querySelector('.checklist-check').addEventListener('click', () => {
+      item.done = !item.done;
+      item.doneBy = item.done ? currentUser() : '';
+      item.doneById = item.done ? currentUserId() : '';
+      item.doneAt = item.done ? new Date().toISOString() : '';
+      markTaskSaving(item, true);
+      persist(job, () => renderEditableChecklist(container, job, dept));
+      renderEditableChecklist(container, job, dept);
+      syncCurrentButtonState(container, job, dept);
+    });
     const textInput = row.querySelector('input[type="text"]');
     textInput.addEventListener('input', e => {
       item.text = e.target.value;
@@ -227,7 +224,7 @@ function renderEditableChecklist(container, job, dept) {
       e.target.value = item.text;
       persist(job, () => renderEditableChecklist(container, job, dept));
     });
-    if (!locked) {
+    if (canDelete) {
       row.querySelector('.checklist-remove').addEventListener('click', () => {
         job.departmentChecklists[dept] = items.filter(i => i.id !== item.id);
         persist(job, () => renderEditableChecklist(container, job, dept));

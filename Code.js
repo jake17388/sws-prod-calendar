@@ -1009,11 +1009,11 @@ function updateJobDepartments(actor, data) {
     ? data.currentDepartments.filter(d => departments.indexOf(d) !== -1)
     : [];
 
-  // A Manager can't undo a completed task's done state or delete it — only
-  // an Admin can, so the paper trail of who completed what and when can't
-  // be erased. Mirrored client-side in renderEditableChecklist (which
-  // hides/disables those controls so a Manager doesn't even see the
-  // option), but enforced here as the actual source of truth.
+  // Admins and Managers may reopen a completed task. A Manager still cannot
+  // delete it while it remains completed: they must explicitly reopen it
+  // first, making that history-changing action visible and intentional.
+  // Mirrored client-side in renderEditableChecklist, but enforced here as
+  // the actual source of truth.
   const isAdmin = actor.department === 'Admin';
 
   const transitionAt = new Date().toISOString();
@@ -1046,9 +1046,9 @@ function updateJobDepartments(actor, data) {
       oldItems.forEach(oldItem => {
         if (!oldItem.done) return;
         const incoming = incomingById.get(oldItem.id);
-        if (!incoming || !incoming.done) {
-          // Un-checked or deleted by a non-Admin — put it back exactly as
-          // it was, dropping whatever the incoming payload tried to do to it.
+        if (!incoming) {
+          // Deleted while still completed by a Manager — put it back exactly
+          // as it was. Reopening it is allowed and clears its completion stamp.
           nextItems = nextItems.filter(i => i.id !== oldItem.id);
           nextItems.push(oldItem);
         }
