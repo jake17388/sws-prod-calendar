@@ -170,9 +170,8 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'updateJobTimeEntry') {
       jobTimeLogEntries = jobTimeLogEntries.map(entry => entry.entryId === payload.entryId ? {
         ...entry,
-        employee: payload.employee,
         jobNum: payload.jobNum,
-        jobName: payload.jobName,
+        jobName: 'Squarecoil Other Job',
         startedAt: payload.startedAt,
         endedAt: payload.endedAt,
         durationMinutes: 105,
@@ -181,6 +180,9 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
         editedBy: user,
       } : entry);
       body = { success: true, entry: jobTimeLogEntries.find(entry => entry.entryId === payload.entryId) };
+    } else if (action === 'deleteJobTimeEntry') {
+      jobTimeLogEntries = jobTimeLogEntries.filter(entry => entry.entryId !== payload.entryId);
+      body = { success: true };
     } else if (action === 'addAdditionalFile') {
       currentJob = {
         ...currentJob,
@@ -505,25 +507,50 @@ test('an Admin can open the protected Job Selector hours log', async ({ page }) 
   await page.getByRole('button', { name: 'Hours Log' }).click();
   await expect(page.getByRole('heading', { name: 'Hours Log' })).toBeVisible();
   const row = page.locator('.hours-log-table tbody tr').first();
-  await expect(row.locator('.hours-log-employee')).toHaveValue('Carlos');
-  await expect(row.locator('.hours-log-job-number')).toHaveValue('260001');
+  await expect(row).toContainText('Carlos');
+  await expect(row).toContainText('260001');
+  await expect(row.getByRole('button', { name: 'Edit hour log' })).toBeVisible();
+  await expect(row.locator('input')).toHaveCount(0);
   await expect(row.locator('.hours-log-duration')).toContainText('1h 30m');
 });
 
-test('a Costing Viewer can correct an hours-log entry with visible edit attribution', async ({ page }) => {
+test('a Costing Viewer unlocks only costing fields and sees the resolved job name', async ({ page }) => {
   await mockBackend(page, { department: 'Costing Viewer', user: 'Carlos Hernandez' });
   await login(page);
 
   await expect(page.getByRole('button', { name: 'Job Selector' })).toBeHidden();
   await page.getByRole('button', { name: 'Hours Log' }).click();
   const row = page.locator('.hours-log-table tbody tr').first();
-  await row.locator('.hours-log-employee').fill('Carlos H.');
+  await row.getByRole('button', { name: 'Edit hour log' }).click();
+  await expect(row).toContainText('Carlos');
+  await expect(row.locator('.hours-log-employee')).toHaveCount(0);
+  await expect(row.locator('.hours-log-job-name')).toHaveCount(0);
+  await expect(row.locator('input')).toHaveCount(3);
   await row.locator('.hours-log-job-number').fill('260202');
   await row.getByRole('button', { name: 'Save' }).click();
 
   await expect(row).toContainText('Edited');
   await expect(row).toContainText('Carlos Hernandez');
+  await expect(row).toContainText('Squarecoil Other Job');
   await expect(row.locator('.hours-log-duration')).toContainText('1h 45m');
+});
+
+test('deleting an hours-log entry requires confirmation and supports cancel', async ({ page }) => {
+  await mockBackend(page, { department: 'Admin', user: 'Test Admin' });
+  await login(page);
+  await page.getByRole('button', { name: 'Hours Log' }).click();
+
+  const row = page.locator('.hours-log-table tbody tr').first();
+  await row.getByRole('button', { name: 'Edit hour log' }).click();
+  await row.getByRole('button', { name: 'Delete' }).click();
+  const prompt = page.getByRole('dialog', { name: 'Delete this hour log?' });
+  await expect(prompt).toBeVisible();
+  await prompt.getByRole('button', { name: 'Cancel' }).click();
+  await expect(row).toBeVisible();
+
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await prompt.getByRole('button', { name: 'Confirm' }).click();
+  await expect(page.locator('.hours-log-table tbody tr')).toContainText('No job-costing time has been logged yet.');
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {

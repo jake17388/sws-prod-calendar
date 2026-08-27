@@ -20,9 +20,10 @@ test('Costing Viewers and admins receive a dedicated Hours Log view backed by th
   assert.match(auth, /export const canEditHoursLog/);
   assert.match(api, /fetchJobTimeLog\s*=\s*\(\)\s*=>\s*scriptGet\(['"]getJobTimeLog['"]\)/);
   assert.match(api, /updateJobTimeEntry/);
+  assert.match(api, /deleteJobTimeEntry/);
 });
 
-test('the Hours Log renders editable sheet rows with visible edit timestamps', () => {
+test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   const view = read('js/views/hoursLog.js');
   const css = read('styles/job-selector.css');
 
@@ -33,6 +34,13 @@ test('the Hours Log renders editable sheet rows with visible edit timestamps', (
   assert.match(view, /Last edited/);
   assert.match(view, /datetime-local/);
   assert.match(view, /updateJobTimeEntry/);
+  assert.match(view, /deleteJobTimeEntry/);
+  assert.match(view, /aria-label="Edit hour log"/);
+  assert.match(view, /Delete this hour log\?/);
+  assert.match(view, />Confirm</);
+  assert.match(view, />Cancel</);
+  assert.doesNotMatch(view, /class="hours-log-input hours-log-employee"/);
+  assert.doesNotMatch(view, /class="hours-log-input hours-log-job-name"/);
   assert.match(view, /editedAt/);
   assert.match(view, /editedBy/);
   assert.match(view, /fetchJobTimeLog/);

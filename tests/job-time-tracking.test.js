@@ -68,6 +68,7 @@ function createSheet(initialRows = []) {
       };
     },
     appendRow(row) { rows.push(row.slice()); },
+    deleteRow(row) { rows.splice(row - 1, 1); },
     setFrozenRows() {},
   };
 }
@@ -278,9 +279,12 @@ test('Costing Viewer edits recalculate duration and stamp the editor and time', 
   const actor = { id: 'costing-1', name: 'Carlos Hernandez', department: 'Costing Viewer' };
   context.getJobTimeEntriesSheet_ = () => sheet;
   context.jobTimeNow_ = () => new Date('2026-08-27T16:45:00.000Z');
+  context.lookupSquarecoilJob_ = jobNum => ({
+    success: true, found: true, job: { jobNum, name: 'Corrected Job' },
+  });
 
   const result = context.updateJobTimeEntry(actor, {
-    entryId: 'entry-1', employee: 'Patricia Painter', jobNum: '260202', jobName: 'Corrected Job',
+    entryId: 'entry-1', employee: 'Tampered Employee', jobNum: '260202', jobName: 'Tampered Job Name',
     startedAt: '2026-08-24T14:15:00.000Z', endedAt: '2026-08-24T15:45:00.000Z',
   });
   assert.equal(result.success, true);
@@ -288,7 +292,7 @@ test('Costing Viewer edits recalculate duration and stamp the editor and time', 
   assert.equal(result.entry.editedAt, '2026-08-27T16:45:00.000Z');
   assert.equal(result.entry.editedBy, 'Carlos Hernandez');
   assert.deepEqual(sheet.rows[1].slice(2, 14), [
-    'Patricia Painter', 'Paint', '260202', 'Corrected Job', 'assigned',
+    'Pat Painter', 'Paint', '260202', 'Corrected Job', 'assigned',
     new Date('2026-08-24T14:15:00.000Z'), new Date('2026-08-24T15:45:00.000Z'),
     90, 'closed', new Date('2026-08-27T16:45:00.000Z'), 'Carlos Hernandez', 'costing-1',
   ]);
@@ -313,4 +317,43 @@ test('hours-log edits reject Viewers and invalid time ranges', () => {
   assert.equal(context.updateJobTimeEntry({ id: 'v1', name: 'Vera', department: 'Viewer' }, patch).error, 'forbidden');
   assert.equal(context.updateJobTimeEntry({ id: 'c1', name: 'Casey', department: 'Costing Viewer' }, patch).error, 'End time must be after start time');
   assert.equal(sheet.rows[1][4], '260101');
+});
+
+test('hours-log edits preserve the stored job name when the number is unchanged', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    [
+      'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+      'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+      'edited_at', 'edited_by', 'edited_by_id',
+    ],
+    ['entry-1', 'paint-1', 'Pat', 'Paint', '260101', 'Existing Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), '', '', 'active', '', '', ''],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.lookupSquarecoilJob_ = () => { throw new Error('unchanged job numbers should not be looked up'); };
+
+  const result = context.updateJobTimeEntry(
+    { id: 'a1', name: 'Ada', department: 'Admin' },
+    { entryId: 'entry-1', jobNum: '260101', startedAt: '2026-08-24T14:30:00.000Z', endedAt: '' },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(result.entry.employee, 'Pat');
+  assert.equal(result.entry.jobName, 'Existing Job');
+});
+
+test('hours-log entries can only be deleted by an Admin or Costing Viewer', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    ['entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name', 'source', 'started_at', 'ended_at', 'duration_minutes', 'status', 'edited_at', 'edited_by', 'edited_by_id'],
+    ['entry-1', 'paint-1', 'Pat', 'Paint', '260101', 'First Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), '', '', 'active', '', '', ''],
+    ['entry-2', 'paint-2', 'Paul', 'Paint', '260102', 'Second Job', 'assigned', new Date('2026-08-24T15:00:00.000Z'), '', '', 'active', '', '', ''],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+
+  assert.equal(context.deleteJobTimeEntry({ id: 'v1', department: 'Viewer' }, { entryId: 'entry-1' }).error, 'forbidden');
+  assert.equal(sheet.rows.length, 3);
+  assert.equal(context.deleteJobTimeEntry({ id: 'c1', department: 'Costing Viewer' }, { entryId: 'entry-1' }).success, true);
+  assert.deepEqual(sheet.rows.map(row => row[0]), ['entry_id', 'entry-2']);
+  assert.equal(context.deleteJobTimeEntry({ id: 'a1', department: 'Admin' }, { entryId: 'missing' }).error, 'Time entry not found');
 });
