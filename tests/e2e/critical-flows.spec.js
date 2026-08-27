@@ -509,7 +509,13 @@ test('an Admin can open the protected Job Selector hours log', async ({ page }) 
   const row = page.locator('.hours-log-table tbody tr').first();
   await expect(row).toContainText('Carlos');
   await expect(row).toContainText('260001');
-  await expect(row.getByRole('button', { name: 'Edit hour log' })).toBeVisible();
+  const editButton = row.getByRole('button', { name: 'Edit hour log' });
+  await expect(editButton).toBeVisible();
+  const tableViewport = await page.locator('.hours-log-table-wrap').boundingBox();
+  const editButtonBox = await editButton.boundingBox();
+  expect(tableViewport).not.toBeNull();
+  expect(editButtonBox).not.toBeNull();
+  expect(editButtonBox.x + editButtonBox.width).toBeLessThanOrEqual(tableViewport.x + tableViewport.width);
   await expect(row.locator('input')).toHaveCount(0);
   await expect(row.locator('.hours-log-duration')).toContainText('1h 30m');
 });
