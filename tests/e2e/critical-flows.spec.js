@@ -504,9 +504,10 @@ test('an Admin can open the protected Job Selector hours log', async ({ page }) 
 
   await page.getByRole('button', { name: 'Hours Log' }).click();
   await expect(page.getByRole('heading', { name: 'Hours Log' })).toBeVisible();
-  await expect(page.locator('.hours-log-table tbody')).toContainText('Carlos');
-  await expect(page.locator('.hours-log-table tbody')).toContainText('260001');
-  await expect(page.locator('.hours-log-table tbody')).toContainText('1h 30m');
+  const row = page.locator('.hours-log-table tbody tr').first();
+  await expect(row.locator('.hours-log-employee')).toHaveValue('Carlos');
+  await expect(row.locator('.hours-log-job-number')).toHaveValue('260001');
+  await expect(row.locator('.hours-log-duration')).toContainText('1h 30m');
 });
 
 test('a Costing Viewer can correct an hours-log entry with visible edit attribution', async ({ page }) => {

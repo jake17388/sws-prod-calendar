@@ -65,15 +65,17 @@ or CSS — the version bump forces a real fetch instead of a cached hit.
 Users live entirely in Script Properties as one `USERS` JSON array of records
 containing an immutable ID, display name, department, hashed PIN credential,
 an Admin-visible PIN copy, and session-revocation version — never in git. Each user has a
-department: `Admin`, `Manager`, `Viewer`, or one of the production
+department: `Admin`, `Manager`, `Viewer`, `Costing Viewer`, or one of the production
 departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 `Routing`).
 
 - **Admin** — full access, including managing every other account, Squarecoil
   Production File refreshes, due-date overrides, and session revocation
-- **Manager** — can add/edit/delete any account except Admin, Manager, or
-  Viewer accounts (and can't see Admin/Viewer accounts in the list at all)
-- **Viewer** and the production departments — no user-management access
+- **Manager** — can add/edit/delete any account except Admin, Manager, Viewer,
+  or Costing Viewer accounts (and can't see Admin/Viewer/Costing Viewer accounts in the list at all)
+- **Viewer** — calendar and project access with the normal project-note and additional-file capabilities, but no management permissions
+- **Costing Viewer** — the same access and limitations as Viewer, plus permission to view and correct the Hours Log; every correction records the editor and timestamp
+- **Production departments** — no user-management access
 
 Day to day, all of this is self-service: anyone in Admin or Manager sees a
 "User Management" button in Settings, where accounts (name, department,

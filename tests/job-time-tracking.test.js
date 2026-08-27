@@ -101,6 +101,9 @@ test('Costing Viewer has Viewer-equivalent account-management restrictions', () 
   assert.equal(context.canManageDepartment('Manager', 'Costing Viewer'), false);
   assert.equal(context.canUploadAdditionalFiles('Costing Viewer'), true);
   assert.equal(context.canUseJobSelector('Costing Viewer'), false);
+  assert.equal(context.canAssignDepartments('Costing Viewer'), false);
+  assert.equal(context.canMarkJobComplete('Costing Viewer'), false);
+  assert.equal(context.canAccessJobKey({ department: 'Costing Viewer' }, '260101'), true);
 });
 
 test('the blank JobTimeEntries tab receives a stable costing header without replacing it', () => {
