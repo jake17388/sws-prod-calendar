@@ -63,13 +63,23 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     if (action === 'login') {
       body = expectedPin && payload.pin !== expectedPin
         ? { ok: false }
-        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', mustChangePin };
+        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', canViewHoursLog: department === 'Admin' || /^Carlos(?:\s|$)/i.test(user), mustChangePin };
     } else if (action === 'getProductionJobs') {
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
       body = { version: 1 };
     } else if (action === 'getJobTimeStatus') {
       body = { success: true, active: activeJobTime };
+    } else if (action === 'getJobTimeLog') {
+      body = {
+        success: true,
+        entries: [{
+          entryId: 'entry-log-1', userId: 'paint-1', employee: 'Carlos', department: 'Paint',
+          jobNum: '260001', jobName: 'Browser Test Job', source: 'assigned',
+          startedAt: '2026-08-24T14:00:00.000Z', endedAt: '2026-08-24T15:30:00.000Z',
+          durationMinutes: 90, status: 'closed',
+        }],
+      };
     } else if (action === 'lookupSquarecoilJob') {
       const jobNum = new URL(request.url()).searchParams.get('jobNum');
       body = { success: true, found: true, job: { jobNum, name: 'Squarecoil Other Job' } };
@@ -474,6 +484,17 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await page.getByRole('button', { name: 'Stop Work' }).click();
   await expect(page.getByText('No active job')).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();
+});
+
+test('an Admin can open the protected Job Selector hours log', async ({ page }) => {
+  await mockBackend(page, { department: 'Admin', user: 'Test Admin' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Hours Log' }).click();
+  await expect(page.getByRole('heading', { name: 'Hours Log' })).toBeVisible();
+  await expect(page.locator('.hours-log-table tbody')).toContainText('Carlos');
+  await expect(page.locator('.hours-log-table tbody')).toContainText('260001');
+  await expect(page.locator('.hours-log-table tbody')).toContainText('1h 30m');
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {

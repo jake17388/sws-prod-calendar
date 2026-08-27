@@ -61,6 +61,7 @@ export const canManageUsers = () => !!(auth && auth.canManageUsers);
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canUseJobSelector = () => !!auth && ['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(auth.department);
+export const canViewHoursLog = () => !!auth && (auth.department === 'Admin' || auth.canViewHoursLog === true);
 export const canUploadAdditionalFiles = () => !!auth && ['Admin', 'Manager', 'Viewer'].includes(auth.department);
 export const isAdmin = () => !!auth && auth.department === 'Admin';
 export const mustChangePin = () => !!auth && !!auth.mustChangePin;

@@ -42,6 +42,8 @@ export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d
 
 export const fetchJobTimeStatus = () => scriptGet('getJobTimeStatus');
 
+export const fetchJobTimeLog = () => scriptGet('getJobTimeLog');
+
 export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
 
 export const startJobTime = (jobNum, source, jobName) =>

@@ -29,6 +29,7 @@ const TV_TOKEN_TTL_MS = 365 * 24 * 3600 * 1000; // dedicated read-only display; 
 const TOKEN_HANDOFF_GRACE_MS = 30 * 1000; // lets an in-flight request finish while My Account stores its replacement token
 const TRAINING_PIN_BATCH = '2026-08-07-six-digit';
 const PIN_CHANGE_STATUS_BATCH = '2026-08-10-required-pin-change';
+const HOURS_LOG_ACCESS_BATCH = '2026-08-27-carlos-hours-log';
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_ADDITIONAL_FILES_PER_JOB = 50;
 const MAX_STANDARD_REQUEST_CHARS = 250000;
@@ -48,6 +49,11 @@ function canAssignDepartments(department) {
 
 function canUseJobSelector(department) {
   return JOB_DEPARTMENTS.indexOf(String(department || '')) !== -1;
+}
+
+function canViewJobTimeLog(actor) {
+  if (!actor) return false;
+  return actor.department === 'Admin' || actor.canViewHoursLog === true;
 }
 
 function canUploadAdditionalFiles(department) {
@@ -154,19 +160,31 @@ function getUsers() {
     const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users);
     const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
     const pinStatusApplied = markTemporaryPinStatus(users, props);
-    if (changed || trainingPinsApplied || pinStatusApplied) saveUsers(users);
+    const hoursLogAccessApplied = grantCarlosHoursLogAccess(users, props);
+    if (changed || trainingPinsApplied || pinStatusApplied || hoursLogAccessApplied) saveUsers(users);
     if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
     if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
+    if (hoursLogAccessApplied) props.setProperty('HOURS_LOG_ACCESS_BATCH', HOURS_LOG_ACCESS_BATCH);
     return users;
   }
   const users = migrateLegacyPins() || defaultUsers();
   migrateUserCredentials(users);
   const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
   const pinStatusApplied = markTemporaryPinStatus(users, props);
+  const hoursLogAccessApplied = grantCarlosHoursLogAccess(users, props);
   saveUsers(users);
   if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
   if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
+  if (hoursLogAccessApplied) props.setProperty('HOURS_LOG_ACCESS_BATCH', HOURS_LOG_ACCESS_BATCH);
   return users;
+}
+
+function grantCarlosHoursLogAccess(users, props) {
+  if (props.getProperty('HOURS_LOG_ACCESS_BATCH') === HOURS_LOG_ACCESS_BATCH) return false;
+  const carlos = users.find(user => /^carlos(?:\s|$)/i.test(String(user.name || '').trim()));
+  if (!carlos) return false;
+  carlos.canViewHoursLog = true;
+  return true;
 }
 
 // One-time training reset requested before launch. Every account gets a unique
@@ -645,6 +663,7 @@ function checkPin(pin, deviceId) {
     // Safe to delete once every client has reloaded.
     isDueDateEditor: canEditDueDates(user.department),
     canManageUsers: canAccessUserManagement(user.department),
+    canViewHoursLog: canViewJobTimeLog(user),
     mustChangePin: !!user.mustChangePin,
   };
 }
@@ -790,6 +809,12 @@ function routeGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     if (!canUseJobSelector(actor.department)) return json({ error: 'forbidden' });
     return json(getJobTimeStatus(actor));
+  }
+  if (action === 'getJobTimeLog') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canViewJobTimeLog(actor)) return json({ error: 'forbidden' });
+    return json(getJobTimeLog(actor));
   }
   if (action === 'lookupSquarecoilJob') {
     const actor = resolveActor(e.parameter.token);
@@ -1979,6 +2004,40 @@ function jobTimeEntryFromRow_(row) {
     source: String(row[6] || ''),
     startedAt: started ? started.toISOString() : '',
   };
+}
+
+function jobTimeLogEntryFromRow_(row) {
+  const started = jobTimeDate_(row[7]);
+  const ended = jobTimeDate_(row[8]);
+  const duration = row[9] === '' || row[9] == null ? null : Number(row[9]);
+  return {
+    entryId: String(row[0] || ''),
+    userId: String(row[1] || ''),
+    employee: String(row[2] || ''),
+    department: String(row[3] || ''),
+    jobNum: String(row[4] || ''),
+    jobName: String(row[5] || ''),
+    source: String(row[6] || ''),
+    startedAt: started ? started.toISOString() : '',
+    endedAt: ended ? ended.toISOString() : '',
+    durationMinutes: Number.isFinite(duration) ? duration : null,
+    status: String(row[10] || ''),
+  };
+}
+
+function getJobTimeLog(actor) {
+  if (!canViewJobTimeLog(actor)) return { error: 'forbidden' };
+  try {
+    const rows = getJobTimeEntriesSheet_().getDataRange().getValues();
+    const entries = rows.slice(1)
+      .filter(row => row.some(value => value !== '' && value != null))
+      .map(jobTimeLogEntryFromRow_)
+      .reverse();
+    return { success: true, entries };
+  } catch (err) {
+    console.error('Job time log failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not load hours log' };
+  }
 }
 
 function activeJobTimeRows_(rows, userId) {

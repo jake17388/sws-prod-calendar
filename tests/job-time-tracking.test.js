@@ -84,13 +84,33 @@ test('only production departments can use the Job Selector', () => {
 test('only Carlos and Admin accounts can view the hours log', () => {
   const context = loadBackend();
 
-  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Paint' }), true);
-  assert.equal(context.canViewJobTimeLog({ name: '  carlos  ', department: 'Assembly' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Paint', canViewHoursLog: true }), true);
   assert.equal(context.canViewJobTimeLog({ name: 'Any Admin', department: 'Admin' }), true);
-  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Viewer' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Viewer' }), false);
   assert.equal(context.canViewJobTimeLog({ name: 'Carl', department: 'Paint' }), false);
   assert.equal(context.canViewJobTimeLog({ name: 'Other Worker', department: 'Paint' }), false);
   assert.equal(context.canViewJobTimeLog(null), false);
+});
+
+test('Carlos receives durable hours-log access once without granting it by future renames', () => {
+  const context = loadBackend();
+  const values = {};
+  const props = {
+    getProperty: key => values[key] || null,
+    setProperty: (key, value) => { values[key] = value; },
+  };
+  const users = [
+    { id: 'carlos-1', name: 'Carlos Garcia', department: 'Paint' },
+    { id: 'other-1', name: 'Other Worker', department: 'Assembly' },
+  ];
+
+  assert.equal(context.grantCarlosHoursLogAccess(users, props), true);
+  props.setProperty('HOURS_LOG_ACCESS_BATCH', '2026-08-27-carlos-hours-log');
+  users[0].name = 'Carlos Renamed';
+  users[1].name = 'Carlos';
+  assert.equal(context.grantCarlosHoursLogAccess(users, props), false);
+  assert.equal(users[0].canViewHoursLog, true);
+  assert.equal(users[1].canViewHoursLog, undefined);
 });
 
 test('the blank JobTimeEntries tab receives a stable costing header without replacing it', () => {
