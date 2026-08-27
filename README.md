@@ -58,7 +58,9 @@ Every deploy that touches `js/` or `styles/` must also bump the matching
 `?v=` query string on that file's `<script>`/`<link>` tag in `index.html`.
 GitHub Pages' CDN caches those files for a while, so without a new query
 string the "Update now" button can reload the page and still get stale JS
-or CSS — the version bump forces a real fetch instead of a cached hit.
+or CSS — the version bump forces a real fetch instead of a cached hit. The
+button temporarily adds its own timestamp to the page URL as a final cache
+buster; the freshly loaded app removes that timestamp from the address bar.
 
 ### Users & roles
 
