@@ -22,6 +22,12 @@ import { loadCachedJobs, saveCachedJobs } from './jobsCache.js';
 import { reportSyncSuccess, reportSyncFailure, setOnFirstFailure } from './syncStatus.js';
 import { hasPendingWrites, subscribePendingWrites } from './pendingWrites.mjs';
 import { initSystemHealth, refreshSystemHealthUI } from './components/systemHealth.js';
+import { cleanUpdateUrl, updateReloadUrl } from './updateUrl.mjs';
+
+const cleanLoadedUrl = cleanUpdateUrl(window.location.href);
+if (cleanLoadedUrl !== window.location.href) {
+  window.history.replaceState(window.history.state, '', cleanLoadedUrl);
+}
 
 const VIEWS = {
   month: { render: renderMonth, label: monthRangeLabel, step: (d, dir) => new Date(d.getFullYear(), d.getMonth() + dir, 1) },
@@ -351,9 +357,7 @@ function checkForUpdate(manual) {
 }
 
 function reloadForUpdate() {
-  const url = new URL(window.location.href);
-  url.searchParams.set('v', Date.now());
-  window.location.href = url.toString();
+  window.location.href = updateReloadUrl(window.location.href);
 }
 
 const ZOOM_STEPS = [50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200];
