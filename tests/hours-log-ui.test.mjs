@@ -46,6 +46,11 @@ test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   assert.match(view, /editedAt/);
   assert.match(view, /editedBy/);
   assert.match(view, /fetchJobTimeLog/);
+  assert.match(view, /data-label="Employee"/);
+  assert.match(view, /data-label="Actions"/);
   assert.match(css, /hours-log-table/);
-  assert.match(css, /overflow-x:\s*auto/);
+  assert.match(css, /overflow-x:\s*visible/);
+  assert.match(css, /table-layout:\s*fixed/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.hours-log-table tr[\s\S]*grid-template-columns/);
+  assert.doesNotMatch(css, /\.hours-log-table\s*\{[^}]*min-width/);
 });

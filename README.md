@@ -76,7 +76,7 @@ departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 - **Manager** — can add/edit/delete any account except Admin, Manager, Viewer,
   or Costing Viewer accounts (and can't see Admin/Viewer/Costing Viewer accounts in the list at all); can view the Hours Log without editing or deleting entries
 - **Viewer** — calendar and project access with the normal project-note and additional-file capabilities, plus read-only Hours Log access, but no management permissions
-- **Costing Viewer** — the same access and limitations as Viewer, plus permission to view the Hours Log; a pinned pencil action unlocks job number and timestamps for correction, while employee and resolved job name stay read-only. Corrections record the editor and timestamp, and deleting an entry requires confirmation
+- **Costing Viewer** — the same access and limitations as Viewer, plus permission to view the Hours Log; a pencil action unlocks job number and timestamps for correction, while employee and resolved job name stay read-only. Corrections record the editor and timestamp, deleting an entry requires confirmation, and the log fits without horizontal scrolling by using a compact table on desktop and entry cards on smaller screens
 - **Production departments** — no user-management access
 
 Day to day, all of this is self-service: anyone in Admin or Manager sees a
