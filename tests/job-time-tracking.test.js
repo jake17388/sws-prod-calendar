@@ -82,14 +82,18 @@ test('only production departments can use the Job Selector', () => {
     .forEach(department => assert.equal(context.canUseJobSelector(department), false));
 });
 
-test('only Costing Viewer and Admin accounts can view and edit the hours log', () => {
+test('Admins and Costing Viewers can edit while Viewers and Managers can only view the hours log', () => {
   const context = loadBackend();
 
   ['Costing Viewer', 'Admin'].forEach(department => {
     assert.equal(context.canViewJobTimeLog({ department }), true);
     assert.equal(context.canEditJobTimeLog({ department }), true);
   });
-  ['Viewer', 'Manager', 'Paint', 'TV'].forEach(department => {
+  ['Viewer', 'Manager'].forEach(department => {
+    assert.equal(context.canViewJobTimeLog({ department }), true);
+    assert.equal(context.canEditJobTimeLog({ department }), false);
+  });
+  ['Paint', 'TV'].forEach(department => {
     assert.equal(context.canViewJobTimeLog({ department }), false);
     assert.equal(context.canEditJobTimeLog({ department }), false);
   });

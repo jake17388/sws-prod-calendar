@@ -18,6 +18,8 @@ test('Costing Viewers and admins receive a dedicated Hours Log view backed by th
   assert.match(app, /canViewHoursLog\(\)/);
   assert.match(auth, /export const canViewHoursLog/);
   assert.match(auth, /export const canEditHoursLog/);
+  assert.match(auth, /canViewHoursLog[\s\S]*Admin[\s\S]*Manager[\s\S]*Viewer[\s\S]*Costing Viewer/);
+  assert.match(auth, /canEditHoursLog[\s\S]*Admin[\s\S]*Costing Viewer/);
   assert.match(api, /fetchJobTimeLog\s*=\s*\(\)\s*=>\s*scriptGet\(['"]getJobTimeLog['"]\)/);
   assert.match(api, /updateJobTimeEntry/);
   assert.match(api, /deleteJobTimeEntry/);

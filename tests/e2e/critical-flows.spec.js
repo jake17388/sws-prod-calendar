@@ -69,7 +69,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     if (action === 'login') {
       body = expectedPin && payload.pin !== expectedPin
         ? { ok: false }
-        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', canViewHoursLog: department === 'Admin' || department === 'Costing Viewer', canEditHoursLog: department === 'Admin' || department === 'Costing Viewer', mustChangePin };
+        : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', canViewHoursLog: ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(department), canEditHoursLog: department === 'Admin' || department === 'Costing Viewer', mustChangePin };
     } else if (action === 'getProductionJobs') {
       body = { jobs: [currentJob], version: 1 };
     } else if (action === 'getTrackingVersion') {
@@ -534,6 +534,22 @@ test('a Costing Viewer unlocks only costing fields and sees the resolved job nam
   await expect(row).toContainText('Squarecoil Other Job');
   await expect(row.locator('.hours-log-duration')).toContainText('1h 45m');
 });
+
+for (const readOnlyRole of ['Viewer', 'Manager']) {
+  test(`${readOnlyRole} can view the hours log without edit or delete controls`, async ({ page }) => {
+    await mockBackend(page, { department: readOnlyRole, user: `Test ${readOnlyRole}` });
+    await login(page);
+
+    await expect(page.getByRole('button', { name: 'Hours Log' })).toBeVisible();
+    await page.getByRole('button', { name: 'Hours Log' }).click();
+    const row = page.locator('.hours-log-table tbody tr').first();
+    await expect(row).toContainText('Carlos');
+    await expect(row).toContainText('Browser Test Job');
+    await expect(row.getByRole('button', { name: 'Edit hour log' })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    await expect(row.locator('input')).toHaveCount(0);
+  });
+}
 
 test('deleting an hours-log entry requires confirmation and supports cancel', async ({ page }) => {
   await mockBackend(page, { department: 'Admin', user: 'Test Admin' });
