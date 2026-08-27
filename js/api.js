@@ -47,6 +47,9 @@ export const fetchJobTimeLog = () => scriptGet('getJobTimeLog');
 export const updateJobTimeEntry = (entryId, patch) =>
   scriptPost({ action: 'updateJobTimeEntry', entryId, ...patch });
 
+export const deleteJobTimeEntry = entryId =>
+  scriptPost({ action: 'deleteJobTimeEntry', entryId });
+
 export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
 
 export const startJobTime = (jobNum, source, jobName) =>

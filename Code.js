@@ -913,6 +913,7 @@ function routePost(e) {
   if (data.action === 'startJobTime') return respond(() => startJobTime(actor, data));
   if (data.action === 'stopJobTime') return respond(() => stopJobTime(actor));
   if (data.action === 'updateJobTimeEntry') return respond(() => updateJobTimeEntry(actor, data));
+  if (data.action === 'deleteJobTimeEntry') return respond(() => deleteJobTimeEntry(actor, data));
   if (data.action === 'addNote') return respond(() => addNote(actor, data));
   if (data.action === 'updateNote') return respond(() => updateNote(actor, data));
   if (data.action === 'deleteNote') return respond(() => deleteNote(actor, data));
@@ -2051,19 +2052,35 @@ function getJobTimeLog(actor) {
 function updateJobTimeEntry(actor, data) {
   if (!canEditJobTimeLog(actor)) return { error: 'forbidden' };
   const entryId = String((data && data.entryId) || '');
-  const employee = String((data && data.employee) || '').trim();
   const jobNum = String((data && data.jobNum) || '').trim();
-  const jobName = String((data && data.jobName) || '').trim();
   const startedAt = jobTimeDate_(data && data.startedAt);
   const endedText = String((data && data.endedAt) || '').trim();
   const endedAt = endedText ? jobTimeDate_(endedText) : null;
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(entryId)) return { success: false, error: 'Invalid entry' };
-  if (!validName(employee)) return { success: false, error: 'Employee is required' };
   if (!validJobKey(jobNum)) return { success: false, error: 'Invalid job number' };
-  if (!validText(jobName, 300)) return { success: false, error: 'Job name is required' };
   if (!startedAt) return { success: false, error: 'Valid start time is required' };
   if (endedText && !endedAt) return { success: false, error: 'Valid end time is required' };
   if (endedAt && endedAt.getTime() < startedAt.getTime()) return { success: false, error: 'End time must be after start time' };
+
+  let resolvedJobName = '';
+  try {
+    const initialRows = getJobTimeEntriesSheet_().getDataRange().getValues();
+    const initialRow = initialRows.find((row, index) => index > 0 && String(row[0] || '') === entryId);
+    if (!initialRow) return { success: false, error: 'Time entry not found' };
+    if (String(initialRow[4] || '') === jobNum) {
+      resolvedJobName = String(initialRow[5] || '');
+    } else {
+      const lookup = lookupSquarecoilJob_(jobNum);
+      if (!lookup.success || !lookup.found || !lookup.job) {
+        return { success: false, error: lookup.error || 'Job number was not found' };
+      }
+      resolvedJobName = String(lookup.job.name || '').trim();
+    }
+  } catch (err) {
+    console.error('Resolve edited job number failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not verify job number' };
+  }
+  if (!validText(resolvedJobName, 300)) return { success: false, error: 'Job name is required' };
 
   const lock = LockService.getScriptLock();
   try {
@@ -2076,9 +2093,11 @@ function updateJobTimeEntry(actor, data) {
     const next = rows[rowIndex].slice(0, JOB_TIME_HEADERS.length);
     while (next.length < JOB_TIME_HEADERS.length) next.push('');
     const elapsed = endedAt ? Math.max(0, (endedAt.getTime() - startedAt.getTime()) / 60000) : null;
-    next[2] = sanitizeSheetText(employee);
+    const currentJobName = String(rows[rowIndex][4] || '') === jobNum
+      ? String(rows[rowIndex][5] || resolvedJobName)
+      : resolvedJobName;
     next[4] = jobNum;
-    next[5] = sanitizeSheetText(jobName);
+    next[5] = sanitizeSheetText(currentJobName);
     next[7] = startedAt;
     next[8] = endedAt || '';
     next[9] = elapsed == null ? '' : Math.round(elapsed * 100) / 100;
@@ -2091,6 +2110,28 @@ function updateJobTimeEntry(actor, data) {
   } catch (err) {
     console.error('Update job time entry failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not update time entry' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteJobTimeEntry(actor, data) {
+  if (!canEditJobTimeLog(actor)) return { error: 'forbidden' };
+  const entryId = String((data && data.entryId) || '');
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(entryId)) return { success: false, error: 'Invalid entry' };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getJobTimeEntriesSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const rowIndex = rows.findIndex((row, index) => index > 0 && String(row[0] || '') === entryId);
+    if (rowIndex === -1) return { success: false, error: 'Time entry not found' };
+    sheet.deleteRow(rowIndex + 1);
+    return { success: true };
+  } catch (err) {
+    console.error('Delete job time entry failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not delete time entry' };
   } finally {
     lock.releaseLock();
   }
