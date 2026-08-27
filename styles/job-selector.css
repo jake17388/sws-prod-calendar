@@ -176,20 +176,19 @@
   font-weight: var(--weight-bold);
 }
 .hours-log-status { min-height: 22px; color: var(--status-critical-text); }
-.hours-log-table-wrap { overflow-x: auto; }
-.hours-log-table { width: 100%; min-width: 1180px; border-collapse: collapse; color: var(--ink-primary); }
+.hours-log-table-wrap { width: 100%; overflow-x: visible; }
+.hours-log-table { width: 100%; table-layout: fixed; border-collapse: collapse; color: var(--ink-primary); }
+.hours-log-col-employee { width: 10%; }
+.hours-log-col-job { width: 24%; }
+.hours-log-col-started,
+.hours-log-col-ended { width: 13%; }
+.hours-log-col-duration,
+.hours-log-col-source { width: 8%; }
+.hours-log-col-edited { width: 13%; }
+.hours-log-col-actions { width: 11%; }
 .hours-log-table th,
-.hours-log-table td { border-bottom: 1px solid var(--border-default); padding: var(--space-3); text-align: left; vertical-align: top; }
+.hours-log-table td { overflow-wrap: anywhere; border-bottom: 1px solid var(--border-default); padding: var(--space-3) var(--space-2); text-align: left; vertical-align: top; }
 .hours-log-table th { color: var(--ink-secondary); font-size: var(--text-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
-.hours-log-table th:last-child,
-.hours-log-table td:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 1;
-  background: var(--surface-raised);
-  box-shadow: -10px 0 12px -12px rgb(15 23 42 / 40%);
-}
-.hours-log-table th:last-child { z-index: 2; }
 .hours-log-table td strong,
 .hours-log-table td small { display: block; }
 .hours-log-table td small { margin-top: 2px; color: var(--ink-secondary); }
@@ -206,10 +205,10 @@
   color: var(--ink-primary);
   font: inherit;
 }
-.hours-log-job-number { min-width: 100px; }
+.hours-log-job-number { min-width: 0; }
 .hours-log-started,
-.hours-log-ended { min-width: 185px; }
-.hours-log-edited { min-width: 175px; color: var(--ink-secondary); font-size: var(--text-sm); }
+.hours-log-ended { min-width: 0; }
+.hours-log-edited { color: var(--ink-secondary); font-size: var(--text-sm); }
 .hours-log-save,
 .hours-log-cancel,
 .hours-log-delete,
@@ -225,7 +224,8 @@
 .hours-log-save { border-color: var(--accent-solid); background: var(--accent-solid); color: var(--ink-inverse); }
 .hours-log-delete { border-color: var(--status-critical-border); background: var(--status-critical-bg); color: var(--status-critical-text); }
 .hours-log-edit { display: inline-grid; place-items: center; width: 40px; padding: 0; color: var(--accent-solid); }
-.hours-log-edit-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 220px; }
+.hours-log-edit-actions { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.hours-log-edit-actions button { width: 100%; padding-inline: var(--space-2); }
 .hours-log-save:disabled { opacity: 0.55; }
 .hours-log-row-hint { display: block; min-width: 90px; margin-top: var(--space-1); color: var(--status-critical-text); }
 .hours-log-empty { color: var(--ink-secondary); text-align: center !important; }
@@ -237,6 +237,46 @@
 .hours-log-dialog-actions button { min-height: 42px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 var(--space-4); background: var(--surface-raised); color: var(--ink-primary); font-weight: var(--weight-bold); }
 .hours-log-dialog-actions .hours-log-delete-confirm { border-color: var(--status-critical-border); background: var(--status-critical-bg); color: var(--status-critical-text); }
 
+@media (max-width: 900px) {
+  .hours-log-table,
+  .hours-log-table tbody { display: block; width: 100%; }
+  .hours-log-table colgroup,
+  .hours-log-table thead { display: none; }
+  .hours-log-table tbody { display: grid; gap: var(--space-3); }
+  .hours-log-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    background: var(--surface-raised);
+  }
+  .hours-log-table td {
+    display: block;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+  .hours-log-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--ink-secondary);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+  }
+  .hours-log-table td:last-child { grid-column: 1 / -1; }
+  .hours-log-table td:last-child:empty { display: none; }
+  .hours-log-edit-actions { flex-flow: row wrap; }
+  .hours-log-edit-actions button { width: auto; }
+  .hours-log-empty { grid-column: 1 / -1; }
+  .hours-log-empty::before { display: none !important; }
+}
+
 @media (max-width: 650px) {
   .job-selector-shell { padding: var(--space-5) var(--space-3) calc(var(--space-8) + env(safe-area-inset-bottom)); }
   .job-selector-grid { grid-template-columns: 1fr; }
@@ -245,6 +285,8 @@
   .job-selector-current button,
   .job-selector-other-confirm button { width: 100%; }
   .job-selector-section { padding: var(--space-4); }
+  .hours-log-table tr { grid-template-columns: 1fr; }
+  .hours-log-table td:last-child { grid-column: auto; }
 }
 
 @media (max-width: 420px) {

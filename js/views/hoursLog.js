@@ -58,28 +58,28 @@ function editIcon() {
 function editableRowHtml(entry) {
   const saving = savingEntries.has(entry.entryId);
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}" ${saving ? 'aria-busy="true"' : ''}>
-    <td><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
-    <td><input class="hours-log-input hours-log-job-number" aria-label="Job number" inputmode="numeric" maxlength="6" value="${escapeAttr(entry.jobNum)}" ${saving ? 'disabled' : ''} /><small>${escapeHtml(entry.jobName)}</small></td>
-    <td><input class="hours-log-input hours-log-started" aria-label="Started" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.startedAt))}" ${saving ? 'disabled' : ''} /></td>
-    <td><input class="hours-log-input hours-log-ended" aria-label="Ended" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.endedAt))}" ${saving ? 'disabled' : ''} /></td>
-    <td>${durationCell(entry)}</td>
-    <td>${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
-    <td class="hours-log-edited">${escapeHtml(editedLabel(entry))}</td>
-    <td><div class="hours-log-edit-actions"><button class="hours-log-save" type="button" ${saving ? 'disabled' : ''}>${saving ? 'Saving…' : 'Save'}</button><button class="hours-log-cancel" type="button" ${saving ? 'disabled' : ''}>Cancel</button><button class="hours-log-delete" type="button" ${saving ? 'disabled' : ''}>Delete</button></div><small class="hours-log-row-hint" role="status">${escapeHtml(rowErrors.get(entry.entryId) || '')}</small></td>
+    <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
+    <td data-label="Job"><input class="hours-log-input hours-log-job-number" aria-label="Job number" inputmode="numeric" maxlength="6" value="${escapeAttr(entry.jobNum)}" ${saving ? 'disabled' : ''} /><small>${escapeHtml(entry.jobName)}</small></td>
+    <td data-label="Started"><input class="hours-log-input hours-log-started" aria-label="Started" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.startedAt))}" ${saving ? 'disabled' : ''} /></td>
+    <td data-label="Ended"><input class="hours-log-input hours-log-ended" aria-label="Ended" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.endedAt))}" ${saving ? 'disabled' : ''} /></td>
+    <td data-label="Duration">${durationCell(entry)}</td>
+    <td data-label="Source">${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
+    <td class="hours-log-edited" data-label="Last edited">${escapeHtml(editedLabel(entry))}</td>
+    <td data-label="Actions"><div class="hours-log-edit-actions"><button class="hours-log-save" type="button" ${saving ? 'disabled' : ''}>${saving ? 'Saving…' : 'Save'}</button><button class="hours-log-cancel" type="button" ${saving ? 'disabled' : ''}>Cancel</button><button class="hours-log-delete" type="button" ${saving ? 'disabled' : ''}>Delete</button></div><small class="hours-log-row-hint" role="status">${escapeHtml(rowErrors.get(entry.entryId) || '')}</small></td>
   </tr>`;
 }
 
 function readOnlyRowHtml(entry) {
   const canEdit = canEditHoursLog();
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}">
-    <td><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
-    <td><strong>${escapeHtml(entry.jobNum)}</strong><small>${escapeHtml(entry.jobName)}</small></td>
-    <td>${escapeHtml(formatDate(entry.startedAt))}</td>
-    <td>${escapeHtml(formatDate(entry.endedAt))}</td>
-    <td>${durationCell(entry)}</td>
-    <td>${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
-    <td class="hours-log-edited">${escapeHtml(editedLabel(entry))}</td>
-    <td>${canEdit ? `<button class="hours-log-edit" type="button" aria-label="Edit hour log">${editIcon()}</button>` : ''}</td>
+    <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
+    <td data-label="Job"><strong>${escapeHtml(entry.jobNum)}</strong><small>${escapeHtml(entry.jobName)}</small></td>
+    <td data-label="Started">${escapeHtml(formatDate(entry.startedAt))}</td>
+    <td data-label="Ended">${escapeHtml(formatDate(entry.endedAt))}</td>
+    <td data-label="Duration">${durationCell(entry)}</td>
+    <td data-label="Source">${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
+    <td class="hours-log-edited" data-label="Last edited">${escapeHtml(editedLabel(entry))}</td>
+    <td data-label="Actions">${canEdit ? `<button class="hours-log-edit" type="button" aria-label="Edit hour log">${editIcon()}</button>` : ''}</td>
   </tr>`;
 }
 
@@ -184,6 +184,7 @@ function paint(container) {
       <div class="job-selector-section-heading"><h2 id="hours-log-title">Time entries</h2><button class="hours-log-refresh" type="button">Refresh</button></div>
       <div class="hours-log-status" role="status" aria-live="polite">${escapeHtml(loading ? 'Loading hours…' : error)}</div>
       <div class="hours-log-table-wrap"><table class="hours-log-table">
+        <colgroup><col class="hours-log-col-employee"><col class="hours-log-col-job"><col class="hours-log-col-started"><col class="hours-log-col-ended"><col class="hours-log-col-duration"><col class="hours-log-col-source"><col class="hours-log-col-edited"><col class="hours-log-col-actions"></colgroup>
         <thead><tr><th>Employee</th><th>Job</th><th>Started</th><th>Ended</th><th>Duration</th><th>Source</th><th>Last edited</th><th>Actions</th></tr></thead>
         <tbody>${loading ? '' : rowsHtml()}</tbody>
       </table></div>
