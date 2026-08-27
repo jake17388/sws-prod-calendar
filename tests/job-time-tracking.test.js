@@ -172,6 +172,61 @@ test('assigned selections require an unfinished task in the signed-in department
   );
 });
 
+test('costing button selections use a configured server-side label and no job number', () => {
+  const context = loadBackend();
+  const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
+  context.getCostingButtons = () => [
+    { id: 'loading-unloading', text: 'Loading/Unloading' },
+    { id: 'team-support', text: 'Team Support' },
+  ];
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.resolveJobTimeSelection_(actor, {
+      source: 'costing_button:loading-unloading', costingButtonId: 'loading-unloading', jobName: 'Tampered',
+    }))),
+    { jobNum: '', jobName: 'Loading/Unloading', source: 'costing_button:loading-unloading' },
+  );
+  assert.equal(
+    context.resolveJobTimeSelection_(actor, {
+      source: 'costing_button:missing', costingButtonId: 'missing',
+    }).error,
+    'Costing button is no longer available',
+  );
+});
+
+test('costing buttons create distinct non-job time segments and same-button retries do not duplicate', () => {
+  const context = loadBackend();
+  const sheet = createSheet([[
+    'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+    'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+  ]]);
+  const actor = { id: 'paint-1', name: 'Pat Painter', department: 'Paint' };
+  let now = new Date('2026-08-24T14:00:00.000Z');
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.jobTimeNow_ = () => new Date(now);
+  context.getCostingButtons = () => [
+    { id: 'loading-unloading', text: 'Loading/Unloading' },
+    { id: 'team-support', text: 'Team Support' },
+  ];
+
+  const first = context.startJobTime(actor, { source: 'costing_button:loading-unloading', costingButtonId: 'loading-unloading' });
+  assert.equal(first.success, true);
+  assert.equal(sheet.rows[1][4], '');
+  assert.equal(sheet.rows[1][5], 'Loading/Unloading');
+  assert.equal(sheet.rows[1][6], 'costing_button:loading-unloading');
+
+  const duplicate = context.startJobTime(actor, { source: 'costing_button:loading-unloading', costingButtonId: 'loading-unloading' });
+  assert.equal(duplicate.alreadyActive, true);
+  assert.equal(sheet.rows.length, 2);
+
+  now = new Date('2026-08-24T14:20:00.000Z');
+  const switched = context.startJobTime(actor, { source: 'costing_button:team-support', costingButtonId: 'team-support' });
+  assert.equal(switched.success, true);
+  assert.equal(sheet.rows.length, 3);
+  assert.equal(sheet.rows[1][9], 20);
+  assert.equal(sheet.rows[2][5], 'Team Support');
+});
+
 test('Squarecoil project markup resolves the full project name and rejects mismatched pages', () => {
   const context = loadBackend();
   const html = [

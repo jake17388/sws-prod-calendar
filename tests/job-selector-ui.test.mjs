@@ -60,6 +60,20 @@ test('the Job Selector screen includes assigned jobs, Other lookup, active statu
   assert.match(css, /min-height:\s*44px/);
 });
 
+test('the Job Selector offers configured non-job costing activities below assigned jobs', () => {
+  const view = read('js/views/jobSelector.js');
+  const api = read('js/api.js');
+  const css = read('styles/job-selector.css');
+
+  assert.match(view, /Costing activities/);
+  assert.match(view, /job-selector-costing-button/);
+  assert.match(view, /costing_button:/);
+  assert.ok(view.indexOf('job-selector-assigned-title') < view.indexOf('job-selector-costing-title'));
+  assert.ok(view.indexOf('job-selector-costing-title') < view.indexOf('job-selector-other-title'));
+  assert.match(api, /fetchCostingButtons/);
+  assert.match(css, /job-selector-costing-grid/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');

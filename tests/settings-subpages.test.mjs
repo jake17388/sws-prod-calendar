@@ -13,8 +13,10 @@ test('management tools use full-width Settings subpages instead of side panels',
 
   assert.match(html, /id="user-mgmt-overlay" class="settings-subpage"/);
   assert.match(html, /id="common-task-overlay" class="settings-subpage"/);
+  assert.match(html, /id="costing-button-overlay" class="settings-subpage"/);
   assert.match(html, /class="user-mgmt-panel settings-subpage-shell"/);
   assert.match(html, /class="common-task-panel settings-subpage-shell"/);
+  assert.match(html, /class="costing-button-panel settings-subpage-shell"/);
   assert.match(userCss, /\.user-mgmt-panel[\s\S]*max-width:\s*1400px/);
   assert.match(taskCss, /\.common-task-panel[\s\S]*max-width:\s*1400px/);
   assert.doesNotMatch(userCss, /translate[XY]\(|#user-mgmt-overlay\s*\{[^}]*justify-content:\s*flex-end/);
@@ -26,12 +28,15 @@ test('management subpages provide a clear route back to Settings', () => {
   const app = read('js/app.js');
   const users = read('js/components/userManagement.js');
   const tasks = read('js/components/commonTaskManagement.js');
+  const costing = read('js/components/costingButtonManagement.js');
 
   assert.match(html, /id="user-mgmt-back"[^>]*>[\s\S]*Settings<\/button>/);
   assert.match(html, /id="common-task-back"[^>]*>[\s\S]*Settings<\/button>/);
+  assert.match(html, /id="costing-button-back"[^>]*>[\s\S]*Settings<\/button>/);
   assert.match(app, /addEventListener\('open-settings',\s*openSettings\)/);
   assert.match(users, /new CustomEvent\('open-settings'\)/);
   assert.match(tasks, /new CustomEvent\('open-settings'\)/);
+  assert.match(costing, /new CustomEvent\('open-settings'\)/);
 });
 
 test('mobile management back buttons sit below the iPhone safe area', () => {
