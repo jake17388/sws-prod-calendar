@@ -524,6 +524,20 @@ test('an Admin can open the protected Job Selector hours log', async ({ page }) 
   await expect(row.locator('.hours-log-duration')).toContainText('1h 30m');
 });
 
+test('the editable hours log fits just above the responsive card breakpoint', async ({ page }) => {
+  await page.setViewportSize({ width: 950, height: 900 });
+  await mockBackend(page, { department: 'Admin', user: 'Test Admin' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Hours Log' }).click();
+  const row = page.locator('.hours-log-table tbody tr').first();
+  await row.getByRole('button', { name: 'Edit hour log' }).click();
+  const hasHorizontalOverflow = await page.locator('.hours-log-table-wrap').evaluate(
+    element => element.scrollWidth > element.clientWidth + 1,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});
+
 test('a Costing Viewer unlocks only costing fields and sees the resolved job name', async ({ page }) => {
   await mockBackend(page, { department: 'Costing Viewer', user: 'Carlos Hernandez' });
   await login(page);

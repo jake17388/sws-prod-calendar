@@ -227,7 +227,7 @@
 .hours-log-edit-actions { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .hours-log-edit-actions button { width: 100%; padding-inline: var(--space-2); }
 .hours-log-save:disabled { opacity: 0.55; }
-.hours-log-row-hint { display: block; min-width: 90px; margin-top: var(--space-1); color: var(--status-critical-text); }
+.hours-log-row-hint { display: block; min-width: 0; max-width: 100%; margin-top: var(--space-1); color: var(--status-critical-text); }
 .hours-log-empty { color: var(--ink-secondary); text-align: center !important; }
 .hours-log-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: var(--space-5); background: rgb(15 23 42 / 45%); }
 .hours-log-dialog { width: min(420px, 100%); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: var(--space-6); background: var(--surface-raised); box-shadow: var(--shadow-lg); }
@@ -240,8 +240,16 @@
 @media (max-width: 900px) {
   .hours-log-table,
   .hours-log-table tbody { display: block; width: 100%; }
-  .hours-log-table colgroup,
-  .hours-log-table thead { display: none; }
+  .hours-log-table colgroup { display: none; }
+  .hours-log-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .hours-log-table tbody { display: grid; gap: var(--space-3); }
   .hours-log-table tr {
     display: grid;
