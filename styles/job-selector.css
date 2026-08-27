@@ -181,6 +181,15 @@
 .hours-log-table th,
 .hours-log-table td { border-bottom: 1px solid var(--border-default); padding: var(--space-3); text-align: left; vertical-align: top; }
 .hours-log-table th { color: var(--ink-secondary); font-size: var(--text-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.hours-log-table th:last-child,
+.hours-log-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--surface-raised);
+  box-shadow: -10px 0 12px -12px rgb(15 23 42 / 40%);
+}
+.hours-log-table th:last-child { z-index: 2; }
 .hours-log-table td strong,
 .hours-log-table td small { display: block; }
 .hours-log-table td small { margin-top: 2px; color: var(--ink-secondary); }
