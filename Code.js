@@ -52,11 +52,12 @@ function canUseJobSelector(department) {
 
 function canViewJobTimeLog(actor) {
   if (!actor) return false;
-  return actor.department === 'Admin' || actor.department === 'Costing Viewer';
+  return ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].indexOf(actor.department) !== -1;
 }
 
 function canEditJobTimeLog(actor) {
-  return canViewJobTimeLog(actor);
+  if (!actor) return false;
+  return actor.department === 'Admin' || actor.department === 'Costing Viewer';
 }
 
 function canUploadAdditionalFiles(department) {
