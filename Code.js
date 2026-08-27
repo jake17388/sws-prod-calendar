@@ -29,13 +29,12 @@ const TV_TOKEN_TTL_MS = 365 * 24 * 3600 * 1000; // dedicated read-only display; 
 const TOKEN_HANDOFF_GRACE_MS = 30 * 1000; // lets an in-flight request finish while My Account stores its replacement token
 const TRAINING_PIN_BATCH = '2026-08-07-six-digit';
 const PIN_CHANGE_STATUS_BATCH = '2026-08-10-required-pin-change';
-const HOURS_LOG_ACCESS_BATCH = '2026-08-27-carlos-hours-log';
 const MAX_ADDITIONAL_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_ADDITIONAL_FILES_PER_JOB = 50;
 const MAX_STANDARD_REQUEST_CHARS = 250000;
 const MAX_UPLOAD_REQUEST_CHARS = 12 * 1024 * 1024;
 
-const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'TV', 'Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'];
+const DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Costing Viewer', 'TV', 'Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'];
 
 // Job-assignable tags — distinct from the user DEPARTMENTS list above.
 // Ship-In isn't a role anyone logs in as; it's a job-only tag meaning "made
@@ -53,11 +52,15 @@ function canUseJobSelector(department) {
 
 function canViewJobTimeLog(actor) {
   if (!actor) return false;
-  return actor.department === 'Admin' || actor.canViewHoursLog === true;
+  return actor.department === 'Admin' || actor.department === 'Costing Viewer';
+}
+
+function canEditJobTimeLog(actor) {
+  return canViewJobTimeLog(actor);
 }
 
 function canUploadAdditionalFiles(department) {
-  return department === 'Admin' || department === 'Manager' || department === 'Viewer';
+  return department === 'Admin' || department === 'Manager' || department === 'Viewer' || department === 'Costing Viewer';
 }
 
 function additionalFilesForClient(files) {
@@ -89,11 +92,11 @@ function canEditDueDates(department) {
 }
 
 // Departments a Manager can't see in the user list at all.
-const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer', 'TV'];
+const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer', 'Costing Viewer', 'TV'];
 // Departments a Manager can see but can't add/edit/delete — separate from
 // PM_HIDDEN_DEPARTMENTS because a Manager *can* see fellow Managers, just
 // not manage them.
-const PM_BLOCKED_EDIT_DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'TV'];
+const PM_BLOCKED_EDIT_DEPARTMENTS = ['Admin', 'Manager', 'Viewer', 'Costing Viewer', 'TV'];
 
 function canAccessUserManagement(department) {
   return department === 'Admin' || department === 'Manager';
@@ -160,31 +163,19 @@ function getUsers() {
     const changed = renameLegacyManagerLabel(users) | migrateUserCredentials(users);
     const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
     const pinStatusApplied = markTemporaryPinStatus(users, props);
-    const hoursLogAccessApplied = grantCarlosHoursLogAccess(users, props);
-    if (changed || trainingPinsApplied || pinStatusApplied || hoursLogAccessApplied) saveUsers(users);
+    if (changed || trainingPinsApplied || pinStatusApplied) saveUsers(users);
     if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
     if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
-    if (hoursLogAccessApplied) props.setProperty('HOURS_LOG_ACCESS_BATCH', HOURS_LOG_ACCESS_BATCH);
     return users;
   }
   const users = migrateLegacyPins() || defaultUsers();
   migrateUserCredentials(users);
   const trainingPinsApplied = applyTemporaryTrainingPins(users, props);
   const pinStatusApplied = markTemporaryPinStatus(users, props);
-  const hoursLogAccessApplied = grantCarlosHoursLogAccess(users, props);
   saveUsers(users);
   if (trainingPinsApplied) props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);
   if (pinStatusApplied) props.setProperty('PIN_CHANGE_STATUS_BATCH', PIN_CHANGE_STATUS_BATCH);
-  if (hoursLogAccessApplied) props.setProperty('HOURS_LOG_ACCESS_BATCH', HOURS_LOG_ACCESS_BATCH);
   return users;
-}
-
-function grantCarlosHoursLogAccess(users, props) {
-  if (props.getProperty('HOURS_LOG_ACCESS_BATCH') === HOURS_LOG_ACCESS_BATCH) return false;
-  const carlos = users.find(user => /^carlos(?:\s|$)/i.test(String(user.name || '').trim()));
-  if (!carlos) return false;
-  carlos.canViewHoursLog = true;
-  return true;
 }
 
 // One-time training reset requested before launch. Every account gets a unique
@@ -664,6 +655,7 @@ function checkPin(pin, deviceId) {
     isDueDateEditor: canEditDueDates(user.department),
     canManageUsers: canAccessUserManagement(user.department),
     canViewHoursLog: canViewJobTimeLog(user),
+    canEditHoursLog: canEditJobTimeLog(user),
     mustChangePin: !!user.mustChangePin,
   };
 }
@@ -920,6 +912,7 @@ function routePost(e) {
   if (data.action === 'toggleDepartmentTaskDone') return respond(() => toggleDepartmentTaskDone(actor, data));
   if (data.action === 'startJobTime') return respond(() => startJobTime(actor, data));
   if (data.action === 'stopJobTime') return respond(() => stopJobTime(actor));
+  if (data.action === 'updateJobTimeEntry') return respond(() => updateJobTimeEntry(actor, data));
   if (data.action === 'addNote') return respond(() => addNote(actor, data));
   if (data.action === 'updateNote') return respond(() => updateNote(actor, data));
   if (data.action === 'deleteNote') return respond(() => deleteNote(actor, data));
@@ -1955,10 +1948,12 @@ function deleteAdditionalFile(actor, data) {
 // closes the current segment. Durable user ids preserve attribution even when
 // an Admin later renames an account.
 const JOB_TIME_SHEET_NAME = 'JobTimeEntries';
-const JOB_TIME_HEADERS = [
+const JOB_TIME_BASE_HEADERS = [
   'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
   'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
 ];
+const JOB_TIME_AUDIT_HEADERS = ['edited_at', 'edited_by', 'edited_by_id'];
+const JOB_TIME_HEADERS = JOB_TIME_BASE_HEADERS.concat(JOB_TIME_AUDIT_HEADERS);
 
 function getJobTimeEntriesSheet_() {
   const ss = getTrackingSpreadsheet();
@@ -1972,12 +1967,23 @@ function getJobTimeEntriesSheet_() {
       .setNumberFormat('yyyy-mm-dd hh:mm:ss');
     sheet.getRange(2, 10, Math.max(1, sheet.getMaxRows ? sheet.getMaxRows() - 1 : 1), 1)
       .setNumberFormat('0.00');
+    sheet.getRange(2, 12, Math.max(1, sheet.getMaxRows ? sheet.getMaxRows() - 1 : 1), 1)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
     return sheet;
   }
 
-  const header = (sheet.getDataRange().getValues()[0] || []).slice(0, JOB_TIME_HEADERS.length).map(String);
-  if (header.join('|') !== JOB_TIME_HEADERS.join('|')) {
+  const header = (sheet.getDataRange().getValues()[0] || []).map(String);
+  if (header.slice(0, JOB_TIME_BASE_HEADERS.length).join('|') !== JOB_TIME_BASE_HEADERS.join('|')) {
     throw new Error('JobTimeEntries sheet headers are not recognized');
+  }
+  const auditHeader = header.slice(JOB_TIME_BASE_HEADERS.length, JOB_TIME_HEADERS.length);
+  if (auditHeader.every(value => !value)) {
+    sheet.getRange(1, JOB_TIME_BASE_HEADERS.length + 1, 1, JOB_TIME_AUDIT_HEADERS.length)
+      .setValues([JOB_TIME_AUDIT_HEADERS]);
+    sheet.getRange(2, 12, Math.max(1, sheet.getMaxRows ? sheet.getMaxRows() - 1 : 1), 1)
+      .setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  } else if (auditHeader.join('|') !== JOB_TIME_AUDIT_HEADERS.join('|')) {
+    throw new Error('JobTimeEntries sheet audit headers are not recognized');
   }
   return sheet;
 }
@@ -2022,6 +2028,8 @@ function jobTimeLogEntryFromRow_(row) {
     endedAt: ended ? ended.toISOString() : '',
     durationMinutes: Number.isFinite(duration) ? duration : null,
     status: String(row[10] || ''),
+    editedAt: jobTimeDate_(row[11]) ? jobTimeDate_(row[11]).toISOString() : '',
+    editedBy: String(row[12] || ''),
   };
 }
 
@@ -2037,6 +2045,54 @@ function getJobTimeLog(actor) {
   } catch (err) {
     console.error('Job time log failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not load hours log' };
+  }
+}
+
+function updateJobTimeEntry(actor, data) {
+  if (!canEditJobTimeLog(actor)) return { error: 'forbidden' };
+  const entryId = String((data && data.entryId) || '');
+  const employee = String((data && data.employee) || '').trim();
+  const jobNum = String((data && data.jobNum) || '').trim();
+  const jobName = String((data && data.jobName) || '').trim();
+  const startedAt = jobTimeDate_(data && data.startedAt);
+  const endedText = String((data && data.endedAt) || '').trim();
+  const endedAt = endedText ? jobTimeDate_(endedText) : null;
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(entryId)) return { success: false, error: 'Invalid entry' };
+  if (!validName(employee)) return { success: false, error: 'Employee is required' };
+  if (!validJobKey(jobNum)) return { success: false, error: 'Invalid job number' };
+  if (!validText(jobName, 300)) return { success: false, error: 'Job name is required' };
+  if (!startedAt) return { success: false, error: 'Valid start time is required' };
+  if (endedText && !endedAt) return { success: false, error: 'Valid end time is required' };
+  if (endedAt && endedAt.getTime() < startedAt.getTime()) return { success: false, error: 'End time must be after start time' };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getJobTimeEntriesSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const rowIndex = rows.findIndex((row, index) => index > 0 && String(row[0] || '') === entryId);
+    if (rowIndex === -1) return { success: false, error: 'Time entry not found' };
+    const editedAt = jobTimeNow_();
+    const next = rows[rowIndex].slice(0, JOB_TIME_HEADERS.length);
+    while (next.length < JOB_TIME_HEADERS.length) next.push('');
+    const elapsed = endedAt ? Math.max(0, (endedAt.getTime() - startedAt.getTime()) / 60000) : null;
+    next[2] = sanitizeSheetText(employee);
+    next[4] = jobNum;
+    next[5] = sanitizeSheetText(jobName);
+    next[7] = startedAt;
+    next[8] = endedAt || '';
+    next[9] = elapsed == null ? '' : Math.round(elapsed * 100) / 100;
+    next[10] = endedAt ? 'closed' : 'active';
+    next[11] = editedAt;
+    next[12] = sanitizeSheetText(actor.name);
+    next[13] = String(actor.id || '');
+    sheet.getRange(rowIndex + 1, 1, 1, JOB_TIME_HEADERS.length).setValues([next]);
+    return { success: true, entry: jobTimeLogEntryFromRow_(next) };
+  } catch (err) {
+    console.error('Update job time entry failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not update time entry' };
+  } finally {
+    lock.releaseLock();
   }
 }
 

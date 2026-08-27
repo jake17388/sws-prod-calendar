@@ -451,7 +451,7 @@ function boot() {
   const deptBadge = document.getElementById('dept-badge');
   const department = currentDepartment();
   deptBadge.textContent = department || '';
-  deptBadge.hidden = !department || department === 'Viewer' || department === 'TV';
+  deptBadge.hidden = !department || department === 'Viewer' || department === 'Costing Viewer' || department === 'TV';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
   document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments());
