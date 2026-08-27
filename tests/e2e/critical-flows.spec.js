@@ -516,6 +516,10 @@ test('an Admin can open the protected Job Selector hours log', async ({ page }) 
   expect(tableViewport).not.toBeNull();
   expect(editButtonBox).not.toBeNull();
   expect(editButtonBox.x + editButtonBox.width).toBeLessThanOrEqual(tableViewport.x + tableViewport.width);
+  const hasHorizontalOverflow = await page.locator('.hours-log-table-wrap').evaluate(
+    element => element.scrollWidth > element.clientWidth + 1,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
   await expect(row.locator('input')).toHaveCount(0);
   await expect(row.locator('.hours-log-duration')).toContainText('1h 30m');
 });
