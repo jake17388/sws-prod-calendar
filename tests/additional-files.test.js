@@ -44,10 +44,10 @@ function loadBackend() {
   return { context, wasTrashed: () => trashed };
 }
 
-test('Admins, Managers, and Viewers can upload additional files but production roles cannot', () => {
+test('Admins, Managers, Viewers, and Costing Viewers can upload additional files but production roles cannot', () => {
   const { context } = loadBackend();
 
-  ['Admin', 'Manager', 'Viewer'].forEach(role => assert.equal(context.canUploadAdditionalFiles(role), true));
+  ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].forEach(role => assert.equal(context.canUploadAdditionalFiles(role), true));
   ['Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing']
     .forEach(role => assert.equal(context.canUploadAdditionalFiles(role), false));
 });

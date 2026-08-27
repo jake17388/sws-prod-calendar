@@ -220,7 +220,7 @@ test('note ownership uses immutable user ids', () => {
 
 test('every authenticated role can write shared project notes and department scope is retired', () => {
   const { context } = loadBackend();
-  ['Admin', 'Manager', 'Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing']
+  ['Admin', 'Manager', 'Viewer', 'Costing Viewer', 'Manufacturing', 'Graphics', 'Paint', 'Assembly', 'Letters', 'Routing']
     .forEach(department => assert.equal(context.canWriteNote({ department }), true));
   assert.deepEqual(
     JSON.parse(JSON.stringify(context.noteScopeAndDept({ scope: 'department', department: 'Paint' }))),

@@ -81,36 +81,26 @@ test('only production departments can use the Job Selector', () => {
     .forEach(department => assert.equal(context.canUseJobSelector(department), false));
 });
 
-test('only Carlos and Admin accounts can view the hours log', () => {
+test('only Costing Viewer and Admin accounts can view and edit the hours log', () => {
   const context = loadBackend();
 
-  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Paint', canViewHoursLog: true }), true);
-  assert.equal(context.canViewJobTimeLog({ name: 'Any Admin', department: 'Admin' }), true);
-  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Viewer' }), false);
-  assert.equal(context.canViewJobTimeLog({ name: 'Carl', department: 'Paint' }), false);
-  assert.equal(context.canViewJobTimeLog({ name: 'Other Worker', department: 'Paint' }), false);
+  ['Costing Viewer', 'Admin'].forEach(department => {
+    assert.equal(context.canViewJobTimeLog({ department }), true);
+    assert.equal(context.canEditJobTimeLog({ department }), true);
+  });
+  ['Viewer', 'Manager', 'Paint', 'TV'].forEach(department => {
+    assert.equal(context.canViewJobTimeLog({ department }), false);
+    assert.equal(context.canEditJobTimeLog({ department }), false);
+  });
   assert.equal(context.canViewJobTimeLog(null), false);
 });
 
-test('Carlos receives durable hours-log access once without granting it by future renames', () => {
+test('Costing Viewer has Viewer-equivalent account-management restrictions', () => {
   const context = loadBackend();
-  const values = {};
-  const props = {
-    getProperty: key => values[key] || null,
-    setProperty: (key, value) => { values[key] = value; },
-  };
-  const users = [
-    { id: 'carlos-1', name: 'Carlos Garcia', department: 'Paint' },
-    { id: 'other-1', name: 'Other Worker', department: 'Assembly' },
-  ];
-
-  assert.equal(context.grantCarlosHoursLogAccess(users, props), true);
-  props.setProperty('HOURS_LOG_ACCESS_BATCH', '2026-08-27-carlos-hours-log');
-  users[0].name = 'Carlos Renamed';
-  users[1].name = 'Carlos';
-  assert.equal(context.grantCarlosHoursLogAccess(users, props), false);
-  assert.equal(users[0].canViewHoursLog, true);
-  assert.equal(users[1].canViewHoursLog, undefined);
+  assert.equal(context.canAccessUserManagement('Costing Viewer'), false);
+  assert.equal(context.canManageDepartment('Manager', 'Costing Viewer'), false);
+  assert.equal(context.canUploadAdditionalFiles('Costing Viewer'), true);
+  assert.equal(context.canUseJobSelector('Costing Viewer'), false);
 });
 
 test('the blank JobTimeEntries tab receives a stable costing header without replacing it', () => {
@@ -126,10 +116,23 @@ test('the blank JobTimeEntries tab receives a stable costing header without repl
   assert.deepEqual(sheet.rows[0], [
     'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
     'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+    'edited_at', 'edited_by', 'edited_by_id',
   ]);
   const originalHeader = sheet.rows[0].slice();
   context.getJobTimeEntriesSheet_();
   assert.deepEqual(sheet.rows[0], originalHeader);
+});
+
+test('a legacy JobTimeEntries header is extended with edit audit columns', () => {
+  const context = loadBackend();
+  const sheet = createSheet([[
+    'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+    'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+  ]]);
+  context.getTrackingSpreadsheet = () => ({ getSheetByName: () => sheet });
+
+  context.getJobTimeEntriesSheet_();
+  assert.deepEqual(sheet.rows[0].slice(11), ['edited_at', 'edited_by', 'edited_by_id']);
 });
 
 test('assigned selections require an unfinished task in the signed-in department', () => {
@@ -253,7 +256,58 @@ test('the protected hours log returns newest sheet entries first', () => {
     entryId: 'entry-2', userId: 'assembly-1', employee: 'Alex Assembler', department: 'Assembly',
     jobNum: '260102', jobName: 'Second Job', source: 'other',
     startedAt: '2026-08-24T15:00:00.000Z', endedAt: '', durationMinutes: null, status: 'active',
+    editedAt: '', editedBy: '',
   });
   assert.equal(result.entries[1].durationMinutes, 30);
   assert.equal(context.getJobTimeLog({ name: 'Other Worker', department: 'Paint' }).error, 'forbidden');
+});
+
+test('Costing Viewer edits recalculate duration and stamp the editor and time', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    [
+      'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+      'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+      'edited_at', 'edited_by', 'edited_by_id',
+    ],
+    ['entry-1', 'paint-1', 'Pat Painter', 'Paint', '260101', 'Old Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), new Date('2026-08-24T14:30:00.000Z'), 30, 'closed', '', '', ''],
+  ]);
+  const actor = { id: 'costing-1', name: 'Carlos Hernandez', department: 'Costing Viewer' };
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.jobTimeNow_ = () => new Date('2026-08-27T16:45:00.000Z');
+
+  const result = context.updateJobTimeEntry(actor, {
+    entryId: 'entry-1', employee: 'Patricia Painter', jobNum: '260202', jobName: 'Corrected Job',
+    startedAt: '2026-08-24T14:15:00.000Z', endedAt: '2026-08-24T15:45:00.000Z',
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.entry.durationMinutes, 90);
+  assert.equal(result.entry.editedAt, '2026-08-27T16:45:00.000Z');
+  assert.equal(result.entry.editedBy, 'Carlos Hernandez');
+  assert.deepEqual(sheet.rows[1].slice(2, 14), [
+    'Patricia Painter', 'Paint', '260202', 'Corrected Job', 'assigned',
+    new Date('2026-08-24T14:15:00.000Z'), new Date('2026-08-24T15:45:00.000Z'),
+    90, 'closed', new Date('2026-08-27T16:45:00.000Z'), 'Carlos Hernandez', 'costing-1',
+  ]);
+});
+
+test('hours-log edits reject Viewers and invalid time ranges', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    [
+      'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+      'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+      'edited_at', 'edited_by', 'edited_by_id',
+    ],
+    ['entry-1', 'paint-1', 'Pat', 'Paint', '260101', 'Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), '', '', 'active', '', '', ''],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  const patch = {
+    entryId: 'entry-1', employee: 'Pat', jobNum: '260101', jobName: 'Job',
+    startedAt: '2026-08-24T15:00:00.000Z', endedAt: '2026-08-24T14:00:00.000Z',
+  };
+
+  assert.equal(context.updateJobTimeEntry({ id: 'v1', name: 'Vera', department: 'Viewer' }, patch).error, 'forbidden');
+  assert.equal(context.updateJobTimeEntry({ id: 'c1', name: 'Casey', department: 'Costing Viewer' }, patch).error, 'End time must be after start time');
+  assert.equal(sheet.rows[1][4], '260101');
 });
