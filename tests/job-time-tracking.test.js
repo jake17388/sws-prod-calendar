@@ -81,6 +81,18 @@ test('only production departments can use the Job Selector', () => {
     .forEach(department => assert.equal(context.canUseJobSelector(department), false));
 });
 
+test('only Carlos and Admin accounts can view the hours log', () => {
+  const context = loadBackend();
+
+  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Paint' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: '  carlos  ', department: 'Assembly' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: 'Any Admin', department: 'Admin' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: 'Carlos', department: 'Viewer' }), true);
+  assert.equal(context.canViewJobTimeLog({ name: 'Carl', department: 'Paint' }), false);
+  assert.equal(context.canViewJobTimeLog({ name: 'Other Worker', department: 'Paint' }), false);
+  assert.equal(context.canViewJobTimeLog(null), false);
+});
+
 test('the blank JobTimeEntries tab receives a stable costing header without replacing it', () => {
   const context = loadBackend();
   const sheet = createSheet();
@@ -200,4 +212,28 @@ test('Stop Work closes the active segment and is harmless when already stopped',
   assert.equal(repeated.success, true);
   assert.equal(repeated.stopped, false);
   assert.equal(sheet.rows.length, 2);
+});
+
+test('the protected hours log returns newest sheet entries first', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    [
+      'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+      'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+    ],
+    ['entry-1', 'paint-1', 'Pat Painter', 'Paint', '260101', 'First Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), new Date('2026-08-24T14:30:00.000Z'), 30, 'closed'],
+    ['entry-2', 'assembly-1', 'Alex Assembler', 'Assembly', '260102', 'Second Job', 'other', new Date('2026-08-24T15:00:00.000Z'), '', '', 'active'],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+
+  const result = context.getJobTimeLog({ id: 'admin-1', name: 'Ada', department: 'Admin' });
+  assert.equal(result.success, true);
+  assert.equal(result.entries.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.entries[0])), {
+    entryId: 'entry-2', userId: 'assembly-1', employee: 'Alex Assembler', department: 'Assembly',
+    jobNum: '260102', jobName: 'Second Job', source: 'other',
+    startedAt: '2026-08-24T15:00:00.000Z', endedAt: '', durationMinutes: null, status: 'active',
+  });
+  assert.equal(result.entries[1].durationMinutes, 30);
+  assert.equal(context.getJobTimeLog({ name: 'Other Worker', department: 'Paint' }).error, 'forbidden');
 });
