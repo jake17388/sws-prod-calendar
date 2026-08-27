@@ -72,8 +72,8 @@ departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 - **Admin** — full access, including managing every other account, Squarecoil
   Production File refreshes, due-date overrides, and session revocation
 - **Manager** — can add/edit/delete any account except Admin, Manager, Viewer,
-  or Costing Viewer accounts (and can't see Admin/Viewer/Costing Viewer accounts in the list at all)
-- **Viewer** — calendar and project access with the normal project-note and additional-file capabilities, but no management permissions
+  or Costing Viewer accounts (and can't see Admin/Viewer/Costing Viewer accounts in the list at all); can view the Hours Log without editing or deleting entries
+- **Viewer** — calendar and project access with the normal project-note and additional-file capabilities, plus read-only Hours Log access, but no management permissions
 - **Costing Viewer** — the same access and limitations as Viewer, plus permission to view the Hours Log; a pencil unlocks job number and timestamps for correction, while employee and resolved job name stay read-only. Corrections record the editor and timestamp, and deleting an entry requires confirmation
 - **Production departments** — no user-management access
 
