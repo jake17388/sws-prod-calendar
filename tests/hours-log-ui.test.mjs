@@ -31,10 +31,6 @@ test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   const css = read('styles/job-selector.css');
 
   assert.match(view, /Hours Log/);
-  assert.match(view, /type="date"/);
-  assert.match(view, /Start date/);
-  assert.match(view, /End date/);
-  assert.match(view, /Apply dates/);
   assert.match(view, /Export to Excel/);
   assert.match(view, /exportJobTimeLog/);
   assert.match(view, /Employee/);
@@ -68,4 +64,49 @@ test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   assert.match(css, /table-layout:\s*fixed/);
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.hours-log-table tr[\s\S]*grid-template-columns/);
   assert.doesNotMatch(css, /\.hours-log-table\s*\{[^}]*min-width/);
+});
+
+test('the Hours Log picks its range with the Job Map day-nav and calendar popover', () => {
+  const view = read('js/views/hoursLog.js');
+  const css = read('styles/job-selector.css');
+
+  // Day bar: prev / label / next, with the label opening the picker.
+  assert.match(view, /hours-log-day-nav-prev/);
+  assert.match(view, /hours-log-day-nav-next/);
+  assert.match(view, /hours-log-day-nav-label/);
+  assert.match(view, /Previous day/);
+  assert.match(view, /Next day/);
+  assert.match(view, /Pick a date or range/);
+  // A single day on today reads as "Today" rather than a formatted date.
+  assert.match(view, /'Today'/);
+
+  // Calendar popover internals ported from the Job Map.
+  assert.match(view, /hours-log-calendar-backdrop/);
+  assert.match(view, /hours-log-calendar-grid/);
+  assert.match(view, /hours-log-calendar-weekdays/);
+  assert.match(view, /Jump to today/);
+  assert.match(view, /Previous month/);
+  assert.match(view, /Next month/);
+  assert.match(view, /Tap a day to start/);
+
+  // Range state: first tap starts, second tap closes the range; same day twice is one day.
+  assert.match(view, /range-start/);
+  assert.match(view, /range-end/);
+  assert.match(view, /in-range/);
+  assert.match(view, /calPickStart/);
+
+  // The picker applies on selection, so the separate apply button is gone.
+  assert.doesNotMatch(view, /Apply dates/);
+  assert.doesNotMatch(view, /type="date"/);
+
+  // Popover is a real dialog, like the delete confirmation beside it.
+  assert.match(view, /hours-log-calendar[\s\S]*role="dialog"/);
+  assert.match(view, /aria-modal="true"/);
+  assert.match(view, /hours-log-calendar[\s\S]*keydown/);
+
+  // Styling uses app tokens rather than the Job Map's hardcoded palette.
+  assert.match(css, /\.hours-log-calendar-day\.range-start[\s\S]*var\(--accent-solid\)/);
+  assert.match(css, /\.hours-log-calendar-day\.in-range/);
+  assert.match(css, /\.hours-log-calendar-grid\s*\{[^}]*repeat\(7, 1fr\)/);
+  assert.doesNotMatch(css, /\.hours-log-calendar[^}]*#fafafa/);
 });

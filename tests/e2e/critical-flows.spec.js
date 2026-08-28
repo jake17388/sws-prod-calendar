@@ -665,20 +665,42 @@ test('Hours Log filters one day or a range and exports that range to Excel', asy
       { entryId: 'day-3', employee: 'Lee', department: 'Letters', jobNum: '260103', jobName: 'Outside Range', source: 'assigned', startedAt: '2026-08-26T14:00:00.000Z', endedAt: '', durationMinutes: null, status: 'active', editedAt: '', editedBy: '' },
     ],
   });
+  // Pins "today" so the picker always opens on the month holding the fixtures.
+  await page.clock.setFixedTime(new Date('2026-08-28T12:00:00'));
   await login(page);
   await page.getByRole('button', { name: 'Hours Log' }).click();
+  await expect(page.getByTitle('Pick a date or range')).toHaveText('Today');
 
-  await page.getByLabel('Start date').fill('2026-08-24');
-  await page.getByLabel('End date').fill('2026-08-24');
-  await page.getByRole('button', { name: 'Apply dates' }).click();
+  // Tapping the same day twice collapses the range to that single day.
+  await page.getByTitle('Pick a date or range').click();
+  await page.getByRole('button', { name: 'Aug 24, 2026' }).click();
+  await page.getByRole('button', { name: 'Aug 24, 2026' }).click();
+  await expect(page.getByTitle('Pick a date or range')).toHaveText('Aug 24, 2026');
   await expect(page.locator('.hours-log-table tbody')).toContainText('First Day');
   await expect(page.locator('.hours-log-table tbody')).not.toContainText('Team Support');
 
-  await page.getByLabel('End date').fill('2026-08-25');
-  await page.getByRole('button', { name: 'Apply dates' }).click();
+  // A second tap on a later day closes an inclusive range.
+  await page.getByTitle('Pick a date or range').click();
+  await page.getByRole('button', { name: 'Aug 24, 2026' }).click();
+  await page.getByRole('button', { name: 'Aug 25, 2026' }).click();
+  await expect(page.getByTitle('Pick a date or range')).toHaveText('Aug 24, 2026 – Aug 25, 2026');
   await expect(page.locator('.hours-log-table tbody')).toContainText('First Day');
   await expect(page.locator('.hours-log-table tbody')).toContainText('Team Support');
   await expect(page.locator('.hours-log-table tbody')).not.toContainText('Outside Range');
+
+  // The day arrows step a single day and reload that day alone.
+  await page.getByLabel('Next day').click();
+  await expect(page.getByTitle('Pick a date or range')).toHaveText('Aug 25, 2026');
+  await expect(page.locator('.hours-log-table tbody')).toContainText('Team Support');
+  await expect(page.locator('.hours-log-table tbody')).not.toContainText('First Day');
+  await page.getByLabel('Previous day').click();
+  await expect(page.getByTitle('Pick a date or range')).toHaveText('Aug 24, 2026');
+
+  // Back to the range for the export assertions below.
+  await page.getByTitle('Pick a date or range').click();
+  await page.getByRole('button', { name: 'Aug 24, 2026' }).click();
+  await page.getByRole('button', { name: 'Aug 25, 2026' }).click();
+  await expect(page.locator('.hours-log-table tbody')).toContainText('Team Support');
 
   const exportRequest = page.waitForRequest(request => {
     const url = new URL(request.url());

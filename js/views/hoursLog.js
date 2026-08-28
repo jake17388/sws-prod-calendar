@@ -11,8 +11,11 @@ let exporting = false;
 const initialDate = localDateKey(new Date());
 let fromDate = initialDate;
 let toDate = initialDate;
-let draftFromDate = initialDate;
-let draftToDate = initialDate;
+// Calendar popover, ported from the Job Map day bar: calMonth is the month on
+// screen, calPickStart is the first tap of an in-progress range.
+let calendarOpen = false;
+let calMonth = initialDate;
+let calPickStart = '';
 const savingEntries = new Set();
 const deletingEntries = new Set();
 const rowErrors = new Map();
@@ -23,8 +26,25 @@ function localDateKey(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function validSelectedRange(from, to) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to;
+function parseDateKey(key) {
+  const [year, month, day] = String(key).split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function shiftDateKey(key, days) {
+  const date = parseDateKey(key);
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
+
+function formatDayLabel(key) {
+  return parseDateKey(key).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// "Today" for the common case, a single date, or an inclusive range.
+function dayNavLabel() {
+  if (fromDate !== toDate) return `${formatDayLabel(fromDate)} – ${formatDayLabel(toDate)}`;
+  return fromDate === localDateKey(new Date()) ? 'Today' : formatDayLabel(fromDate);
 }
 
 function downloadExport(result) {
@@ -134,6 +154,65 @@ function rowsHtml() {
   return entries.map(entry => entry.entryId === editingEntryId ? editableRowHtml(entry) : readOnlyRowHtml(entry)).join('');
 }
 
+function dayNavHtml() {
+  return `<div class="hours-log-day-nav">
+    <button class="hours-log-day-nav-btn hours-log-day-nav-prev" type="button" title="Previous day" aria-label="Previous day" ${loading ? 'disabled' : ''}>&lsaquo;</button>
+    <button class="hours-log-day-nav-label" type="button" title="Pick a date or range" aria-haspopup="dialog" aria-expanded="${calendarOpen ? 'true' : 'false'}">${escapeHtml(dayNavLabel())}</button>
+    <button class="hours-log-day-nav-btn hours-log-day-nav-next" type="button" title="Next day" aria-label="Next day" ${loading ? 'disabled' : ''}>&rsaquo;</button>
+  </div>`;
+}
+
+// Range highlighting mirrors the Job Map: the in-progress pick shows as a
+// single selected day until the second tap closes the range.
+function calendarDayClasses(dateKey, todayKey) {
+  const classes = ['hours-log-calendar-day'];
+  if (dateKey === todayKey) classes.push('today');
+  if (calPickStart) {
+    if (dateKey === calPickStart) classes.push('range-start', 'range-end');
+  } else {
+    if (dateKey === fromDate) classes.push('range-start');
+    if (dateKey === toDate) classes.push('range-end');
+    if (dateKey > fromDate && dateKey < toDate) classes.push('in-range');
+  }
+  return classes.join(' ');
+}
+
+function calendarGridHtml() {
+  const month = parseDateKey(calMonth);
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const todayKey = localDateKey(new Date());
+  const firstDayOfWeek = new Date(year, monthIndex, 1).getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const cells = [];
+  for (let blank = 0; blank < firstDayOfWeek; blank += 1) cells.push('<span></span>');
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = localDateKey(new Date(year, monthIndex, day));
+    const selected = dateKey === fromDate || dateKey === toDate || (dateKey > fromDate && dateKey < toDate);
+    cells.push(`<button class="${calendarDayClasses(dateKey, todayKey)}" type="button" data-date="${escapeAttr(dateKey)}" aria-label="${escapeAttr(formatDayLabel(dateKey))}" aria-pressed="${selected ? 'true' : 'false'}"${dateKey === todayKey ? ' aria-current="date"' : ''}>${day}</button>`);
+  }
+  return cells.join('');
+}
+
+function calendarHtml() {
+  if (!calendarOpen) return '';
+  const monthLabel = parseDateKey(calMonth).toLocaleDateString([], { month: 'long', year: 'numeric' });
+  return `<div class="hours-log-calendar-backdrop"><section class="hours-log-calendar" role="dialog" aria-modal="true" aria-labelledby="hours-log-calendar-title" aria-describedby="hours-log-calendar-hint" tabindex="-1">
+    <div class="hours-log-calendar-header">
+      <h2 id="hours-log-calendar-title">${escapeHtml(monthLabel)}</h2>
+      <button class="hours-log-calendar-close" type="button" aria-label="Close date picker">&#10005;</button>
+    </div>
+    <div class="hours-log-calendar-nav">
+      <button class="hours-log-calendar-nav-btn hours-log-calendar-prev-month" type="button" title="Previous month" aria-label="Previous month">&lsaquo;</button>
+      <button class="hours-log-calendar-today" type="button">Jump to today</button>
+      <button class="hours-log-calendar-nav-btn hours-log-calendar-next-month" type="button" title="Next month" aria-label="Next month">&rsaquo;</button>
+    </div>
+    <div class="hours-log-calendar-weekdays" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+    <div class="hours-log-calendar-grid">${calendarGridHtml()}</div>
+    <p class="hours-log-calendar-hint" id="hours-log-calendar-hint">Tap a day to start, tap again to set the range (tap the same day twice for a single day).</p>
+  </section></div>`;
+}
+
 function deletePromptHtml() {
   if (!confirmingDeleteEntryId) return '';
   const deleting = deletingEntries.has(confirmingDeleteEntryId);
@@ -218,24 +297,107 @@ function confirmDelete(container) {
     });
 }
 
-function bindHoursLog(container) {
-  container.querySelector('.hours-log-refresh').addEventListener('click', () => loadEntries(container));
-  container.querySelector('.hours-log-date-from').addEventListener('input', event => { draftFromDate = event.target.value; });
-  container.querySelector('.hours-log-date-to').addEventListener('input', event => { draftToDate = event.target.value; });
-  container.querySelector('.hours-log-apply-dates').addEventListener('click', () => {
-    const from = container.querySelector('.hours-log-date-from').value;
-    const to = container.querySelector('.hours-log-date-to').value;
-    draftFromDate = from;
-    draftToDate = to;
-    if (!validSelectedRange(from, to)) {
-      error = 'Choose a valid start and end date';
-      paint(container);
+function shiftSelectedDay(container, delta) {
+  if (loading) return;
+  fromDate = shiftDateKey(fromDate, delta);
+  toDate = fromDate;
+  loadEntries(container);
+}
+
+function openCalendar(container) {
+  calendarOpen = true;
+  calPickStart = '';
+  calMonth = fromDate;
+  paint(container);
+  container.querySelector('.hours-log-calendar')?.focus();
+}
+
+function closeCalendar(container) {
+  calendarOpen = false;
+  calPickStart = '';
+  paint(container);
+  container.querySelector('.hours-log-day-nav-label')?.focus();
+}
+
+function shiftCalendarMonth(container, delta) {
+  const month = parseDateKey(calMonth);
+  month.setDate(1);
+  month.setMonth(month.getMonth() + delta);
+  calMonth = localDateKey(month);
+  paint(container);
+  container.querySelector('.hours-log-calendar')?.focus();
+}
+
+// First tap starts the range, second tap closes it — reversed picks swap so the
+// range is always ordered, and the same day twice means a single day.
+function pickCalendarDay(container, dateKey) {
+  if (!calPickStart) {
+    calPickStart = dateKey;
+    paint(container);
+    container.querySelector(`.hours-log-calendar-day[data-date="${dateKey}"]`)?.focus();
+    return;
+  }
+  const [from, to] = dateKey < calPickStart ? [dateKey, calPickStart] : [calPickStart, dateKey];
+  fromDate = from;
+  toDate = to;
+  calendarOpen = false;
+  calPickStart = '';
+  loadEntries(container);
+  container.querySelector('.hours-log-day-nav-label')?.focus();
+}
+
+function bindCalendar(container) {
+  const calendar = container.querySelector('.hours-log-calendar');
+  if (!calendar) return;
+  container.querySelector('.hours-log-calendar-backdrop').addEventListener('click', event => {
+    if (event.target === event.currentTarget) closeCalendar(container);
+  });
+  container.querySelector('.hours-log-calendar-close').addEventListener('click', () => closeCalendar(container));
+  container.querySelector('.hours-log-calendar-prev-month').addEventListener('click', () => shiftCalendarMonth(container, -1));
+  container.querySelector('.hours-log-calendar-next-month').addEventListener('click', () => shiftCalendarMonth(container, 1));
+  container.querySelector('.hours-log-calendar-today').addEventListener('click', () => {
+    calMonth = localDateKey(new Date());
+    paint(container);
+    container.querySelector('.hours-log-calendar')?.focus();
+  });
+  container.querySelectorAll('.hours-log-calendar-day').forEach(button => button.addEventListener(
+    'click', () => pickCalendarDay(container, button.dataset.date)));
+  calendar.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCalendar(container);
       return;
     }
-    fromDate = from;
-    toDate = to;
-    loadEntries(container);
+    trapTab(event, calendar);
   });
+}
+
+// Shared by both dialogs: keep Tab inside the panel that owns the screen.
+function trapTab(event, panel) {
+  if (event.key !== 'Tab') return;
+  const controls = [...panel.querySelectorAll('button:not(:disabled)')];
+  if (!controls.length) {
+    event.preventDefault();
+    panel.focus();
+    return;
+  }
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function bindHoursLog(container) {
+  container.querySelector('.hours-log-refresh').addEventListener('click', () => loadEntries(container));
+  container.querySelector('.hours-log-day-nav-prev').addEventListener('click', () => shiftSelectedDay(container, -1));
+  container.querySelector('.hours-log-day-nav-next').addEventListener('click', () => shiftSelectedDay(container, 1));
+  container.querySelector('.hours-log-day-nav-label').addEventListener('click', () => openCalendar(container));
+  bindCalendar(container);
   container.querySelector('.hours-log-export').addEventListener('click', () => {
     if (exporting || loading || !entries?.length) return;
     exporting = true;
@@ -278,27 +440,12 @@ function bindHoursLog(container) {
       closeDeletePrompt(container);
       return;
     }
-    if (event.key !== 'Tab') return;
-    const controls = [...dialog.querySelectorAll('button:not(:disabled)')];
-    if (!controls.length) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-    const first = controls[0];
-    const last = controls[controls.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    trapTab(event, dialog);
   });
 }
 
 function paint(container) {
-  const backgroundAttrs = confirmingDeleteEntryId ? 'inert aria-hidden="true"' : '';
+  const backgroundAttrs = confirmingDeleteEntryId || calendarOpen ? 'inert aria-hidden="true"' : '';
   container.innerHTML = `<div class="job-selector-shell hours-log-shell">
     <header class="job-selector-heading" ${backgroundAttrs}>
       <span class="job-selector-eyebrow">Job costing</span>
@@ -307,14 +454,9 @@ function paint(container) {
     </header>
     <section class="job-selector-section hours-log-section" aria-labelledby="hours-log-title" ${backgroundAttrs}>
       <div class="job-selector-section-heading"><div><h2 id="hours-log-title">Time entries</h2><p>${entries === null ? '' : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}</p></div><button class="hours-log-refresh" type="button">Refresh</button></div>
-      <div class="hours-log-toolbar" aria-label="Hours Log date range">
-        <div class="hours-log-date-fields">
-          <label>Start date<input class="hours-log-date-from" type="date" value="${escapeAttr(draftFromDate)}" /></label>
-          <label>End date<input class="hours-log-date-to" type="date" value="${escapeAttr(draftToDate)}" /></label>
-        </div>
-        <p>Use the same date for one day, or choose a start and end date.</p>
+      <div class="hours-log-toolbar" role="group" aria-label="Hours Log date range">
+        ${dayNavHtml()}
         <div class="hours-log-toolbar-actions">
-          <button class="hours-log-apply-dates" type="button" ${loading ? 'disabled' : ''}>Apply dates</button>
           <button class="hours-log-export" type="button" ${loading || exporting || !entries?.length ? 'disabled' : ''}>${exporting ? 'Exporting…' : 'Export to Excel'}</button>
         </div>
       </div>
@@ -325,6 +467,7 @@ function paint(container) {
         <tbody>${loading ? '' : rowsHtml()}</tbody>
       </table></div>
     </section>
+    ${calendarHtml()}
     ${deletePromptHtml()}
   </div>`;
   bindHoursLog(container);
@@ -358,8 +501,9 @@ export function resetHoursLog() {
   exporting = false;
   fromDate = localDateKey(new Date());
   toDate = fromDate;
-  draftFromDate = fromDate;
-  draftToDate = toDate;
+  calendarOpen = false;
+  calMonth = fromDate;
+  calPickStart = '';
   savingEntries.clear();
   deletingEntries.clear();
   rowErrors.clear();
