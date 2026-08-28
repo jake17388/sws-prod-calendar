@@ -42,6 +42,37 @@ export function monthGridDays(date) {
   return days;
 }
 
+/** @param {Date} date @returns {boolean} true for Saturday or Sunday */
+export const isWeekend = date => date.getDay() === 0 || date.getDay() === 6;
+
+// The production TV strip: one look-back work day, today, and the next three
+// work days. Weekend days inside that span ride along as slivers rather than
+// being dropped, so the run of dates stays continuous and today always reads
+// as the second substantial column.
+const TV_LOOKAHEAD_WORK_DAYS = 3;
+export const TV_DAY_TRACK = 'minmax(0, 1fr)';
+export const TV_WEEKEND_TRACK = '34px';
+
+/** @param {Date} date @returns {Date[]} contiguous days covering the TV window */
+export function tvWindowDays(date) {
+  const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  let start = addDays(today, -1);
+  while (isWeekend(start)) start = addDays(start, -1);
+  let end = today;
+  for (let i = 0; i < TV_LOOKAHEAD_WORK_DAYS; i++) {
+    do {
+      end = addDays(end, 1);
+    } while (isWeekend(end));
+  }
+  const days = [];
+  for (let day = start; day <= end; day = addDays(day, 1)) days.push(day);
+  return days;
+}
+
+/** @param {boolean[]} collapsed one flag per day @returns {string} grid-template-columns */
+export const tvColumnTemplate = collapsed =>
+  collapsed.map(isCollapsed => (isCollapsed ? TV_WEEKEND_TRACK : TV_DAY_TRACK)).join(' ');
+
 export function weekDays(date) {
   const start = startOfWeek(date);
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));

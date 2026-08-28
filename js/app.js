@@ -593,6 +593,13 @@ setInterval(() => {
   if (isTvDisplay() && localDayKey() !== tvDayKey) renderActiveView();
 }, 60000);
 
+// The shop TV runs unattended for weeks at a time. An hourly reload picks up
+// deploys and clears any drift a session that long can accumulate.
+const TV_RELOAD_INTERVAL_MS = 60 * 60 * 1000;
+setInterval(() => {
+  if (isTvDisplay()) window.location.reload();
+}, TV_RELOAD_INTERVAL_MS);
+
 // See sw.js — forces every fetch to the network so a deploy is never left
 // partially stale by the browser/CDN cache.
 if ('serviceWorker' in navigator) {

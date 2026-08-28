@@ -49,6 +49,15 @@ body.tv-mode .week-day-header {
   padding: 5px 6px;
   text-align: center;
 }
+/* Weekend slivers: nothing is ever due on them, so they keep the run of dates
+   continuous without spending width the work days need. */
+body.tv-mode .week-day-col.is-collapsed .week-day-header {
+  padding: 5px 2px;
+}
+body.tv-mode .week-day-col.is-collapsed .week-day-header .dow { font-size: 9px; letter-spacing: 0; }
+body.tv-mode .week-day-col.is-collapsed .week-day-header .dom { font-size: 13px; }
+body.tv-mode .week-day-col.is-collapsed .week-day-jobs { padding: 0; }
+
 body.tv-mode .week-day-header .dow { font-size: 11px; }
 body.tv-mode .week-day-header .dom { font-size: 19px; margin-top: 0; }
 body.tv-mode .week-day-jobs {
