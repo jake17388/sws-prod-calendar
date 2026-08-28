@@ -6,4 +6,4 @@ node_modules/
 playwright-report/
 test-results/
 .claude/settings.local.json
-Code.js
+/Code.js
