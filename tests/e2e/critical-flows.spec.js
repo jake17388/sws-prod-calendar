@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -196,6 +196,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       } : entry);
       body = { success: true, entry: jobTimeLogEntries.find(entry => entry.entryId === payload.entryId) };
     } else if (action === 'deleteJobTimeEntry') {
+      if (jobTimeDeleteDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDeleteDelayMs));
       jobTimeLogEntries = jobTimeLogEntries.filter(entry => entry.entryId !== payload.entryId);
       body = { success: true };
     } else if (action === 'addAdditionalFile') {
@@ -650,8 +651,8 @@ for (const readOnlyRole of ['Viewer', 'Manager']) {
   });
 }
 
-test('deleting an hours-log entry requires confirmation and supports cancel', async ({ page }) => {
-  await mockBackend(page, { department: 'Admin', user: 'Test Admin' });
+test('deleting an hours-log entry uses an accessible confirmation and supports cancel', async ({ page }) => {
+  await mockBackend(page, { department: 'Admin', user: 'Test Admin', jobTimeDeleteDelayMs: 300 });
   await login(page);
   await page.getByRole('button', { name: 'Hours Log' }).click();
 
@@ -660,14 +661,32 @@ test('deleting an hours-log entry requires confirmation and supports cancel', as
   await row.getByRole('button', { name: 'Delete' }).click();
   const prompt = page.getByRole('dialog', { name: 'Delete this hour log?' });
   await expect(prompt).toBeVisible();
+  await expect(prompt).toHaveAttribute('aria-describedby', 'hours-log-delete-description');
+  await expect(page.locator('#hours-log-delete-description')).toContainText('permanently removes');
   await expect(prompt).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  await expect(prompt.getByRole('button', { name: 'Confirm' })).toHaveCSS('background-color', 'rgb(220, 38, 38)');
-  await prompt.getByRole('button', { name: 'Cancel' }).click();
-  await expect(row).toBeVisible();
+  const cancelButton = prompt.getByRole('button', { name: 'Cancel' });
+  const confirmButton = prompt.getByRole('button', { name: 'Confirm delete' });
+  await expect(confirmButton).toHaveCSS('background-color', 'rgb(220, 38, 38)');
+  await expect(cancelButton).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(confirmButton).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(cancelButton).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(prompt).toBeHidden();
+  await expect(row.getByRole('button', { name: 'Delete' })).toBeFocused();
 
   await row.getByRole('button', { name: 'Delete' }).click();
-  await prompt.getByRole('button', { name: 'Confirm' }).click();
+  await prompt.getByRole('button', { name: 'Cancel' }).click();
+  await expect(row).toBeVisible();
+  await expect(row.getByRole('button', { name: 'Delete' })).toBeFocused();
+
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await prompt.getByRole('button', { name: 'Confirm delete' }).click();
+  await expect(prompt).toHaveAttribute('aria-busy', 'true');
+  await expect(prompt).toContainText('Deleting…');
   await expect(page.locator('.hours-log-table tbody tr')).toContainText('No job-costing time has been logged yet.');
+  await expect(page.getByRole('button', { name: 'Refresh' })).toBeFocused();
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {
