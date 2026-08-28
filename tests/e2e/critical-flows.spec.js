@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false, jobTimeEntries = null, filterJobTimeByDate = false } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -52,7 +52,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     { id: 'team-support', text: 'Team Support' },
     { id: 'pm-sales', text: 'PM/Sales' },
   ];
-  let jobTimeLogEntries = [{
+  let jobTimeLogEntries = jobTimeEntries || [{
     entryId: 'entry-log-1', userId: 'paint-1', employee: 'Carlos', department: 'Paint',
     jobNum: '260001', jobName: 'Browser Test Job', source: 'assigned',
     startedAt: '2026-08-24T14:00:00.000Z', endedAt: '2026-08-24T15:30:00.000Z',
@@ -82,7 +82,26 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'getJobTimeStatus') {
       body = { success: true, active: activeJobTime };
     } else if (action === 'getJobTimeLog') {
-      body = { success: true, entries: jobTimeLogEntries };
+      const url = new URL(request.url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const filtered = filterJobTimeByDate && from && to
+        ? jobTimeLogEntries.filter(entry => {
+          const day = entry.startedAt.slice(0, 10);
+          return day >= from && day <= to;
+        })
+        : jobTimeLogEntries;
+      body = { success: true, entries: filtered };
+    } else if (action === 'exportJobTimeLog') {
+      const url = new URL(request.url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      body = {
+        success: true,
+        name: from === to ? `hours-log-${from}.xlsx` : `hours-log-${from}-to-${to}.xlsx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        base64: Buffer.from('PK\x03\x04browser-test-workbook').toString('base64'),
+      };
     } else if (action === 'lookupSquarecoilJob') {
       const jobNum = new URL(request.url()).searchParams.get('jobNum');
       body = { success: true, found: true, job: { jobNum, name: 'Squarecoil Other Job' } };
@@ -633,6 +652,47 @@ test('a Costing Viewer unlocks only costing fields and sees the resolved job nam
   await expect(row).toContainText('Carlos Hernandez');
   await expect(row).toContainText('Squarecoil Other Job');
   await expect(row.locator('.hours-log-duration')).toContainText('1h 45m');
+});
+
+test('Hours Log filters one day or a range and exports that range to Excel', async ({ page }) => {
+  await mockBackend(page, {
+    department: 'Viewer',
+    user: 'Export Viewer',
+    filterJobTimeByDate: true,
+    jobTimeEntries: [
+      { entryId: 'day-1', employee: 'Pat', department: 'Paint', jobNum: '260101', jobName: 'First Day', source: 'assigned', startedAt: '2026-08-24T14:00:00.000Z', endedAt: '2026-08-24T15:00:00.000Z', durationMinutes: 60, status: 'closed', editedAt: '', editedBy: '' },
+      { entryId: 'day-2', employee: 'Alex', department: 'Assembly', jobNum: '', jobName: 'Team Support', source: 'costing_button:team-support', startedAt: '2026-08-25T14:00:00.000Z', endedAt: '2026-08-25T14:30:00.000Z', durationMinutes: 30, status: 'closed', editedAt: '', editedBy: '' },
+      { entryId: 'day-3', employee: 'Lee', department: 'Letters', jobNum: '260103', jobName: 'Outside Range', source: 'assigned', startedAt: '2026-08-26T14:00:00.000Z', endedAt: '', durationMinutes: null, status: 'active', editedAt: '', editedBy: '' },
+    ],
+  });
+  await login(page);
+  await page.getByRole('button', { name: 'Hours Log' }).click();
+
+  await page.getByLabel('Start date').fill('2026-08-24');
+  await page.getByLabel('End date').fill('2026-08-24');
+  await page.getByRole('button', { name: 'Apply dates' }).click();
+  await expect(page.locator('.hours-log-table tbody')).toContainText('First Day');
+  await expect(page.locator('.hours-log-table tbody')).not.toContainText('Team Support');
+
+  await page.getByLabel('End date').fill('2026-08-25');
+  await page.getByRole('button', { name: 'Apply dates' }).click();
+  await expect(page.locator('.hours-log-table tbody')).toContainText('First Day');
+  await expect(page.locator('.hours-log-table tbody')).toContainText('Team Support');
+  await expect(page.locator('.hours-log-table tbody')).not.toContainText('Outside Range');
+
+  const exportRequest = page.waitForRequest(request => {
+    const url = new URL(request.url());
+    return url.searchParams.get('action') === 'exportJobTimeLog'
+      && url.searchParams.get('from') === '2026-08-24'
+      && url.searchParams.get('to') === '2026-08-25';
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export to Excel' }).click();
+  await exportRequest;
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('hours-log-2026-08-24-to-2026-08-25.xlsx');
+  const downloadPath = await download.path();
+  expect((await import('node:fs')).readFileSync(downloadPath).subarray(0, 4).toString('binary')).toBe('PK\x03\x04');
 });
 
 for (const readOnlyRole of ['Viewer', 'Manager']) {

@@ -6,7 +6,15 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'Code.js'), 'utf8');
 
-function loadBackend() {
+function phoenixDateKey(value) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Phoenix', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function loadBackend(extraGlobals = {}) {
   let uuid = 0;
   const context = vm.createContext({
     console,
@@ -28,7 +36,10 @@ function loadBackend() {
     },
     Utilities: {
       getUuid: () => `entry-${++uuid}`,
+      formatDate: value => phoenixDateKey(value),
     },
+    Session: { getScriptTimeZone: () => 'America/Phoenix' },
+    ...extraGlobals,
   });
   vm.runInContext(source, context);
   return context;
@@ -323,6 +334,45 @@ test('the protected hours log returns newest sheet entries first', () => {
   });
   assert.equal(result.entries[1].durationMinutes, 30);
   assert.equal(context.getJobTimeLog({ name: 'Other Worker', department: 'Paint' }).error, 'forbidden');
+});
+
+test('the protected hours log filters an inclusive Phoenix date range', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    ['entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name', 'source', 'started_at', 'ended_at', 'duration_minutes', 'status'],
+    ['before', 'paint-1', 'Before', 'Paint', '260100', 'Before', 'assigned', new Date('2026-08-24T06:59:00.000Z'), '', '', 'active'],
+    ['first', 'paint-1', 'First', 'Paint', '260101', 'First', 'assigned', new Date('2026-08-24T07:00:00.000Z'), '', '', 'active'],
+    ['last', 'paint-1', 'Last', 'Paint', '260102', 'Last', 'assigned', new Date('2026-08-26T06:59:00.000Z'), '', '', 'active'],
+    ['after', 'paint-1', 'After', 'Paint', '260103', 'After', 'assigned', new Date('2026-08-26T07:00:00.000Z'), '', '', 'active'],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  const actor = { id: 'admin-1', department: 'Admin' };
+
+  const result = context.getJobTimeLog(actor, { from: '2026-08-24', to: '2026-08-25' });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.entries.map(entry => entry.entryId), ['last', 'first']);
+  assert.equal(context.getJobTimeLog(actor, { from: '2026-08-26', to: '2026-08-24' }).error, 'Invalid date range');
+  assert.equal(context.getJobTimeLog(actor, { from: '08/24/2026', to: '2026-08-24' }).error, 'Invalid date range');
+});
+
+test('Excel export rows are typed, formula-safe, and named for the selected range', () => {
+  const context = loadBackend();
+  const rows = context.jobTimeExportRows_([{
+    employee: '=CMD', department: 'Paint', jobNum: '260101', jobName: '@Activity',
+    startedAt: '2026-08-24T14:00:00.000Z', endedAt: '2026-08-24T15:30:00.000Z',
+    durationMinutes: 90, status: 'closed', source: 'assigned', editedAt: '', editedBy: '',
+  }]);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(rows[0])), [
+    'Employee', 'Department', 'Job Number', 'Job / Activity', 'Started', 'Ended',
+    'Duration (Hours)', 'Status', 'Source', 'Last Edited', 'Edited By',
+  ]);
+  assert.equal(rows[1][0], "'=CMD");
+  assert.equal(rows[1][3], "'@Activity");
+  assert.equal(rows[1][6], 1.5);
+  assert.equal(context.jobTimeExportFileName_('2026-08-24', '2026-08-24'), 'hours-log-2026-08-24.xlsx');
+  assert.equal(context.jobTimeExportFileName_('2026-08-24', '2026-08-25'), 'hours-log-2026-08-24-to-2026-08-25.xlsx');
+  assert.equal(context.exportJobTimeLog({ department: 'Paint' }, { from: '2026-08-24', to: '2026-08-24' }).error, 'forbidden');
 });
 
 test('Costing Viewer edits recalculate duration and stamp the editor and time', () => {

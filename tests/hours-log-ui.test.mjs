@@ -20,7 +20,8 @@ test('Costing Viewers and admins receive a dedicated Hours Log view backed by th
   assert.match(auth, /export const canEditHoursLog/);
   assert.match(auth, /canViewHoursLog[\s\S]*Admin[\s\S]*Manager[\s\S]*Viewer[\s\S]*Costing Viewer/);
   assert.match(auth, /canEditHoursLog[\s\S]*Admin[\s\S]*Costing Viewer/);
-  assert.match(api, /fetchJobTimeLog\s*=\s*\(\)\s*=>\s*scriptGet\(['"]getJobTimeLog['"]\)/);
+  assert.match(api, /fetchJobTimeLog\s*=\s*\(from, to\)\s*=>\s*scriptGet\(['"]getJobTimeLog['"]/);
+  assert.match(api, /exportJobTimeLog/);
   assert.match(api, /updateJobTimeEntry/);
   assert.match(api, /deleteJobTimeEntry/);
 });
@@ -30,6 +31,12 @@ test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   const css = read('styles/job-selector.css');
 
   assert.match(view, /Hours Log/);
+  assert.match(view, /type="date"/);
+  assert.match(view, /Start date/);
+  assert.match(view, /End date/);
+  assert.match(view, /Apply dates/);
+  assert.match(view, /Export to Excel/);
+  assert.match(view, /exportJobTimeLog/);
   assert.match(view, /Employee/);
   assert.match(view, /Job/);
   assert.match(view, /Duration/);
