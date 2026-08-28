@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Code.js'
+      - 'src/**'
       - 'appsscript.json'
       - '.github/workflows/deploy.yml'
   # Lets a failed deploy be re-run without an empty commit.
