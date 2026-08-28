@@ -1,4 +1,4 @@
-import { deleteJobTimeEntry, fetchJobTimeLog, updateJobTimeEntry } from '../api.js';
+import { deleteJobTimeEntry, exportJobTimeLog, fetchJobTimeLog, updateJobTimeEntry } from '../api.js';
 import { canEditHoursLog } from '../auth.js';
 import { escapeAttr, escapeHtml } from '../lib/html.js';
 
@@ -7,9 +7,37 @@ let loading = false;
 let error = '';
 let editingEntryId = '';
 let confirmingDeleteEntryId = '';
+let exporting = false;
+const initialDate = localDateKey(new Date());
+let fromDate = initialDate;
+let toDate = initialDate;
+let draftFromDate = initialDate;
+let draftToDate = initialDate;
 const savingEntries = new Set();
 const deletingEntries = new Set();
 const rowErrors = new Map();
+
+function localDateKey(value) {
+  const date = new Date(value);
+  const pad = number => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function validSelectedRange(from, to) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to;
+}
+
+function downloadExport(result) {
+  const bytes = Uint8Array.from(atob(result.base64), character => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: result.mimeType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = result.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 function formatDate(value) {
   if (!value) return '—';
@@ -192,6 +220,38 @@ function confirmDelete(container) {
 
 function bindHoursLog(container) {
   container.querySelector('.hours-log-refresh').addEventListener('click', () => loadEntries(container));
+  container.querySelector('.hours-log-date-from').addEventListener('input', event => { draftFromDate = event.target.value; });
+  container.querySelector('.hours-log-date-to').addEventListener('input', event => { draftToDate = event.target.value; });
+  container.querySelector('.hours-log-apply-dates').addEventListener('click', () => {
+    const from = container.querySelector('.hours-log-date-from').value;
+    const to = container.querySelector('.hours-log-date-to').value;
+    draftFromDate = from;
+    draftToDate = to;
+    if (!validSelectedRange(from, to)) {
+      error = 'Choose a valid start and end date';
+      paint(container);
+      return;
+    }
+    fromDate = from;
+    toDate = to;
+    loadEntries(container);
+  });
+  container.querySelector('.hours-log-export').addEventListener('click', () => {
+    if (exporting || loading || !entries?.length) return;
+    exporting = true;
+    error = '';
+    paint(container);
+    exportJobTimeLog(fromDate, toDate)
+      .then(result => {
+        if (!result.success || !result.base64) throw new Error(result.error || 'Could not export hours log');
+        downloadExport(result);
+      })
+      .catch(err => { error = err.message || 'Could not export hours log'; })
+      .finally(() => {
+        exporting = false;
+        if (container.querySelector('.hours-log-shell')) paint(container);
+      });
+  });
   container.querySelectorAll('.hours-log-edit').forEach(button => button.addEventListener('click', () => {
     editingEntryId = button.closest('tr').dataset.entryId;
     rowErrors.clear();
@@ -246,7 +306,18 @@ function paint(container) {
       <p>Review job-costing time, or use the pencil to correct a job number or timestamp. Every saved edit records who changed it and when.</p>
     </header>
     <section class="job-selector-section hours-log-section" aria-labelledby="hours-log-title" ${backgroundAttrs}>
-      <div class="job-selector-section-heading"><h2 id="hours-log-title">Time entries</h2><button class="hours-log-refresh" type="button">Refresh</button></div>
+      <div class="job-selector-section-heading"><div><h2 id="hours-log-title">Time entries</h2><p>${entries === null ? '' : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}</p></div><button class="hours-log-refresh" type="button">Refresh</button></div>
+      <div class="hours-log-toolbar" aria-label="Hours Log date range">
+        <div class="hours-log-date-fields">
+          <label>Start date<input class="hours-log-date-from" type="date" value="${escapeAttr(draftFromDate)}" /></label>
+          <label>End date<input class="hours-log-date-to" type="date" value="${escapeAttr(draftToDate)}" /></label>
+        </div>
+        <p>Use the same date for one day, or choose a start and end date.</p>
+        <div class="hours-log-toolbar-actions">
+          <button class="hours-log-apply-dates" type="button" ${loading ? 'disabled' : ''}>Apply dates</button>
+          <button class="hours-log-export" type="button" ${loading || exporting || !entries?.length ? 'disabled' : ''}>${exporting ? 'Exporting…' : 'Export to Excel'}</button>
+        </div>
+      </div>
       <div class="hours-log-status" role="status" aria-live="polite">${escapeHtml(loading ? 'Loading hours…' : error)}</div>
       <div class="hours-log-table-wrap"><table class="hours-log-table">
         <colgroup><col class="hours-log-col-employee"><col class="hours-log-col-job"><col class="hours-log-col-started"><col class="hours-log-col-ended"><col class="hours-log-col-duration"><col class="hours-log-col-source"><col class="hours-log-col-edited"><col class="hours-log-col-actions"></colgroup>
@@ -266,7 +337,7 @@ function loadEntries(container) {
   editingEntryId = '';
   confirmingDeleteEntryId = '';
   paint(container);
-  fetchJobTimeLog()
+  return fetchJobTimeLog(fromDate, toDate)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not load hours log');
       entries = result.entries || [];
@@ -284,6 +355,11 @@ export function resetHoursLog() {
   error = '';
   editingEntryId = '';
   confirmingDeleteEntryId = '';
+  exporting = false;
+  fromDate = localDateKey(new Date());
+  toDate = fromDate;
+  draftFromDate = fromDate;
+  draftToDate = toDate;
   savingEntries.clear();
   deletingEntries.clear();
   rowErrors.clear();

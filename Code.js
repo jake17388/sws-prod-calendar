@@ -872,7 +872,13 @@ function routeGet(e) {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
     if (!canViewJobTimeLog(actor)) return json({ error: 'forbidden' });
-    return json(getJobTimeLog(actor));
+    return json(getJobTimeLog(actor, params));
+  }
+  if (action === 'exportJobTimeLog') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canViewJobTimeLog(actor)) return json({ error: 'forbidden' });
+    return json(exportJobTimeLog(actor, params));
   }
   if (action === 'lookupSquarecoilJob') {
     const actor = resolveActor(e.parameter.token);
@@ -2101,18 +2107,129 @@ function jobTimeLogEntryFromRow_(row) {
   };
 }
 
-function getJobTimeLog(actor) {
+function normalizeJobTimeRange_(params) {
+  const from = String((params && params.from) || '').trim();
+  const to = String((params && params.to) || '').trim();
+  if (!from && !to) return { from: '', to: '' };
+  if (!from || !to || !validDateOverride(from) || !validDateOverride(to) || from > to) {
+    return { error: 'Invalid date range' };
+  }
+  return { from, to };
+}
+
+function jobTimeDayKey_(value) {
+  const date = jobTimeDate_(value);
+  if (!date) return '';
+  return Utilities.formatDate(date, Session.getScriptTimeZone() || 'America/Phoenix', 'yyyy-MM-dd');
+}
+
+function getJobTimeLog(actor, params) {
   if (!canViewJobTimeLog(actor)) return { error: 'forbidden' };
+  const range = normalizeJobTimeRange_(params);
+  if (range.error) return range;
   try {
     const rows = getJobTimeEntriesSheet_().getDataRange().getValues();
     const entries = rows.slice(1)
       .filter(row => row.some(value => value !== '' && value != null))
+      .filter(row => {
+        if (!range.from) return true;
+        const day = jobTimeDayKey_(row[7]);
+        return day >= range.from && day <= range.to;
+      })
       .map(jobTimeLogEntryFromRow_)
       .reverse();
     return { success: true, entries };
   } catch (err) {
     console.error('Job time log failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not load hours log' };
+  }
+}
+
+function jobTimeExportFileName_(from, to) {
+  return from === to
+    ? 'hours-log-' + from + '.xlsx'
+    : 'hours-log-' + from + '-to-' + to + '.xlsx';
+}
+
+function jobTimeExportSource_(source) {
+  if (source === 'assigned') return 'Assigned';
+  if (String(source || '').indexOf('costing_button:') === 0) return 'Costing button';
+  return 'Other';
+}
+
+function jobTimeExportRows_(entries) {
+  const headers = [
+    'Employee', 'Department', 'Job Number', 'Job / Activity', 'Started', 'Ended',
+    'Duration (Hours)', 'Status', 'Source', 'Last Edited', 'Edited By',
+  ];
+  const rows = (entries || []).map(entry => [
+    sanitizeSheetText(entry.employee),
+    sanitizeSheetText(entry.department),
+    sanitizeSheetText(entry.jobNum),
+    sanitizeSheetText(entry.jobName),
+    jobTimeDate_(entry.startedAt) || '',
+    jobTimeDate_(entry.endedAt) || '',
+    Number.isFinite(entry.durationMinutes) ? Math.round((entry.durationMinutes / 60) * 100) / 100 : '',
+    sanitizeSheetText(entry.status),
+    jobTimeExportSource_(entry.source),
+    jobTimeDate_(entry.editedAt) || '',
+    sanitizeSheetText(entry.editedBy),
+  ]);
+  return [headers].concat(rows);
+}
+
+function exportJobTimeLog(actor, params) {
+  if (!canViewJobTimeLog(actor)) return { error: 'forbidden' };
+  const range = normalizeJobTimeRange_(params);
+  if (range.error || !range.from) return { success: false, error: range.error || 'A date range is required' };
+  const log = getJobTimeLog(actor, range);
+  if (!log.success) return log;
+
+  const name = jobTimeExportFileName_(range.from, range.to);
+  let workbook = null;
+  try {
+    workbook = SpreadsheetApp.create(name.replace(/\.xlsx$/i, ''));
+    workbook.setSpreadsheetTimeZone(Session.getScriptTimeZone() || 'America/Phoenix');
+    const sheet = workbook.getSheets()[0];
+    sheet.setName('Hours Log');
+    const rows = jobTimeExportRows_(log.entries);
+    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, rows[0].length)
+      .setFontWeight('bold')
+      .setBackground('#173b70')
+      .setFontColor('#ffffff');
+    if (rows.length > 1) {
+      sheet.getRange(2, 5, rows.length - 1, 2).setNumberFormat('m/d/yyyy h:mm AM/PM');
+      sheet.getRange(2, 7, rows.length - 1, 1).setNumberFormat('0.00');
+      sheet.getRange(2, 10, rows.length - 1, 1).setNumberFormat('m/d/yyyy h:mm AM/PM');
+    }
+    sheet.autoResizeColumns(1, rows[0].length);
+    SpreadsheetApp.flush();
+
+    const response = UrlFetchApp.fetch(
+      'https://docs.google.com/spreadsheets/d/' + encodeURIComponent(workbook.getId()) + '/export?format=xlsx',
+      { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true },
+    );
+    if (response.getResponseCode() !== 200) throw new Error('Excel conversion failed');
+    const blob = response.getBlob().setName(name);
+    return {
+      success: true,
+      name,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      base64: Utilities.base64Encode(blob.getBytes()),
+    };
+  } catch (err) {
+    console.error('Export job time log failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not export hours log' };
+  } finally {
+    if (workbook) {
+      try {
+        DriveApp.getFileById(workbook.getId()).setTrashed(true);
+      } catch (cleanupError) {
+        console.error('Could not remove temporary hours-log export: %s', cleanupError && cleanupError.message);
+      }
+    }
   }
 }
 

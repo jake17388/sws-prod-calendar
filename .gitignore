@@ -5,3 +5,4 @@ _site/
 node_modules/
 playwright-report/
 test-results/
+.claude/settings.local.json

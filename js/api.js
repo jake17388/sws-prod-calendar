@@ -42,7 +42,9 @@ export const fetchTrackingVersion = () => scriptGet('getTrackingVersion').then(d
 
 export const fetchJobTimeStatus = () => scriptGet('getJobTimeStatus');
 
-export const fetchJobTimeLog = () => scriptGet('getJobTimeLog');
+export const fetchJobTimeLog = (from, to) => scriptGet('getJobTimeLog', { from, to });
+
+export const exportJobTimeLog = (from, to) => scriptGet('exportJobTimeLog', { from, to });
 
 export const fetchCostingButtons = () => scriptGet('getCostingButtons').then(d => d.buttons || []);
 
