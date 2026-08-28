@@ -686,7 +686,7 @@ test('deleting an hours-log entry uses an accessible confirmation and supports c
   await expect(prompt).toHaveAttribute('aria-busy', 'true');
   await expect(prompt).toContainText('Deleting…');
   await expect(page.locator('.hours-log-table tbody tr')).toContainText('No job-costing time has been logged yet.');
-  await expect(page.getByRole('button', { name: 'Refresh' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeFocused();
 });
 
 test('a Viewer can add an additional file with visible attribution but cannot delete it', async ({ page }) => {

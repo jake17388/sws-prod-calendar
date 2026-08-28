@@ -42,7 +42,7 @@ test('the Hours Log defaults to rows that unlock editing with a pencil', () => {
   assert.match(view, /aria-describedby="hours-log-delete-description"/);
   assert.match(view, /inert aria-hidden="true"/);
   assert.match(view, /hours-log-dialog[\s\S]*keydown/);
-  assert.match(view, />Confirm</);
+  assert.match(view, /Confirm delete/);
   assert.match(view, />Cancel</);
   assert.doesNotMatch(view, /class="hours-log-input hours-log-employee"/);
   assert.doesNotMatch(view, /class="hours-log-input hours-log-job-name"/);

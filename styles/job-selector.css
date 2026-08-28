@@ -234,7 +234,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-3);
-  background: var(--surface-raised);
+  background: var(--surface-card);
   color: var(--ink-primary);
   font-weight: var(--weight-bold);
 }
@@ -246,13 +246,18 @@
 .hours-log-save:disabled { opacity: 0.55; }
 .hours-log-row-hint { display: block; min-width: 0; max-width: 100%; margin-top: var(--space-1); color: var(--status-critical-text); }
 .hours-log-empty { color: var(--ink-secondary); text-align: center !important; }
-.hours-log-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: var(--space-5); background: rgb(15 23 42 / 45%); }
-.hours-log-dialog { width: min(420px, 100%); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: var(--space-6); background: var(--surface-raised); box-shadow: var(--shadow-lg); }
+.hours-log-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: var(--space-5); background: rgb(15 23 42 / 56%); backdrop-filter: blur(2px); }
+.hours-log-dialog { position: relative; width: min(420px, 100%); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: var(--space-6); background: var(--surface-overlay); box-shadow: var(--shadow-4); }
 .hours-log-dialog h2 { margin: 0 0 var(--space-2); }
 .hours-log-dialog p { margin: 0; color: var(--ink-secondary); }
 .hours-log-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-6); }
-.hours-log-dialog-actions button { min-height: 42px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 var(--space-4); background: var(--surface-raised); color: var(--ink-primary); font-weight: var(--weight-bold); }
-.hours-log-dialog-actions .hours-log-delete-confirm { border-color: var(--status-critical-border); background: var(--status-critical-bg); color: var(--status-critical-text); }
+.hours-log-dialog-actions button { min-width: 96px; min-height: 44px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 0 var(--space-4); background: var(--surface-card); color: var(--ink-primary); font-weight: var(--weight-bold); }
+.hours-log-dialog-actions .hours-log-delete-confirm { border-color: var(--status-critical-solid); background: var(--status-critical-solid); color: var(--ink-inverse); }
+
+@media (max-width: 420px) {
+  .hours-log-dialog-actions { flex-direction: column; }
+  .hours-log-dialog-actions button { width: 100%; }
+}
 
 @media (max-width: 900px) {
   .hours-log-table,
@@ -275,7 +280,7 @@
     border: 1px solid var(--border-default);
     border-radius: var(--radius-md);
     padding: var(--space-4);
-    background: var(--surface-raised);
+    background: var(--surface-card);
   }
   .hours-log-table td {
     display: block;

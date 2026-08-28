@@ -109,11 +109,27 @@ function rowsHtml() {
 function deletePromptHtml() {
   if (!confirmingDeleteEntryId) return '';
   const deleting = deletingEntries.has(confirmingDeleteEntryId);
-  return `<div class="hours-log-dialog-backdrop"><section class="hours-log-dialog" role="dialog" aria-modal="true" aria-labelledby="hours-log-delete-title">
+  return `<div class="hours-log-dialog-backdrop"><section class="hours-log-dialog" role="dialog" aria-modal="true" aria-labelledby="hours-log-delete-title" aria-describedby="hours-log-delete-description" aria-busy="${deleting ? 'true' : 'false'}" tabindex="-1">
     <h2 id="hours-log-delete-title">Delete this hour log?</h2>
-    <p>This permanently removes the selected time entry.</p>
-    <div class="hours-log-dialog-actions"><button class="hours-log-delete-cancel" type="button" ${deleting ? 'disabled' : ''}>Cancel</button><button class="hours-log-delete-confirm" type="button" ${deleting ? 'disabled' : ''}>Confirm</button></div>
+    <p id="hours-log-delete-description">This permanently removes the selected time entry.</p>
+    <div class="hours-log-dialog-actions"><button class="hours-log-delete-cancel" type="button" ${deleting ? 'disabled' : ''}>Cancel</button><button class="hours-log-delete-confirm" type="button" aria-label="${deleting ? 'Deleting hour log' : 'Confirm delete'}" ${deleting ? 'disabled' : ''}>${deleting ? 'Deleting…' : 'Confirm'}</button></div>
   </section></div>`;
+}
+
+function entryRow(container, entryId) {
+  return [...container.querySelectorAll('tr[data-entry-id]')]
+    .find(row => row.dataset.entryId === entryId) || null;
+}
+
+function focusEntryAction(container, entryId, selector) {
+  entryRow(container, entryId)?.querySelector(selector)?.focus();
+}
+
+function closeDeletePrompt(container) {
+  const entryId = confirmingDeleteEntryId;
+  confirmingDeleteEntryId = '';
+  paint(container);
+  focusEntryAction(container, entryId, '.hours-log-delete');
 }
 
 function saveEntry(container, row) {
@@ -145,12 +161,17 @@ function saveEntry(container, row) {
 function confirmDelete(container) {
   const entryId = confirmingDeleteEntryId;
   if (!entryId) return;
+  const entryIndex = entries.findIndex(entry => entry.entryId === entryId);
+  const nextEntryId = entries[entryIndex + 1]?.entryId || entries[entryIndex - 1]?.entryId || '';
+  let deleted = false;
   deletingEntries.add(entryId);
   paint(container);
+  container.querySelector('.hours-log-dialog')?.focus();
   deleteJobTimeEntry(entryId)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not delete entry');
       entries = entries.filter(entry => entry.entryId !== entryId);
+      deleted = true;
       editingEntryId = '';
       confirmingDeleteEntryId = '';
       rowErrors.delete(entryId);
@@ -161,7 +182,11 @@ function confirmDelete(container) {
     })
     .finally(() => {
       deletingEntries.delete(entryId);
-      if (container.querySelector('.hours-log-shell')) paint(container);
+      if (!container.querySelector('.hours-log-shell')) return;
+      paint(container);
+      if (deleted && nextEntryId) focusEntryAction(container, nextEntryId, '.hours-log-edit');
+      else if (deleted) container.querySelector('.hours-log-refresh')?.focus();
+      else focusEntryAction(container, entryId, '.hours-log-delete');
     });
 }
 
@@ -181,22 +206,46 @@ function bindHoursLog(container) {
   container.querySelectorAll('.hours-log-delete').forEach(button => button.addEventListener('click', () => {
     confirmingDeleteEntryId = button.closest('tr').dataset.entryId;
     paint(container);
+    container.querySelector('.hours-log-delete-cancel')?.focus();
   }));
-  container.querySelector('.hours-log-delete-cancel')?.addEventListener('click', () => {
-    confirmingDeleteEntryId = '';
-    paint(container);
-  });
+  container.querySelector('.hours-log-delete-cancel')?.addEventListener('click', () => closeDeletePrompt(container));
   container.querySelector('.hours-log-delete-confirm')?.addEventListener('click', () => confirmDelete(container));
+  const dialog = container.querySelector('.hours-log-dialog');
+  dialog?.addEventListener('keydown', event => {
+    const deleting = deletingEntries.has(confirmingDeleteEntryId);
+    if (event.key === 'Escape' && !deleting) {
+      event.preventDefault();
+      closeDeletePrompt(container);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = [...dialog.querySelectorAll('button:not(:disabled)')];
+    if (!controls.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 }
 
 function paint(container) {
+  const backgroundAttrs = confirmingDeleteEntryId ? 'inert aria-hidden="true"' : '';
   container.innerHTML = `<div class="job-selector-shell hours-log-shell">
-    <header class="job-selector-heading">
+    <header class="job-selector-heading" ${backgroundAttrs}>
       <span class="job-selector-eyebrow">Job costing</span>
       <h1>Hours Log</h1>
       <p>Review job-costing time, or use the pencil to correct a job number or timestamp. Every saved edit records who changed it and when.</p>
     </header>
-    <section class="job-selector-section hours-log-section" aria-labelledby="hours-log-title">
+    <section class="job-selector-section hours-log-section" aria-labelledby="hours-log-title" ${backgroundAttrs}>
       <div class="job-selector-section-heading"><h2 id="hours-log-title">Time entries</h2><button class="hours-log-refresh" type="button">Refresh</button></div>
       <div class="hours-log-status" role="status" aria-live="polite">${escapeHtml(loading ? 'Loading hours…' : error)}</div>
       <div class="hours-log-table-wrap"><table class="hours-log-table">
