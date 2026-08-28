@@ -10,7 +10,11 @@ export function renderWeek(container, refDate, jobs) {
   const days = viewDays(refDate);
   const tv = isTvDisplay();
   const today = new Date();
-  const jobsByDate = groupByDueDate(jobs);
+  // The shop floor only needs what is still outstanding — a finished job on the
+  // TV is dead space. Every other role keeps seeing it struck through in place,
+  // which is how they confirm the work actually got marked off.
+  const visibleJobs = tv ? jobs.filter(job => !job.completed) : jobs;
+  const jobsByDate = groupByDueDate(visibleJobs);
   const collapsed = [];
 
   const grid = document.createElement('div');

@@ -65,6 +65,12 @@ test('week view renders the rolling TV window instead of the calendar week', () 
   assert.doesNotMatch(weekSource, /days\[6\]/);
 });
 
+test('the TV strip shows only jobs that are still outstanding', () => {
+  assert.match(weekSource, /tv \? jobs\.filter\(job => !job\.completed\) : jobs/);
+  // Everyone else keeps seeing completed jobs struck through in place.
+  assert.match(weekSource, /groupByDueDate\(visibleJobs\)/);
+});
+
 test('the TV display reloads itself once an hour', () => {
   assert.match(appSource, /TV_RELOAD_INTERVAL_MS\s*=\s*60\s*\*\s*60\s*\*\s*1000/);
   assert.match(appSource, /setInterval\(\(\) => \{\s*if \(isTvDisplay\(\)\) window\.location\.reload\(\);\s*\}, TV_RELOAD_INTERVAL_MS\)/);
