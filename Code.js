@@ -60,6 +60,10 @@ function canEditJobTimeLog(actor) {
   return actor.department === 'Admin' || actor.department === 'Costing Viewer';
 }
 
+function canManageCostingButtons(department) {
+  return department === 'Admin' || department === 'Costing Viewer';
+}
+
 function canUploadAdditionalFiles(department) {
   return department === 'Admin' || department === 'Manager' || department === 'Viewer' || department === 'Costing Viewer';
 }
@@ -325,6 +329,61 @@ function saveCommonTasks(actor, data) {
     lock.waitLock(10000);
     PropertiesService.getScriptProperties().setProperty('COMMON_TASKS', JSON.stringify(tasks));
     return { success: true, tasks };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Global non-job activities available to every production department in the
+// Job Selector. A missing property means a new installation and receives the
+// defaults; an explicitly saved [] remains empty.
+const DEFAULT_COSTING_BUTTONS = [
+  { id: 'loading-unloading', text: 'Loading/Unloading' },
+  { id: 'team-support', text: 'Team Support' },
+  { id: 'pm-sales', text: 'PM/Sales' },
+];
+
+function getCostingButtons() {
+  const raw = PropertiesService.getScriptProperties().getProperty('COSTING_BUTTONS');
+  if (raw == null) return DEFAULT_COSTING_BUTTONS.map(button => ({ ...button }));
+  try {
+    const buttons = JSON.parse(raw);
+    return Array.isArray(buttons) ? buttons : DEFAULT_COSTING_BUTTONS.map(button => ({ ...button }));
+  } catch (err) {
+    return DEFAULT_COSTING_BUTTONS.map(button => ({ ...button }));
+  }
+}
+
+function saveCostingButtons(actor, data) {
+  if (!actor || !canManageCostingButtons(actor.department)) return { success: false, error: 'forbidden' };
+  if (!Array.isArray(data.buttons)) return { success: false, error: 'Buttons are required' };
+  if (data.buttons.length > 25) return { success: false, error: 'Up to 25 costing buttons are allowed' };
+
+  const buttons = [];
+  const labels = new Set();
+  const ids = new Set();
+  for (let i = 0; i < data.buttons.length; i++) {
+    const raw = data.buttons[i] || {};
+    const text = String(raw.text || '').trim();
+    if (!text) return { success: false, error: 'Every costing button needs text' };
+    if (text.length > 80 || /[\u0000-\u001f\u007f]/.test(text)) {
+      return { success: false, error: 'Costing button text must be 80 characters or less' };
+    }
+    const normalized = text.toLocaleLowerCase();
+    if (labels.has(normalized)) return { success: false, error: 'Costing button names must be unique' };
+    labels.add(normalized);
+    const id = String(raw.id || Utilities.getUuid());
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return { success: false, error: 'Invalid costing button id' };
+    if (ids.has(id)) return { success: false, error: 'Costing button ids must be unique' };
+    ids.add(id);
+    buttons.push({ id, text });
+  }
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    PropertiesService.getScriptProperties().setProperty('COSTING_BUTTONS', JSON.stringify(buttons));
+    return { success: true, buttons };
   } finally {
     lock.releaseLock();
   }
@@ -792,6 +851,12 @@ function routeGet(e) {
     if (!canAssignDepartments(actor.department)) return json({ error: 'forbidden' });
     return json({ tasks: getCommonTasks() });
   }
+  if (action === 'getCostingButtons') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canUseJobSelector(actor.department) && !canManageCostingButtons(actor.department)) return json({ error: 'forbidden' });
+    return json({ buttons: getCostingButtons() });
+  }
   if (action === 'getTrackingVersion') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
@@ -924,6 +989,7 @@ function routePost(e) {
   if (data.action === 'updateSelf') return respond(() => updateSelf(actor, data));
   if (data.action === 'revokeUserSessions') return respond(() => revokeUserSessions(actor, data));
   if (data.action === 'saveCommonTasks') return respond(() => saveCommonTasks(actor, data));
+  if (data.action === 'saveCostingButtons') return respond(() => saveCostingButtons(actor, data));
   if (data.action === 'addAdditionalFile') return respond(() => addAdditionalFile(actor, data));
   if (data.action === 'deleteAdditionalFile') return respond(() => deleteAdditionalFile(actor, data));
   if (data.action === 'refreshSquarecoilFilesNow') {
@@ -2058,17 +2124,23 @@ function updateJobTimeEntry(actor, data) {
   const endedText = String((data && data.endedAt) || '').trim();
   const endedAt = endedText ? jobTimeDate_(endedText) : null;
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(entryId)) return { success: false, error: 'Invalid entry' };
-  if (!validJobKey(jobNum)) return { success: false, error: 'Invalid job number' };
   if (!startedAt) return { success: false, error: 'Valid start time is required' };
   if (endedText && !endedAt) return { success: false, error: 'Valid end time is required' };
   if (endedAt && endedAt.getTime() < startedAt.getTime()) return { success: false, error: 'End time must be after start time' };
 
   let resolvedJobName = '';
+  let costingEntry = false;
   try {
     const initialRows = getJobTimeEntriesSheet_().getDataRange().getValues();
     const initialRow = initialRows.find((row, index) => index > 0 && String(row[0] || '') === entryId);
     if (!initialRow) return { success: false, error: 'Time entry not found' };
-    if (String(initialRow[4] || '') === jobNum) {
+    costingEntry = String(initialRow[6] || '').indexOf('costing_button:') === 0;
+    if (costingEntry) {
+      if (jobNum) return { success: false, error: 'Costing activities do not use a job number' };
+      resolvedJobName = String(initialRow[5] || '');
+    } else if (!validJobKey(jobNum)) {
+      return { success: false, error: 'Invalid job number' };
+    } else if (String(initialRow[4] || '') === jobNum) {
       resolvedJobName = String(initialRow[5] || '');
     } else {
       const lookup = lookupSquarecoilJob_(jobNum);
@@ -2097,7 +2169,7 @@ function updateJobTimeEntry(actor, data) {
     const currentJobName = String(rows[rowIndex][4] || '') === jobNum
       ? String(rows[rowIndex][5] || resolvedJobName)
       : resolvedJobName;
-    next[4] = jobNum;
+    next[4] = costingEntry ? '' : jobNum;
     next[5] = sanitizeSheetText(currentJobName);
     next[7] = startedAt;
     next[8] = endedAt || '';
@@ -2160,6 +2232,15 @@ function resolveJobTimeSelection_(actor, data) {
   if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
   const jobNum = String((data && data.jobNum) || '').trim();
   const source = String((data && data.source) || '');
+  const costingButtonId = String((data && data.costingButtonId) || '').trim();
+  if (source.indexOf('costing_button:') === 0) {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(costingButtonId) || source !== 'costing_button:' + costingButtonId) {
+      return { error: 'Invalid costing button' };
+    }
+    const button = getCostingButtons().find(item => String(item.id) === costingButtonId);
+    if (!button) return { error: 'Costing button is no longer available' };
+    return { jobNum: '', jobName: String(button.text), source };
+  }
   if (!validJobKey(jobNum)) return { error: 'Invalid job number' };
   if (source !== 'assigned' && source !== 'other') return { error: 'Invalid job source' };
 
@@ -2206,7 +2287,10 @@ function startJobTime(actor, data) {
     const rows = sheet.getDataRange().getValues();
     const activeRows = activeJobTimeRows_(rows, actor.id);
     const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
-    if (latest && String(latest.row[4]) === selection.jobNum) {
+    const sameSelection = latest && (selection.source.indexOf('costing_button:') === 0
+      ? String(latest.row[6] || '') === selection.source
+      : String(latest.row[4] || '') === selection.jobNum);
+    if (sameSelection) {
       return { success: true, alreadyActive: true, active: jobTimeEntryFromRow_(latest.row) };
     }
 
@@ -3040,6 +3124,7 @@ function configurationSnapshot() {
       department: user.department,
     })),
     commonTasks: getCommonTasks(),
+    costingButtons: getCostingButtons(),
   };
 }
 
@@ -3118,6 +3203,11 @@ function restoreConfigurationFromBackup(backupFileId) {
   }
   const tasksResult = saveCommonTasks({ department: 'Admin' }, { tasks: Array.isArray(snapshot.commonTasks) ? snapshot.commonTasks : [] });
   if (!tasksResult.success) throw new Error(tasksResult.error || 'Could not restore common tasks');
+  const buttonsResult = saveCostingButtons(
+    { department: 'Admin' },
+    { buttons: Array.isArray(snapshot.costingButtons) ? snapshot.costingButtons : DEFAULT_COSTING_BUTTONS },
+  );
+  if (!buttonsResult.success) throw new Error(buttonsResult.error || 'Could not restore costing buttons');
   saveUsers(restoredUsers);
   const props = PropertiesService.getScriptProperties();
   props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);

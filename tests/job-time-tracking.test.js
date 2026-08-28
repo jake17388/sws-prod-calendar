@@ -401,6 +401,30 @@ test('hours-log edits preserve the stored job name when the number is unchanged'
   assert.equal(result.entry.jobName, 'Existing Job');
 });
 
+test('costing activity edits preserve the activity identity and only change timestamps', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    ['entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name', 'source', 'started_at', 'ended_at', 'duration_minutes', 'status', 'edited_at', 'edited_by', 'edited_by_id'],
+    ['entry-1', 'paint-1', 'Pat', 'Paint', '', 'Team Support', 'costing_button:team-support', new Date('2026-08-24T14:00:00.000Z'), '', '', 'active', '', '', ''],
+  ]);
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.jobTimeNow_ = () => new Date('2026-08-27T17:00:00.000Z');
+
+  const result = context.updateJobTimeEntry(
+    { id: 'c1', name: 'Carlos', department: 'Costing Viewer' },
+    { entryId: 'entry-1', jobNum: '', startedAt: '2026-08-24T14:10:00.000Z', endedAt: '2026-08-24T14:40:00.000Z' },
+  );
+  assert.equal(result.success, true);
+  assert.equal(result.entry.jobNum, '');
+  assert.equal(result.entry.jobName, 'Team Support');
+  assert.equal(result.entry.source, 'costing_button:team-support');
+  assert.equal(result.entry.durationMinutes, 30);
+  assert.equal(context.updateJobTimeEntry(
+    { id: 'c1', name: 'Carlos', department: 'Costing Viewer' },
+    { entryId: 'entry-1', jobNum: '260001', startedAt: '2026-08-24T14:10:00.000Z', endedAt: '' },
+  ).error, 'Costing activities do not use a job number');
+});
+
 test('hours-log entries can only be deleted by an Admin or Costing Viewer', () => {
   const context = loadBackend();
   const sheet = createSheet([

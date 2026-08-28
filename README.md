@@ -72,12 +72,13 @@ departments (`Manufacturing`, `Graphics`, `Paint`, `Assembly`, `Letters`,
 `Routing`).
 
 - **Admin** — full access, including managing every other account, Squarecoil
-  Production File refreshes, due-date overrides, and session revocation
+  Production File refreshes, due-date overrides, session revocation, and the
+  configurable Costing Buttons shown in the Job Selector
 - **Manager** — can add/edit/delete any account except Admin, Manager, Viewer,
   or Costing Viewer accounts (and can't see Admin/Viewer/Costing Viewer accounts in the list at all); can view the Hours Log without editing or deleting entries
 - **Viewer** — calendar and project access with the normal project-note and additional-file capabilities, plus read-only Hours Log access, but no management permissions
-- **Costing Viewer** — the same access and limitations as Viewer, plus permission to view the Hours Log; a pencil action unlocks job number and timestamps for correction, while employee and resolved job name stay read-only. Corrections record the editor and timestamp, deleting an entry requires confirmation, and the log fits without horizontal scrolling by using a compact table on desktop and entry cards on smaller screens
-- **Production departments** — no user-management access
+- **Costing Viewer** — the same access and limitations as Viewer, plus permission to edit the Hours Log and manage Costing Buttons in Settings. A pencil action unlocks job number and timestamps for regular entries; non-job costing activities keep their activity name fixed and allow timestamp corrections only. Corrections record the editor and timestamp, deleting an entry requires confirmation, and the log fits without horizontal scrolling by using a compact table on desktop and entry cards on smaller screens
+- **Production departments** — no user-management access; the Job Selector also offers the configured non-job activities below Assigned Jobs so employees can clock into work such as Loading/Unloading, Team Support, or PM/Sales without entering a job number
 
 Day to day, all of this is self-service: anyone in Admin or Manager sees a
 "User Management" button in Settings, where accounts (name, department,

@@ -51,19 +51,32 @@ function durationCell(entry) {
   return `<span class="hours-log-duration${entry.status === 'active' ? ' is-active' : ''}">${escapeHtml(formatDuration(entry))}</span><small>${escapeHtml(entry.status === 'active' ? 'Active' : 'Closed')}</small>`;
 }
 
+function isCostingEntry(entry) {
+  return String(entry.source || '').startsWith('costing_button:');
+}
+
+function sourceLabel(entry) {
+  if (entry.source === 'assigned') return 'Assigned';
+  if (isCostingEntry(entry)) return 'Costing button';
+  return 'Other';
+}
+
 function editIcon() {
   return '<svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path d="M4 20h4l11-11-4-4L4 16v4Zm13.7-13.7 1-1a1.4 1.4 0 0 1 2 2l-1 1-2-2Z" fill="currentColor"/></svg>';
 }
 
 function editableRowHtml(entry) {
   const saving = savingEntries.has(entry.entryId);
+  const jobEditor = isCostingEntry(entry)
+    ? `<strong>${escapeHtml(entry.jobName)}</strong><small>Not job specific</small>`
+    : `<input class="hours-log-input hours-log-job-number" aria-label="Job number" inputmode="numeric" maxlength="6" value="${escapeAttr(entry.jobNum)}" ${saving ? 'disabled' : ''} /><small>${escapeHtml(entry.jobName)}</small>`;
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}" ${saving ? 'aria-busy="true"' : ''}>
     <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
-    <td data-label="Job"><input class="hours-log-input hours-log-job-number" aria-label="Job number" inputmode="numeric" maxlength="6" value="${escapeAttr(entry.jobNum)}" ${saving ? 'disabled' : ''} /><small>${escapeHtml(entry.jobName)}</small></td>
+    <td data-label="Job">${jobEditor}</td>
     <td data-label="Started"><input class="hours-log-input hours-log-started" aria-label="Started" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.startedAt))}" ${saving ? 'disabled' : ''} /></td>
     <td data-label="Ended"><input class="hours-log-input hours-log-ended" aria-label="Ended" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.endedAt))}" ${saving ? 'disabled' : ''} /></td>
     <td data-label="Duration">${durationCell(entry)}</td>
-    <td data-label="Source">${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
+    <td data-label="Source">${escapeHtml(sourceLabel(entry))}</td>
     <td class="hours-log-edited" data-label="Last edited">${escapeHtml(editedLabel(entry))}</td>
     <td data-label="Actions"><div class="hours-log-edit-actions"><button class="hours-log-save" type="button" ${saving ? 'disabled' : ''}>${saving ? 'Saving…' : 'Save'}</button><button class="hours-log-cancel" type="button" ${saving ? 'disabled' : ''}>Cancel</button><button class="hours-log-delete" type="button" ${saving ? 'disabled' : ''}>Delete</button></div><small class="hours-log-row-hint" role="status">${escapeHtml(rowErrors.get(entry.entryId) || '')}</small></td>
   </tr>`;
@@ -71,13 +84,16 @@ function editableRowHtml(entry) {
 
 function readOnlyRowHtml(entry) {
   const canEdit = canEditHoursLog();
+  const jobCell = isCostingEntry(entry)
+    ? `<strong>${escapeHtml(entry.jobName)}</strong><small>Not job specific</small>`
+    : `<strong>${escapeHtml(entry.jobNum)}</strong><small>${escapeHtml(entry.jobName)}</small>`;
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}">
     <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
-    <td data-label="Job"><strong>${escapeHtml(entry.jobNum)}</strong><small>${escapeHtml(entry.jobName)}</small></td>
+    <td data-label="Job">${jobCell}</td>
     <td data-label="Started">${escapeHtml(formatDate(entry.startedAt))}</td>
     <td data-label="Ended">${escapeHtml(formatDate(entry.endedAt))}</td>
     <td data-label="Duration">${durationCell(entry)}</td>
-    <td data-label="Source">${escapeHtml(entry.source === 'assigned' ? 'Assigned' : 'Other')}</td>
+    <td data-label="Source">${escapeHtml(sourceLabel(entry))}</td>
     <td class="hours-log-edited" data-label="Last edited">${escapeHtml(editedLabel(entry))}</td>
     <td data-label="Actions">${canEdit ? `<button class="hours-log-edit" type="button" aria-label="Edit hour log">${editIcon()}</button>` : ''}</td>
   </tr>`;
@@ -109,7 +125,7 @@ function saveEntry(container, row) {
     paint(container);
     return;
   }
-  const jobNum = row.querySelector('.hours-log-job-number').value.trim();
+  const jobNum = row.querySelector('.hours-log-job-number')?.value.trim() || '';
   rowErrors.delete(entryId);
   savingEntries.add(entryId);
   paint(container);

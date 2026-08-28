@@ -70,6 +70,7 @@ test('costing buttons reject blank, duplicate, oversized, and malformed records'
   const actor = { department: 'Admin' };
   assert.equal(context.saveCostingButtons(actor, { buttons: [{ text: ' ' }] }).success, false);
   assert.equal(context.saveCostingButtons(actor, { buttons: [{ text: 'Same' }, { text: 'same' }] }).success, false);
+  assert.equal(context.saveCostingButtons(actor, { buttons: [{ id: 'same', text: 'First' }, { id: 'same', text: 'Second' }] }).success, false);
   assert.equal(context.saveCostingButtons(actor, { buttons: [{ id: 'bad id', text: 'Valid' }] }).success, false);
   assert.equal(context.saveCostingButtons(actor, { buttons: Array.from({ length: 26 }, (_, i) => ({ text: `Button ${i}` })) }).success, false);
 });

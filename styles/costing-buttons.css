@@ -1,0 +1,31 @@
+#costing-button-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  overflow-y: auto;
+  background: var(--surface-canvas);
+}
+#costing-button-overlay.open { display: block; }
+.costing-button-panel { width: 100%; max-width: 1100px; min-height: 100%; margin: 0 auto; padding: var(--space-7) clamp(var(--space-4), 4vw, var(--space-8)); }
+.costing-button-header { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
+.costing-button-header h2 { margin: 0; color: var(--ink-primary); font-size: var(--text-2xl); letter-spacing: var(--tracking-tight); }
+.costing-button-header p { margin: var(--space-1) 0 0; color: var(--ink-tertiary); font-size: var(--text-sm); }
+.costing-button-body .settings-card { margin: 0; }
+.costing-button-list { display: grid; gap: var(--space-3); }
+.costing-button-empty { padding: var(--space-7); color: var(--ink-tertiary); font-size: var(--text-sm); text-align: center; }
+.costing-button-row { display: flex; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-sunken); }
+.costing-button-text { flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--border-default); border-radius: var(--radius-2sm); padding: var(--space-2) var(--space-3); background: var(--surface-card); color: var(--ink-primary); font: inherit; }
+.costing-button-text:focus { outline: none; border-color: var(--accent-solid); box-shadow: var(--shadow-focus); }
+.costing-button-remove { min-width: 44px; min-height: 44px; border: 0; border-radius: var(--radius-2sm); background: transparent; color: var(--ink-disabled); font-size: var(--text-lg); }
+.costing-button-remove:hover { color: var(--status-critical-solid); background: var(--status-critical-bg); }
+.costing-button-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--border-subtle); }
+.costing-button-actions .settings-action { width: auto; min-width: 180px; margin-top: 0; }
+#costing-button-hint { min-height: 1.2em; margin-top: var(--space-2); text-align: right; }
+@media (max-width: 640px) {
+  .costing-button-panel { padding: calc(var(--space-5) + env(safe-area-inset-top)) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
+  .costing-button-header { grid-template-columns: 1fr; gap: var(--space-3); }
+  .costing-button-actions { flex-direction: column; }
+  .costing-button-actions .settings-action { width: 100%; }
+  #costing-button-hint { text-align: left; }
+}

@@ -40,8 +40,8 @@ test('production workers land on Job Selector and assigned starts include the di
 
   assert.match(app, /activeView\s*=\s*canUseJobSelector\(\)\s*\?\s*['"]jobSelector['"]\s*:\s*['"]week['"]/);
   assert.match(view, /data-job-name=/);
-  assert.match(view, /startJobTime\(jobNum,\s*source,\s*jobName\)/);
-  assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName\)/);
+  assert.match(view, /startJobTime\(jobNum,\s*source,\s*jobName,\s*costingButtonId\)/);
+  assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName,\s*costingButtonId/);
 });
 
 test('the Job Selector screen includes assigned jobs, Other lookup, active status, and Stop Work', () => {

@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canUseJobSelector, canViewHoursLog, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canManageCostingButtons, canUseJobSelector, canViewHoursLog, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
@@ -7,6 +7,7 @@ import { preloadCurrentAndNextWeekProofs } from './currentWeekProofPreload.mjs';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initSquarecoilSettings, refreshSquarecoilSettingsUI } from './components/squarecoilSettings.js';
 import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
+import { initCostingButtonManagement, openCostingButtonManagement } from './components/costingButtonManagement.js';
 import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
 import { renderWeek, weekRangeLabel } from './views/week.js';
@@ -458,7 +459,8 @@ function boot() {
   deptBadge.hidden = !department || department === 'Viewer' || department === 'Costing Viewer' || department === 'TV';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
-  document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments());
+  document.getElementById('settings-costing-buttons-btn').hidden = !canManageCostingButtons();
+  document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments() || canManageCostingButtons());
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
   document.getElementById('view-btn-job-selector').hidden = !canUseJobSelector();
   document.getElementById('view-btn-hours-log').hidden = !canViewHoursLog();
@@ -505,6 +507,7 @@ function boot() {
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
+  document.getElementById('settings-costing-buttons-btn').addEventListener('click', () => { closeSettings(); openCostingButtonManagement(); });
   window.addEventListener('open-settings', openSettings);
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
   document.getElementById('my-account-pin').addEventListener('keydown', e => {
@@ -512,6 +515,7 @@ function boot() {
   });
   initUserManagement();
   initCommonTaskManagement();
+  initCostingButtonManagement();
   initSquarecoilSettings();
   initSystemHealth();
   if (canAssignDepartments()) refreshCommonTasks().catch(() => {});

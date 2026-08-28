@@ -44,6 +44,10 @@ export const fetchJobTimeStatus = () => scriptGet('getJobTimeStatus');
 
 export const fetchJobTimeLog = () => scriptGet('getJobTimeLog');
 
+export const fetchCostingButtons = () => scriptGet('getCostingButtons').then(d => d.buttons || []);
+
+export const saveCostingButtons = buttons => scriptPost({ action: 'saveCostingButtons', buttons });
+
 export const updateJobTimeEntry = (entryId, patch) =>
   scriptPost({ action: 'updateJobTimeEntry', entryId, ...patch });
 
@@ -52,8 +56,8 @@ export const deleteJobTimeEntry = entryId =>
 
 export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
 
-export const startJobTime = (jobNum, source, jobName) =>
-  scriptPost({ action: 'startJobTime', jobNum, source, jobName });
+export const startJobTime = (jobNum, source, jobName, costingButtonId = '') =>
+  scriptPost({ action: 'startJobTime', jobNum, source, jobName, costingButtonId });
 
 export const stopJobTime = () => scriptPost({ action: 'stopJobTime' });
 

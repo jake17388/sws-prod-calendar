@@ -3,6 +3,7 @@ import { currentDepartment } from '../auth.js';
 import { selectableJobSelectorJobs } from '../jobSelectorModel.mjs';
 import { escapeAttr, escapeHtml } from '../lib/html.js';
 import { showToast } from '../toast.js';
+import { costingButtonsForSelector, costingButtonsLoaded, refreshCostingButtons } from '../components/costingButtonManagement.js';
 
 let activeEntry = null;
 let statusLoaded = false;
@@ -55,7 +56,7 @@ function isJobSelectorMounted(container) {
   return !!container.querySelector('.job-selector-shell');
 }
 
-function beginJob(container, jobs, jobNum, source, jobName) {
+function beginJob(container, jobs, jobNum, source, jobName, costingButtonId = '') {
   if (actionBusy) return;
   const previousEntry = activeEntry;
   const optimisticEntry = {
@@ -68,14 +69,15 @@ function beginJob(container, jobs, jobNum, source, jobName) {
   lookupResult = null;
   actionBusy = true;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
-  startJobTime(jobNum, source, jobName)
+  startJobTime(jobNum, source, jobName, costingButtonId)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not start job');
       activeEntry = result.active;
       statusLoaded = true;
       lookupResult = null;
       actionBusy = false;
-      showToast(result.alreadyActive ? `Already working on ${jobNum}` : `Started job ${jobNum}`);
+      const workLabel = jobNum || jobName;
+      showToast(result.alreadyActive ? `Already working on ${workLabel}` : `Started ${workLabel}`);
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
@@ -156,6 +158,19 @@ function bindJobSelector(container, jobs) {
       beginJob(container, jobs, button.dataset.jobNum, 'assigned', button.dataset.jobName);
     });
   });
+  container.querySelectorAll('.job-selector-costing-button').forEach(button => {
+    button.addEventListener('click', () => {
+      button.querySelector('small').textContent = 'Starting…';
+      beginJob(
+        container,
+        jobs,
+        '',
+        `costing_button:${button.dataset.costingButtonId}`,
+        button.dataset.costingButtonName,
+        button.dataset.costingButtonId,
+      );
+    });
+  });
   container.querySelector('.job-selector-stop')?.addEventListener('click', () => endWork(container, jobs));
   container.querySelector('.job-selector-lookup')?.addEventListener('click', () => runLookup(container, jobs));
   container.querySelector('#job-selector-other-number')?.addEventListener('keydown', event => {
@@ -169,10 +184,14 @@ function bindJobSelector(container, jobs) {
 function paintJobSelector(container, jobs) {
   const department = currentDepartment();
   const selectable = selectableJobSelectorJobs(jobs, department);
+  const costingButtons = costingButtonsForSelector();
   const startedLabel = activeStartedLabel(activeEntry);
+  const activeTitle = activeEntry
+    ? (activeEntry.jobNum ? `${activeEntry.jobNum} — ${activeEntry.jobName}` : activeEntry.jobName)
+    : '';
   const currentHtml = activeEntry
     ? `<section class="job-selector-current" aria-label="Current job">
-        <div><span>Currently working on</span><strong>${escapeHtml(activeEntry.jobNum)} — ${escapeHtml(activeEntry.jobName)}</strong>${startedLabel ? `<small>Started at ${escapeHtml(startedLabel)}</small>` : ''}</div>
+        <div><span>Currently working on</span><strong>${escapeHtml(activeTitle)}</strong>${startedLabel ? `<small>Started at ${escapeHtml(startedLabel)}</small>` : ''}</div>
         <button class="job-selector-stop" type="button">Stop Work</button>
       </section>`
     : `<section class="job-selector-current is-idle" aria-label="Current job">
@@ -191,6 +210,16 @@ function paintJobSelector(container, jobs) {
       </button>`;
     }).join('')
     : `<div class="job-selector-empty">There are no assigned jobs with open ${escapeHtml(department)} tasks.</div>`;
+
+  const costingHtml = costingButtons.length
+    ? costingButtons.map(button => {
+      const source = `costing_button:${button.id}`;
+      const isActive = activeEntry && activeEntry.source === source;
+      return `<button class="job-selector-costing-button${isActive ? ' is-active' : ''}" type="button" data-costing-button-id="${escapeAttr(button.id)}" data-costing-button-name="${escapeAttr(button.text)}" ${isActive ? 'disabled' : ''}>
+        <strong>${escapeHtml(button.text)}</strong><small>${isActive ? 'Active now' : 'Start activity'}</small>
+      </button>`;
+    }).join('')
+    : '<div class="job-selector-empty">No costing activities are configured.</div>';
 
   const lookupHtml = lookupResult
     ? `<div class="job-selector-other-confirm">
@@ -213,6 +242,12 @@ function paintJobSelector(container, jobs) {
       </div>
       <div class="job-selector-grid">${jobsHtml}</div>
     </section>
+    <section class="job-selector-section job-selector-costing" aria-labelledby="job-selector-costing-title">
+      <div class="job-selector-section-heading">
+        <div><h2 id="job-selector-costing-title">Costing activities</h2><p>Clock in without a job number.</p></div>
+      </div>
+      <div class="job-selector-costing-grid">${costingHtml}</div>
+    </section>
     <section class="job-selector-section job-selector-other" aria-labelledby="job-selector-other-title">
       <div class="job-selector-section-heading">
         <div><h2 id="job-selector-other-title">Other job number</h2><p>Look up a job directly in Squarecoil.</p></div>
@@ -234,6 +269,11 @@ function paintJobSelector(container, jobs) {
 export function renderJobSelector(container, _refDate, jobs) {
   if (actionBusy && isJobSelectorMounted(container)) return;
   paintJobSelector(container, jobs);
+  if (!costingButtonsLoaded()) {
+    refreshCostingButtons()
+      .then(() => { if (isJobSelectorMounted(container)) paintJobSelector(container, jobs); })
+      .catch(() => { if (isJobSelectorMounted(container)) showHint(container, 'Could not load costing activities', true); });
+  }
   if (statusLoaded || statusPromise) return;
   const requestRevision = statusRevision;
   const request = fetchJobTimeStatus()

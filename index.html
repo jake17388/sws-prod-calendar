@@ -25,9 +25,10 @@
 <link rel="stylesheet" href="styles/user-mgmt.css?v=2026.08.20.3" />
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.11.3" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.10.10" />
+<link rel="stylesheet" href="styles/costing-buttons.css?v=2026.08.28.1" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
-<link rel="stylesheet" href="styles/job-selector.css?v=2026.08.27.7" />
+<link rel="stylesheet" href="styles/job-selector.css?v=2026.08.28.1" />
 <link rel="stylesheet" href="styles/tv.css?v=2026.08.24.5" />
 </head>
 <body>
@@ -210,6 +211,7 @@
         <div class="settings-button-row">
           <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
           <button class="settings-action" id="settings-common-tasks-btn" hidden>Common Task Buttons</button>
+          <button class="settings-action" id="settings-costing-buttons-btn" hidden>Costing Buttons</button>
         </div>
       </section>
 
@@ -270,6 +272,29 @@
           <button id="common-task-save" class="settings-action primary">Save changes</button>
         </div>
         <div id="common-task-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+      </section>
+    </div>
+  </section>
+</div>
+
+<div id="costing-button-overlay" class="settings-subpage" role="dialog" aria-modal="true" aria-labelledby="costing-button-title">
+  <section class="costing-button-panel settings-subpage-shell" aria-label="Costing buttons">
+    <div class="costing-button-header">
+      <button id="costing-button-back" class="settings-subpage-back" aria-label="Back to Settings"><span aria-hidden="true">←</span> Settings</button>
+      <div>
+        <h2 id="costing-button-title">Costing Buttons</h2>
+        <p>Manage non-job activities available to every production department.</p>
+      </div>
+    </div>
+    <div class="costing-button-body">
+      <section class="settings-card" aria-labelledby="costing-button-editor-heading">
+        <div class="settings-card-heading"><div><h3 id="costing-button-editor-heading">Activity buttons</h3><p>Rename, remove, or add activities for the Job Selector.</p></div></div>
+        <div id="costing-button-list" class="costing-button-list"></div>
+        <div class="costing-button-actions">
+          <button id="costing-button-add" class="settings-action">+ Add costing button</button>
+          <button id="costing-button-save" class="settings-action primary">Save changes</button>
+        </div>
+        <div id="costing-button-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
       </section>
     </div>
   </section>
@@ -401,6 +426,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.08.27.7"></script>
+<script type="module" src="js/app.js?v=2026.08.28.1"></script>
 </body>
 </html>

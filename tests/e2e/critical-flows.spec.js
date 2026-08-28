@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -47,6 +47,11 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     };
   }
   let activeJobTime = null;
+  let costingButtons = [
+    { id: 'loading-unloading', text: 'Loading/Unloading' },
+    { id: 'team-support', text: 'Team Support' },
+    { id: 'pm-sales', text: 'PM/Sales' },
+  ];
   let jobTimeLogEntries = [{
     entryId: 'entry-log-1', userId: 'paint-1', employee: 'Carlos', department: 'Paint',
     jobNum: '260001', jobName: 'Browser Test Job', source: 'assigned',
@@ -94,6 +99,9 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       };
     } else if (action === 'getCommonTasks') {
       body = { tasks: [] };
+    } else if (action === 'getCostingButtons') {
+      if (costingButtonsDelayMs) await new Promise(resolve => setTimeout(resolve, costingButtonsDelayMs));
+      body = { buttons: costingButtons };
     } else if (action === 'getSquarecoilStatus') {
       body = { connected: false, hasCredentials: false };
     } else if (action === 'getSystemHealth') {
@@ -150,15 +158,22 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
         };
         body = { success: true, ...currentJob };
       }
+    } else if (action === 'saveCostingButtons') {
+      costingButtons = payload.buttons.map((button, index) => ({
+        id: button.id || `costing-new-${index}`,
+        text: button.text.trim(),
+      }));
+      body = { success: true, buttons: costingButtons };
     } else if (action === 'startJobTime') {
       if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
+      const costingButton = costingButtons.find(button => button.id === payload.costingButtonId);
       activeJobTime = {
-        entryId: `entry-${payload.jobNum}`,
+        entryId: `entry-${payload.jobNum || payload.costingButtonId}`,
         userId: 'admin',
         employee: 'Test User',
         department,
-        jobNum: payload.jobNum,
-        jobName: payload.source === 'other' ? 'Squarecoil Other Job' : currentJob.title,
+        jobNum: payload.jobNum || '',
+        jobName: costingButton?.text || (payload.source === 'other' ? 'Squarecoil Other Job' : currentJob.title),
         source: payload.source,
         startedAt: '2026-08-24T14:00:00.000Z',
       };
@@ -498,6 +513,66 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await page.getByRole('button', { name: 'Stop Work' }).click();
   await expect(page.getByText('No active job')).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();
+});
+
+test('a production employee can clock into a costing activity without a job number', async ({ page }) => {
+  await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
+  await login(page);
+
+  await expect(page.locator('.job-selector-section h2')).toHaveText([
+    'Assigned jobs',
+    'Costing activities',
+    'Other job number',
+  ]);
+  await expect(page.getByRole('button', { name: /Loading\/Unloading/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Team Support/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /PM\/Sales/ })).toBeVisible();
+
+  await page.getByRole('button', { name: /Team Support/ }).click();
+  await expect(page.locator('.job-selector-current').getByText('Team Support', { exact: true })).toBeVisible();
+  await expect(page.getByText(/— Team Support/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop Work' }).click();
+  await expect(page.getByText('No active job')).toBeVisible();
+});
+
+test('a Costing Viewer can rename, remove, and add Costing Buttons in Settings', async ({ page }) => {
+  await mockBackend(page, { department: 'Costing Viewer', user: 'Carlos Hernandez' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Costing Buttons' }).click();
+  await expect(page.getByRole('heading', { name: 'Costing Buttons' })).toBeVisible();
+  const inputs = page.getByRole('textbox', { name: 'Costing button name' });
+  await expect(inputs).toHaveCount(3);
+  await inputs.first().fill('Freight Handling');
+  await page.getByRole('button', { name: 'Remove PM/Sales' }).click();
+  await page.getByRole('button', { name: 'Add costing button' }).click();
+  await inputs.last().fill('Shop Cleanup');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+
+  await expect(page.locator('#costing-button-hint')).toHaveText('Saved');
+  await expect(inputs).toHaveCount(3);
+  await expect(inputs.first()).toHaveValue('Freight Handling');
+  await expect(inputs.last()).toHaveValue('Shop Cleanup');
+});
+
+test('Costing Buttons cannot be changed until their configuration finishes loading', async ({ page }) => {
+  await mockBackend(page, {
+    department: 'Costing Viewer',
+    user: 'Carlos Hernandez',
+    costingButtonsDelayMs: 500,
+  });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Costing Buttons' }).click();
+  const addButton = page.getByRole('button', { name: 'Add costing button' });
+  const saveButton = page.getByRole('button', { name: 'Save changes' });
+  await expect(addButton).toBeDisabled();
+  await expect(saveButton).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'Costing button name' })).toHaveCount(3);
+  await expect(addButton).toBeEnabled();
+  await expect(saveButton).toBeEnabled();
 });
 
 test('an Admin can open the protected Job Selector hours log', async ({ page }) => {

@@ -99,6 +99,23 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
+.job-selector-costing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.job-selector-costing-button {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 72px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  color: var(--ink-primary);
+  text-align: left;
+  transition: border-color var(--duration-fast), background var(--duration-fast), transform var(--duration-fast);
+}
+.job-selector-costing-button:hover:not(:disabled) { border-color: var(--accent-solid); background: var(--surface-card-hover); transform: translateY(-1px); }
+.job-selector-costing-button.is-active { border-color: var(--status-success-border); background: var(--status-success-bg); }
+.job-selector-costing-button strong { font-size: var(--text-base); }
+.job-selector-costing-button small { color: var(--ink-secondary); }
 .job-selector-job {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -288,6 +305,7 @@
 @media (max-width: 650px) {
   .job-selector-shell { padding: var(--space-5) var(--space-3) calc(var(--space-8) + env(safe-area-inset-bottom)); }
   .job-selector-grid { grid-template-columns: 1fr; }
+  .job-selector-costing-grid { grid-template-columns: 1fr; }
   .job-selector-current,
   .job-selector-other-confirm { align-items: stretch; flex-direction: column; }
   .job-selector-current button,
