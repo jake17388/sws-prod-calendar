@@ -660,6 +660,8 @@ test('deleting an hours-log entry requires confirmation and supports cancel', as
   await row.getByRole('button', { name: 'Delete' }).click();
   const prompt = page.getByRole('dialog', { name: 'Delete this hour log?' });
   await expect(prompt).toBeVisible();
+  await expect(prompt).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(prompt.getByRole('button', { name: 'Confirm' })).toHaveCSS('background-color', 'rgb(220, 38, 38)');
   await prompt.getByRole('button', { name: 'Cancel' }).click();
   await expect(row).toBeVisible();
 
