@@ -21,6 +21,18 @@ test('text size spans 50 through 200 percent', () => {
   assert.match(app, /ZOOM_STEPS\s*=\s*\[50,[^\]]*200\]/);
 });
 
+test('Display exposes a dark theme preference applied at startup and on change', () => {
+  const html = read('index.html');
+  const app = read('js/app.js');
+  const tokens = read('styles/tokens.css');
+  assert.match(html, /id="theme-select"/);
+  assert.match(html, /Dark/);
+  assert.match(app, /THEME_KEY\s*=\s*['"]sws_prod_cal_theme['"]/);
+  assert.match(app, /data-theme/);
+  assert.match(app, /theme-select.*addEventListener|addEventListener\(['"]change['"][\s\S]*theme-select/);
+  assert.match(tokens, /\[data-theme="dark"\]/);
+});
+
 test('Settings exposes Squarecoil status and refresh without Dropbox credentials', () => {
   const html = read('index.html');
   const component = read('js/components/squarecoilSettings.js');
