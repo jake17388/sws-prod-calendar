@@ -11,8 +11,8 @@ const headers = [
   'department_notes_json', 'additional_files_json', 'archive_snapshot_json',
 ];
 
-function trackingRow(jobKey, completed = false) {
-  return [jobKey, completed, '[]', '[]', '', '', '', '', '', '[]', '{}', '[]', '{}', '[]', 'null'];
+function trackingRow(jobKey, completed = false, updatedAt = '') {
+  return [jobKey, completed, '[]', '[]', updatedAt, '', '', '', '', '[]', '{}', '[]', '{}', '[]', 'null'];
 }
 
 function createSheet(initialRows = []) {
@@ -27,6 +27,11 @@ function createSheet(initialRows = []) {
           }
         }
       }
+      return this;
+    },
+    setValue(value) {
+      if (!rows[startRow - 1]) rows[startRow - 1] = [];
+      rows[startRow - 1][startColumn - 1] = value;
       return this;
     },
     setValues(values) {
@@ -88,6 +93,16 @@ test('calendar reads recover a legacy numeric tracking key for a leading-zero jo
   const tracking = context.getAllTracking();
 
   assert.equal(context.trackingForJobKey_(tracking, '00001').completed, true);
+});
+
+test('legacy numeric duplicates use the newest save for automatic refresh recovery', () => {
+  const sheet = createSheet([
+    trackingRow(1, false, '2026-09-01T12:00:00.000Z'),
+    trackingRow(1, true, '2026-09-01T13:00:00.000Z'),
+  ]);
+  const context = loadBackend(sheet);
+
+  assert.equal(context.trackingForJobKey_(context.getAllTracking(), '00001').completed, true);
 });
 
 test('the next write migrates a legacy numeric key instead of appending a duplicate row', () => {

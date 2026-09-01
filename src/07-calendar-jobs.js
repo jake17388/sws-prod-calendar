@@ -63,7 +63,7 @@ function getProductionJobs(e, actor) {
   const tracking = getAllTracking();
 
   jobs.forEach(job => {
-    const t = tracking[job.jobKey] || {};
+    const t = trackingForJobKey_(tracking, job.jobKey) || {};
     job.completed = !!t.completed;
     job.notes = t.notes || [];
     job.completedAt = t.completedAt || '';
@@ -137,7 +137,7 @@ function mergeProjectHandoffJobs_(calendarJobs, handoffJobs, tracking) {
   const scheduledJobNums = new Set((calendarJobs || []).map(job => String(job.jobNum || job.jobKey || '')));
   const otherJobs = (handoffJobs || [])
     .filter(job => !scheduledJobNums.has(String(job.jobNum || '')))
-    .map(job => otherProductionJob_(job, (tracking || {})[String(job.jobNum)]));
+    .map(job => otherProductionJob_(job, trackingForJobKey_(tracking, job.jobNum)));
   return (calendarJobs || []).concat(otherJobs);
 }
 

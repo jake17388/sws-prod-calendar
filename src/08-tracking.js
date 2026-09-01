@@ -121,6 +121,24 @@ function mergeLegacyDepartmentNotes(projectNotes, departmentNotes) {
     .map(entry => entry.note);
 }
 
+// Sheets can auto-coerce a key such as "00001" into the number 1. Prefer an
+// exact key, but recover that legacy numeric form when the calendar still has
+// the leading-zero job number. The next write rewrites the cell as plain text.
+function legacyNumericTrackingKey_(jobKey) {
+  const text = String(jobKey || '');
+  return /^0+\d+$/.test(text) ? String(Number(text)) : '';
+}
+
+function trackingForJobKey_(tracking, jobKey) {
+  const records = tracking || {};
+  const exactKey = String(jobKey || '');
+  if (Object.prototype.hasOwnProperty.call(records, exactKey)) return records[exactKey];
+  const legacyKey = legacyNumericTrackingKey_(exactKey);
+  return legacyKey && Object.prototype.hasOwnProperty.call(records, legacyKey)
+    ? records[legacyKey]
+    : undefined;
+}
+
 function getAllTracking() {
   const sheet = getTrackingSheet();
   const data = sheet.getDataRange().getValues();
@@ -128,11 +146,20 @@ function getAllTracking() {
   for (let i = 1; i < data.length; i++) {
     const [jobKey, completed, notes, checklistJson, updatedAt, , completedAt, completedBy, dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson, archiveSnapshotJson] = data[i];
     if (!jobKey) continue;
-    // A duplicate job_key row (see dedupeTrackingSheet) must resolve the
-    // same way setTracking's own row-finder does — first occurrence wins —
-    // or a write to the first row can silently get overwritten right back
-    // by a stale second row on the very next read.
-    if (Object.prototype.hasOwnProperty.call(tracking, String(jobKey))) continue;
+    // Valid duplicate job_key rows (see dedupeTrackingSheet) resolve the
+    // same way setTracking's row-finder does: first occurrence wins. Invalid
+    // short numeric keys are the leading-zero coercion case handled below.
+    const trackingKey = String(jobKey);
+    if (Object.prototype.hasOwnProperty.call(tracking, trackingKey)) {
+      // A short numeric key is not valid on its own; it can only be a
+      // leading-zero job number that Sheets coerced. The old writer appended
+      // another numeric row on every save, so use its newest timestamp to
+      // recover the user's last action. Valid-key duplicates still keep the
+      // long-standing first-row-wins behavior documented above.
+      const isLegacyNumericKey = /^\d{1,4}$/.test(trackingKey);
+      const existingUpdatedAt = String(tracking[trackingKey].updatedAt || '');
+      if (!isLegacyNumericKey || !updatedAt || String(updatedAt) <= existingUpdatedAt) continue;
+    }
     let checklist = [];
     try { checklist = checklistJson ? JSON.parse(checklistJson) : []; } catch (err) { checklist = []; }
     let departments = [];
@@ -141,7 +168,7 @@ function getAllTracking() {
     try { departmentChecklists = departmentChecklistsJson ? JSON.parse(departmentChecklistsJson) : {}; } catch (err) { departmentChecklists = {}; }
     let currentDepartments = [];
     try { currentDepartments = currentDepartmentsJson ? JSON.parse(currentDepartmentsJson) : []; } catch (err) { currentDepartments = []; }
-    tracking[String(jobKey)] = {
+    tracking[trackingKey] = {
       completed: !!completed, notes: mergeLegacyDepartmentNotes(parseNotesCell(notes), parseDepartmentNotesCell(departmentNotesJson)), checklist,
       updatedAt: updatedAt || '',
       completedAt: completedAt || '', completedBy: completedBy || '',
@@ -210,9 +237,22 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     const sheet = getTrackingSheet();
     const data = sheet.getDataRange().getValues();
     let rowIndex = -1;
+    let legacyRowIndex = -1;
+    let legacyUpdatedAt = '';
+    const exactJobKey = String(jobKey);
+    const legacyJobKey = legacyNumericTrackingKey_(exactJobKey);
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]) === String(jobKey)) { rowIndex = i + 1; break; }
+      const storedJobKey = String(data[i][0]);
+      if (storedJobKey === exactJobKey) { rowIndex = i + 1; break; }
+      if (legacyJobKey && storedJobKey === legacyJobKey) {
+        const storedUpdatedAt = String(data[i][4] || '');
+        if (legacyRowIndex === -1 || storedUpdatedAt > legacyUpdatedAt) {
+          legacyRowIndex = i + 1;
+          legacyUpdatedAt = storedUpdatedAt;
+        }
+      }
     }
+    if (rowIndex === -1) rowIndex = legacyRowIndex;
     const current = rowIndex === -1
       ? { completed: false, notes: [], checklist: [], updatedAt: '', completedAt: '', completedBy: '', dueOverride: '', departments: [], departmentChecklists: {}, currentDepartments: [], additionalFiles: [], archiveSnapshot: null }
       : {
@@ -261,9 +301,14 @@ function setTracking(jobKey, patch, user, expectedUpdatedAt) {
     const row = [String(jobKey), next.completed, notesJson, checklistJson, next.updatedAt, sanitizeSheetText(user), next.completedAt, sanitizeSheetText(next.completedBy), next.dueOverride, departmentsJson, departmentChecklistsJson, currentDepartmentsJson, departmentNotesJson, additionalFilesJson, archiveSnapshotJson];
     if (rowIndex === -1) {
       sheet.appendRow(row);
+      rowIndex = sheet.getLastRow();
     } else {
       sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
     }
+    // Explicitly format and rewrite the key after the row write. This repairs
+    // legacy numeric cells and prevents appendRow/setValues from dropping
+    // leading zeroes regardless of the sheet's inherited column formatting.
+    sheet.getRange(rowIndex, 1).setNumberFormat('@').setValue(String(jobKey));
     bumpTrackingVersion();
     return { success: true, ...next };
   } catch (err) {
