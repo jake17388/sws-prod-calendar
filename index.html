@@ -17,7 +17,7 @@
 <!-- ?v= on every local script/stylesheet below busts the CDN/browser cache
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
-<link rel="stylesheet" href="styles/tokens.css?v=2026.08.11.8" />
+<link rel="stylesheet" href="styles/tokens.css?v=2026.09.01.6" />
 <link rel="stylesheet" href="styles/layout.css?v=2026.09.01.5" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.09.01.1" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.08.11.8" />
@@ -179,6 +179,13 @@
             <button class="zoom-btn" id="zoom-in-btn" aria-label="Increase text size">+</button>
             <button class="zoom-reset-btn" id="zoom-reset-btn">Reset</button>
           </div>
+        </div>
+        <div class="settings-row">
+          <label for="theme-select">Theme</label>
+          <select id="theme-select" class="default-view-select" aria-describedby="theme-hint">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
         </div>
         <div class="settings-row default-view-row">
           <label for="default-view-select">Default view</label>
@@ -474,6 +481,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.09.01.5"></script>
+<script type="module" src="js/app.js?v=2026.09.01.6"></script>
 </body>
 </html>

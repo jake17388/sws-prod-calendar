@@ -390,6 +390,18 @@ function reloadForUpdate() {
 
 const ZOOM_STEPS = [50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200];
 const ZOOM_KEY = 'sws_prod_cal_zoom';
+const THEME_KEY = 'sws_prod_cal_theme';
+const savedTheme = localStorage.getItem(THEME_KEY);
+
+function applyTheme(theme) {
+  const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', selectedTheme);
+  const themeSelect = document.getElementById('theme-select');
+  if (themeSelect) themeSelect.value = selectedTheme;
+  localStorage.setItem(THEME_KEY, selectedTheme);
+}
+
+applyTheme(savedTheme);
 const savedZoomIdx = ZOOM_STEPS.indexOf(+localStorage.getItem(ZOOM_KEY));
 let zoomIdx = savedZoomIdx !== -1 ? savedZoomIdx : ZOOM_STEPS.indexOf(100);
 
@@ -416,6 +428,7 @@ function openSettings(forcePinChange = false) {
   const defaultView = document.getElementById('default-view-select');
   defaultView.value = getDefaultView();
   Array.from(defaultView.options).forEach(option => { option.hidden = !canOpenView(option.value); });
+  document.getElementById('theme-select').value = document.documentElement.dataset.theme || 'light';
 
   // Fetched fresh each time rather than kept in the session, so the PIN lives
   // only in this input while the panel is open — it's never written to
@@ -539,6 +552,10 @@ function boot() {
   document.getElementById('default-view-select').addEventListener('change', event => {
     saveDefaultView(event.target.value);
     showToast(`Default view set to ${event.target.selectedOptions[0].textContent}`);
+  });
+  document.getElementById('theme-select').addEventListener('change', event => {
+    applyTheme(event.target.value);
+    showToast(`${event.target.selectedOptions[0].textContent} theme enabled`);
   });
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
