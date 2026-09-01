@@ -656,6 +656,64 @@ function testSquarecoilLogin() {
   }
 }
 
+// Diagnostic for the milestone index, run from the Apps Script editor when
+// Settings > Production Statuses reports statuses with no matching milestone.
+// squarecoilMilestoneIndex_ only knows the pages in
+// SQUARECOIL_MILESTONE_INDEX_PATHS and only recognises links shaped like
+// "milestone_report.php?id=N"; this probes a wider set of pages and reports
+// every report-ish link and select it can see, so the real shape can be read
+// off one run instead of guessed at.
+function testSquarecoilMilestoneIndex() {
+  if (!isSquarecoilConfigured_()) {
+    return squarecoilProbeResult_({ success: false, stage: 'configuration', error: 'Squarecoil credentials are not configured' });
+  }
+
+  const candidates = SQUARECOIL_MILESTONE_INDEX_PATHS.concat([
+    'reports.php', 'milestones.php', 'milestone.php', 'milestone_report.php',
+    'project_report.php', 'index.php',
+  ]);
+
+  try {
+    const credentials = squarecoilCredentials_();
+    const cookie = squarecoilLogin_(credentials.username, credentials.password);
+    const pages = candidates.map(path => {
+      let response;
+      try {
+        response = squarecoilGet_(path, cookie);
+      } catch (err) {
+        return { path, error: String((err && err.message) || err).slice(0, 120) };
+      }
+      const code = response.getResponseCode();
+      if (code !== 200) return { path, responseCode: code };
+
+      const html = squarecoilDecodeHtmlEntities_(response.getContentText());
+      // Every link whose href mentions a report or a milestone, so a differently
+      // named endpoint shows up rather than being filtered out silently.
+      const reportLinks = (html.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || []).reduce((found, link) => {
+        const hrefMatch = link.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || [];
+        const href = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || '';
+        if (!/report|milestone/i.test(href)) return found;
+        if (found.length < 40) found.push({ href: href.slice(0, 120), text: squarecoilDecodeText_((link.match(/>([\s\S]*?)<\/a>/i) || [])[1]).slice(0, 60) });
+        return found;
+      }, []);
+      const selects = (html.match(/<select\b[^>]*>/gi) || []).map(tag => tag.slice(0, 160)).slice(0, 15);
+
+      return {
+        path,
+        responseCode: code,
+        bytes: html.length,
+        parsedByCurrentScraper: squarecoilParseMilestoneIndex_(html).length,
+        reportLinks,
+        selects,
+      };
+    });
+
+    return squarecoilProbeResult_({ success: true, pages });
+  } catch (err) {
+    return squarecoilProbeResult_({ success: false, stage: 'login', error: String((err && err.message) || err).slice(0, 200) });
+  }
+}
+
 function testSquarecoilJobLookup() {
   const props = PropertiesService.getScriptProperties();
   const username = props.getProperty('SQUARECOIL_USERNAME') || '';
