@@ -451,9 +451,9 @@ function saveMyAccount() {
 }
 
 function boot() {
-  // Job selection is the production crew's primary clock-in workflow. Take
-  // them straight there; managers and other roles keep the calendar default.
-  activeView = canUseJobSelector() ? 'jobSelector' : 'week';
+  // Keep the calendar as the default landing view while job costing is being
+  // rolled out; production crews can still open Job Selector from the header.
+  activeView = 'week';
   if (isTvDisplay()) activeView = 'week';
   configureHeaderForRole();
   // Warm the PDF engine in parallel with the first jobs request. This does

@@ -33,12 +33,12 @@ test('production workers get Job Selector in the manager action location', () =>
   assert.match(auth, /canUseJobSelector/);
 });
 
-test('production workers land on Job Selector and assigned starts include the displayed job name', () => {
+test('production workers land on Week view while Job Selector remains available', () => {
   const app = read('js/app.js');
   const view = read('js/views/jobSelector.js');
   const api = read('js/api.js');
 
-  assert.match(app, /activeView\s*=\s*canUseJobSelector\(\)\s*\?\s*['"]jobSelector['"]\s*:\s*['"]week['"]/);
+  assert.match(app, /activeView\s*=\s*['"]week['"];\s*\n\s*if \(isTvDisplay\(\)\) activeView\s*=\s*['"]week['"];/);
   assert.match(view, /data-job-name=/);
   assert.match(view, /startJobTime\(jobNum,\s*source,\s*jobName,\s*costingButtonId\)/);
   assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName,\s*costingButtonId/);
