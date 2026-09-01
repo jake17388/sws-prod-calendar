@@ -50,6 +50,16 @@ export const fetchCostingButtons = () => scriptGet('getCostingButtons').then(d =
 
 export const saveCostingButtons = buttons => scriptPost({ action: 'saveCostingButtons', buttons });
 
+/** @returns {Promise<{statuses: string[], available: string[], unresolved: string[], error: string}>} */
+export const fetchProductionStatuses = () => scriptGet('getProductionStatuses').then(d => ({
+  statuses: d.statuses || [],
+  available: d.available || [],
+  unresolved: d.unresolved || [],
+  error: d.error || '',
+}));
+
+export const saveProductionStatuses = statuses => scriptPost({ action: 'saveProductionStatuses', statuses });
+
 export const updateJobTimeEntry = (entryId, patch) =>
   scriptPost({ action: 'updateJobTimeEntry', entryId, ...patch });
 

@@ -83,10 +83,10 @@ function getProductionJobs(e, actor) {
     job.updatedAt = t.updatedAt || '';
   });
 
-  let handoffJobs = [];
+  let statusJobs = [];
   if (actor && canViewOtherProduction(actor.department)) {
-    handoffJobs = squarecoilProjectHandoffJobs_();
-    jobs = mergeProjectHandoffJobs_(jobs, handoffJobs, tracking);
+    statusJobs = squarecoilProductionStatusJobs_().jobs;
+    jobs = mergeProductionStatusJobs_(jobs, statusJobs, tracking);
   }
 
   // Production-department users (Manufacturing, Graphics, etc.) see every
@@ -102,7 +102,7 @@ function getProductionJobs(e, actor) {
     jobs = jobs.filter(job => job.departments.indexOf(actor.department) !== -1);
   }
 
-  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: productionJobsVersion_(actor, handoffJobs) };
+  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: productionJobsVersion_(actor, statusJobs) };
 }
 
 function otherProductionJob_(source, tracking) {
@@ -120,7 +120,7 @@ function otherProductionJob_(source, tracking) {
     dueOverride: t.dueOverride || '',
     multiDay: false,
     isOtherProduction: true,
-    squarecoilStatus: source.squarecoilStatus || 'Project Handoff',
+    squarecoilStatus: source.squarecoilStatus || '',
     completed: !!t.completed,
     completedAt: t.completedAt || '',
     completedBy: t.completedBy || '',
@@ -133,32 +133,34 @@ function otherProductionJob_(source, tracking) {
   };
 }
 
-function mergeProjectHandoffJobs_(calendarJobs, handoffJobs, tracking) {
+// A job that is already on the install calendar is scheduled production, so it
+// is dropped from the Squarecoil side rather than shown twice.
+function mergeProductionStatusJobs_(calendarJobs, statusJobs, tracking) {
   const scheduledJobNums = new Set((calendarJobs || []).map(job => String(job.jobNum || job.jobKey || '')));
-  const otherJobs = (handoffJobs || [])
+  const otherJobs = dedupeProductionStatusJobs_(statusJobs)
     .filter(job => !scheduledJobNums.has(String(job.jobNum || '')))
     .map(job => otherProductionJob_(job, trackingForJobKey_(tracking, job.jobNum)));
   return (calendarJobs || []).concat(otherJobs);
 }
 
-function projectHandoffVersion_(handoffJobs) {
-  return (handoffJobs || [])
+function productionStatusVersion_(statusJobs) {
+  return (statusJobs || [])
     .map(job => [job.jobNum, job.title, job.addr, job.squarecoilStatus].join('~'))
     .sort()
     .join('|');
 }
 
-function productionJobsVersion_(actor, loadedHandoffJobs) {
+function productionJobsVersion_(actor, loadedStatusJobs) {
   if (!actor || !canViewOtherProduction(actor.department)) return getTrackingVersion();
-  const handoffJobs = loadedHandoffJobs || squarecoilProjectHandoffJobs_();
-  return String(getTrackingVersion()) + ':' + projectHandoffVersion_(handoffJobs);
+  const statusJobs = loadedStatusJobs || squarecoilProductionStatusJobs_().jobs;
+  return String(getTrackingVersion()) + ':' + productionStatusVersion_(statusJobs);
 }
 
 function isOtherProductionJob_(jobKey) {
   const value = String(jobKey || '');
   if (!validJobKey(value)) return false;
-  const handoff = squarecoilProjectHandoffJobs_().some(job => job.jobNum === value);
-  if (!handoff) return false;
+  const inSquarecoil = squarecoilProductionStatusJobs_().jobs.some(job => job.jobNum === value);
+  if (!inSquarecoil) return false;
   const window = defaultCalendarWindow();
   return !getCalendarJobs(window.start, window.end).some(job => job.jobNum === value);
 }

@@ -171,25 +171,148 @@ function squarecoilProjectAddress_(row) {
   return [address, city, stateZip].filter(Boolean).join(', ').slice(0, 500);
 }
 
-function squarecoilParseProjectHandoffJobs_(payload) {
+// ── Production statuses ─────────────────────────────────────────────────────
+// The Other Production queue is fed by one Squarecoil milestone report per
+// configured project status. Statuses are chosen by an Admin (see
+// saveProductionStatuses); milestone ids are discovered from Squarecoil rather
+// than configured, so an Admin never has to look one up.
+
+function getProductionStatuses() {
+  const raw = PropertiesService.getScriptProperties().getProperty('PRODUCTION_STATUSES');
+  if (raw == null) return DEFAULT_PRODUCTION_STATUSES.slice();
+  try {
+    const statuses = JSON.parse(raw);
+    return Array.isArray(statuses) ? statuses.map(status => String(status)) : DEFAULT_PRODUCTION_STATUSES.slice();
+  } catch (err) {
+    return DEFAULT_PRODUCTION_STATUSES.slice();
+  }
+}
+
+function saveProductionStatuses(actor, data) {
+  if (!actor || !canManageProductionStatuses(actor.department)) return { success: false, error: 'forbidden' };
+  if (!data || !Array.isArray(data.statuses)) return { success: false, error: 'Statuses are required' };
+  if (data.statuses.length > 40) return { success: false, error: 'Up to 40 statuses are allowed' };
+
+  const statuses = [];
+  const seen = new Set();
+  for (let i = 0; i < data.statuses.length; i++) {
+    const status = String(data.statuses[i] == null ? '' : data.statuses[i]).trim();
+    if (!status) return { success: false, error: 'Every status needs a name' };
+    if (status.length > 80 || /[\u0000-\u001f\u007f]/.test(status)) {
+      return { success: false, error: 'Status names must be 80 characters or less' };
+    }
+    const normalized = status.toLowerCase();
+    if (seen.has(normalized)) return { success: false, error: 'Status names must be unique' };
+    seen.add(normalized);
+    statuses.push(status);
+  }
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    PropertiesService.getScriptProperties().setProperty('PRODUCTION_STATUSES', JSON.stringify(statuses));
+    // Drop any queue cached under this exact list so the change is visible on
+    // the next load instead of after the 5-minute TTL.
+    try {
+      CacheService.getScriptCache().remove(squarecoilStatusJobsCacheKey_(statuses));
+    } catch (err) { /* best-effort — a stale entry expires on its own */ }
+    return { success: true, statuses };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Squarecoil exposes its milestones as report links in the page navigation
+// ("<a href="milestone_report.php?id=30">Project Handoff</a>") and, on some
+// pages, as a milestone <select>. Both shapes are read so the index survives a
+// layout change in either one.
+function squarecoilParseMilestoneIndex_(html) {
+  const normalized = squarecoilDecodeHtmlEntities_(html);
+  const index = [];
+  const seen = new Set();
+
+  const add = (id, name) => {
+    const milestoneId = String(id || '').trim();
+    const label = squarecoilDecodeText_(name).slice(0, 80);
+    if (!/^\d+$/.test(milestoneId) || !label) return;
+    const key = label.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    index.push({ id: milestoneId, name: label });
+  };
+
+  (normalized.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || []).forEach(link => {
+    const hrefMatch = link.match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || [];
+    const href = hrefMatch[1] || hrefMatch[2] || hrefMatch[3] || '';
+    if (!/(?:^|\/)milestone_report\.php\?/i.test(href)) return;
+    add((href.match(/[?&]id=(\d+)/i) || [])[1], (link.match(/>([\s\S]*?)<\/a>/i) || [])[1]);
+  });
+
+  (normalized.match(/<select\b[^>]*>[\s\S]*?<\/select>/gi) || []).forEach(select => {
+    const attributes = (select.match(/<select\b([^>]*)>/i) || [])[1] || '';
+    if (!/milestone/i.test(attributes)) return;
+    (select.match(/<option\b[^>]*>[\s\S]*?<\/option>/gi) || []).forEach(option => {
+      const valueMatch = option.match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i) || [];
+      add(valueMatch[1] || valueMatch[2] || valueMatch[3], (option.match(/>([\s\S]*?)<\/option>/i) || [])[1]);
+    });
+  });
+
+  return index;
+}
+
+function squarecoilMilestoneIdForStatus_(status, index) {
+  const key = String(status || '').trim().toLowerCase();
+  if (!key) return '';
+  const match = (index || []).find(entry => String(entry.name || '').trim().toLowerCase() === key);
+  return match ? String(match.id) : (SQUARECOIL_SEED_MILESTONE_IDS[key] || '');
+}
+
+function squarecoilMilestoneIndex_(cookie) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'squarecoil_milestone_index_v1';
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* scrape fresh below */ }
+  }
+
+  for (let i = 0; i < SQUARECOIL_MILESTONE_INDEX_PATHS.length; i++) {
+    let response;
+    try {
+      response = squarecoilGet_(SQUARECOIL_MILESTONE_INDEX_PATHS[i], cookie);
+    } catch (err) {
+      continue;
+    }
+    if (response.getResponseCode() !== 200) continue;
+    const index = squarecoilParseMilestoneIndex_(response.getContentText());
+    // One link proves nothing — the page we fetched links to itself. Two or
+    // more means we actually found the milestone navigation.
+    if (index.length < 2) continue;
+    cache.put(cacheKey, JSON.stringify(index), SQUARECOIL_MILESTONE_INDEX_CACHE_SECONDS);
+    return index;
+  }
+  return [];
+}
+
+function squarecoilParseMilestoneJobs_(payload, status) {
   const rows = payload && Array.isArray(payload.data) ? payload.data : [];
+  const expected = String(status || '').trim().toLowerCase();
   const seen = new Set();
   return rows.reduce((jobs, row) => {
     const jobNum = String((row && row.project_id) || '').trim();
-    const status = String((row && row.project_status) || '').trim();
-    if (!validJobKey(jobNum) || status.toLowerCase() !== 'project handoff' || seen.has(jobNum)) return jobs;
+    const rowStatus = String((row && row.project_status) || '').trim().toLowerCase();
+    if (!validJobKey(jobNum) || rowStatus !== expected || seen.has(jobNum)) return jobs;
     seen.add(jobNum);
     jobs.push({
       jobNum,
       title: String(row.project_name || ('Squarecoil project ' + jobNum)).trim().slice(0, 300),
       addr: squarecoilProjectAddress_(row),
-      squarecoilStatus: 'Project Handoff',
+      squarecoilStatus: String(status),
     });
     return jobs;
   }, []);
 }
 
-function squarecoilProjectHandoffPayload_() {
+function squarecoilMilestoneReportPayload_() {
   const columns = [
     'project_id', 'project_name', 'address_1', 'city', 'state', 'zip', 'location',
     'salesperson', 'project_manager', 'shipping_milestone_date', 'due_date',
@@ -218,10 +341,51 @@ function squarecoilProjectHandoffPayload_() {
   return payload;
 }
 
-function squarecoilProjectHandoffJobs_() {
-  if (!isSquarecoilConfigured_()) return [];
+function squarecoilMilestoneJobs_(status, milestoneId, cookie) {
+  const response = squarecoilPost_(
+    'jq.milestone_report.php?id=' + encodeURIComponent(milestoneId) + '&multiple_location_id=',
+    squarecoilMilestoneReportPayload_(),
+    cookie,
+  );
+  if (response.getResponseCode() !== 200) {
+    throw new Error(status + ' returned HTTP ' + response.getResponseCode());
+  }
+  const parsed = JSON.parse(response.getContentText());
+  const jobs = squarecoilParseMilestoneJobs_(parsed, status);
+  // Every row in a milestone report should carry that milestone's status. More
+  // records than we accepted means the report is not what we think it is, and
+  // silently showing a partial queue would be worse than showing none.
+  if (Number(parsed.recordsFiltered || 0) > jobs.length) {
+    throw new Error(status + ' response was incomplete or contained an unexpected status');
+  }
+  return jobs;
+}
+
+// A job can sit in only one Squarecoil status at a time, but a report can lag.
+// Keep the first copy so the configured status order decides the winner.
+function dedupeProductionStatusJobs_(jobs) {
+  const seen = new Set();
+  return (jobs || []).filter(job => {
+    const jobNum = String((job && job.jobNum) || '');
+    if (!jobNum || seen.has(jobNum)) return false;
+    seen.add(jobNum);
+    return true;
+  });
+}
+
+function squarecoilStatusJobsCacheKey_(statuses) {
+  return 'squarecoil_status_jobs_v2_' + (statuses || []).join('|').toLowerCase().slice(0, 200);
+}
+
+// Returns { jobs, unresolved } — `unresolved` lists configured statuses with no
+// matching Squarecoil milestone, so Settings can say so instead of quietly
+// showing nothing for them.
+function squarecoilProductionStatusJobs_() {
+  const statuses = getProductionStatuses();
+  if (!isSquarecoilConfigured_() || !statuses.length) return { jobs: [], unresolved: [] };
+
   const cache = CacheService.getScriptCache();
-  const liveKey = 'squarecoil_project_handoff_v1';
+  const liveKey = squarecoilStatusJobsCacheKey_(statuses);
   const staleKey = liveKey + '_stale';
   const cached = cache.get(liveKey);
   if (cached) {
@@ -231,30 +395,54 @@ function squarecoilProjectHandoffJobs_() {
   try {
     const credentials = squarecoilCredentials_();
     const cookie = squarecoilLogin_(credentials.username, credentials.password);
-    const response = squarecoilPost_(
-      'jq.milestone_report.php?id=' + SQUARECOIL_PROJECT_HANDOFF_MILESTONE_ID + '&multiple_location_id=',
-      squarecoilProjectHandoffPayload_(),
-      cookie,
-    );
-    if (response.getResponseCode() !== 200) throw new Error('Project Handoff returned HTTP ' + response.getResponseCode());
-    const parsed = JSON.parse(response.getContentText());
-    const jobs = squarecoilParseProjectHandoffJobs_(parsed);
-    if (Number(parsed.recordsFiltered || 0) > jobs.length) {
-      throw new Error('Project Handoff response was incomplete or contained an unexpected status');
-    }
-    const encoded = JSON.stringify(jobs);
+    const index = squarecoilMilestoneIndex_(cookie);
+    const unresolved = [];
+    const jobs = dedupeProductionStatusJobs_(statuses.reduce((collected, status) => {
+      const milestoneId = squarecoilMilestoneIdForStatus_(status, index);
+      if (!milestoneId) {
+        unresolved.push(status);
+        return collected;
+      }
+      return collected.concat(squarecoilMilestoneJobs_(status, milestoneId, cookie));
+    }, []));
+
+    const result = { jobs, unresolved };
+    const encoded = JSON.stringify(result);
     cache.put(liveKey, encoded, SQUARECOIL_HANDOFF_CACHE_SECONDS);
     cache.put(staleKey, encoded, SQUARECOIL_HANDOFF_STALE_CACHE_SECONDS);
-    clearOperationalFailure('squarecoil-handoff');
-    return jobs;
+    if (unresolved.length) {
+      recordOperationalFailure('squarecoil-handoff', new Error('No Squarecoil milestone matches: ' + unresolved.join(', ')));
+    } else {
+      clearOperationalFailure('squarecoil-handoff');
+    }
+    return result;
   } catch (err) {
     recordOperationalFailure('squarecoil-handoff', err);
     const stale = cache.get(staleKey);
     if (stale) {
       try { return JSON.parse(stale); } catch (parseError) { /* empty fallback below */ }
     }
-    return [];
+    return { jobs: [], unresolved: [] };
   }
+}
+
+// The statuses an Admin can pick from, plus the ones currently enabled. Missing
+// milestones are surfaced rather than swallowed.
+function productionStatusSettings_() {
+  const statuses = getProductionStatuses();
+  if (!isSquarecoilConfigured_()) {
+    return { statuses, available: [], unresolved: [], error: 'Squarecoil is not configured' };
+  }
+  let index = [];
+  try {
+    const credentials = squarecoilCredentials_();
+    index = squarecoilMilestoneIndex_(squarecoilLogin_(credentials.username, credentials.password));
+  } catch (err) {
+    return { statuses, available: [], unresolved: [], error: 'Could not read the Squarecoil status list' };
+  }
+  const available = index.map(entry => entry.name);
+  const unresolved = statuses.filter(status => !squarecoilMilestoneIdForStatus_(status, index));
+  return { statuses, available, unresolved, error: '' };
 }
 
 function squarecoilFindProjectName_(html, jobNum) {

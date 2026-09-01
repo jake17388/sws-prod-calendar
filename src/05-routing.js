@@ -101,6 +101,12 @@ function routeGet(e) {
     if (!actor) return json(UNAUTHORIZED);
     return json(getAdditionalFile(actor, params));
   }
+  if (action === 'getProductionStatuses') {
+    const actor = resolveActor(e.parameter.token);
+    if (!actor) return json(UNAUTHORIZED);
+    if (!canManageProductionStatuses(actor.department)) return json({ error: 'forbidden' });
+    return json(productionStatusSettings_());
+  }
   if (action === 'getSquarecoilStatus') {
     const actor = resolveActor(e.parameter.token);
     if (!actor || actor.department !== 'Admin') return json(UNAUTHORIZED);
@@ -194,6 +200,7 @@ function routePost(e) {
   if (data.action === 'revokeUserSessions') return respond(() => revokeUserSessions(actor, data));
   if (data.action === 'saveCommonTasks') return respond(() => saveCommonTasks(actor, data));
   if (data.action === 'saveCostingButtons') return respond(() => saveCostingButtons(actor, data));
+  if (data.action === 'saveProductionStatuses') return respond(() => saveProductionStatuses(actor, data));
   if (data.action === 'addAdditionalFile') return respond(() => addAdditionalFile(actor, data));
   if (data.action === 'deleteAdditionalFile') return respond(() => deleteAdditionalFile(actor, data));
   if (data.action === 'refreshSquarecoilFilesNow') {

@@ -66,6 +66,8 @@ export const canAssignDepartments = () => !!auth && (auth.department === 'Admin'
 export const canUseJobSelector = () => !!auth && ['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(auth.department);
 export const canViewHoursLog = () => !!auth && ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(auth.department);
 export const canViewOtherProduction = () => !!auth && ['Admin', 'Manager', 'Viewer'].includes(auth.department);
+/** Which Squarecoil statuses feed Other Production changes what everyone sees, so it stays Admin-only. */
+export const canManageProductionStatuses = () => isAdmin();
 export const canEditHoursLog = () => !!auth && ['Admin', 'Costing Viewer'].includes(auth.department);
 export const canManageCostingButtons = () => !!auth && ['Admin', 'Costing Viewer'].includes(auth.department);
 export const canUploadAdditionalFiles = () => !!auth && ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(auth.department);

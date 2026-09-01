@@ -20,6 +20,7 @@ function loadBackend(properties = {}) {
       }),
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {} }) },
   });
   vm.runInContext(source, context);
   context.__store = store;
@@ -147,7 +148,7 @@ test('production jobs already on the install calendar are not duplicated', () =>
 test('a new installation gets the five default production statuses', () => {
   const context = loadBackend();
 
-  assert.deepEqual(context.getProductionStatuses(), [
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getProductionStatuses())), [
     'Project Handoff',
     'Pre-Production Approval',
     'Graphics',
@@ -159,13 +160,13 @@ test('a new installation gets the five default production statuses', () => {
 test('a saved status list is read back in the order the admin chose', () => {
   const context = loadBackend({ PRODUCTION_STATUSES: JSON.stringify(['Assembly', 'Graphics']) });
 
-  assert.deepEqual(context.getProductionStatuses(), ['Assembly', 'Graphics']);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getProductionStatuses())), ['Assembly', 'Graphics']);
 });
 
 test('an explicitly emptied status list stays empty instead of reverting to defaults', () => {
   const context = loadBackend({ PRODUCTION_STATUSES: '[]' });
 
-  assert.deepEqual(context.getProductionStatuses(), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getProductionStatuses())), []);
 });
 
 test('only Admins may change which statuses appear', () => {
@@ -201,8 +202,8 @@ test('saving statuses persists a trimmed list an Admin can read back', () => {
   );
 
   assert.equal(result.success, true);
-  assert.deepEqual(result.statuses, ['Manufacturing', 'Assembly']);
-  assert.deepEqual(context.getProductionStatuses(), ['Manufacturing', 'Assembly']);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.statuses)), ['Manufacturing', 'Assembly']);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getProductionStatuses())), ['Manufacturing', 'Assembly']);
 });
 
 test('the poll version changes when the configured statuses change', () => {

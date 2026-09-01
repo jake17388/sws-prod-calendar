@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="styles/dept-assign.css?v=2026.08.11.3" />
 <link rel="stylesheet" href="styles/common-tasks.css?v=2026.08.10.10" />
 <link rel="stylesheet" href="styles/costing-buttons.css?v=2026.08.28.1" />
+<link rel="stylesheet" href="styles/production-statuses.css?v=2026.09.01.2" />
 <link rel="stylesheet" href="styles/stats-bar.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/toast.css?v=2026.07.16.2" />
 <link rel="stylesheet" href="styles/job-selector.css?v=2026.08.28.4" />
@@ -215,6 +216,7 @@
           <button class="settings-action" id="settings-usermgmt-btn" hidden>User Management</button>
           <button class="settings-action" id="settings-common-tasks-btn" hidden>Common Task Buttons</button>
           <button class="settings-action" id="settings-costing-buttons-btn" hidden>Costing Buttons</button>
+          <button class="settings-action" id="settings-production-statuses-btn" hidden>Production Statuses</button>
         </div>
       </section>
 
@@ -298,6 +300,33 @@
           <button id="costing-button-save" class="settings-action primary">Save changes</button>
         </div>
         <div id="costing-button-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
+      </section>
+    </div>
+  </section>
+</div>
+
+<div id="production-status-overlay" class="settings-subpage" role="dialog" aria-modal="true" aria-labelledby="production-status-title">
+  <section class="production-status-panel settings-subpage-shell" aria-label="Production statuses">
+    <div class="production-status-header">
+      <button id="production-status-back" class="settings-subpage-back" aria-label="Back to Settings"><span aria-hidden="true">←</span> Settings</button>
+      <div>
+        <h2 id="production-status-title">Production Statuses</h2>
+        <p>Choose which Squarecoil statuses appear in Other Production.</p>
+      </div>
+    </div>
+    <div class="production-status-body">
+      <section class="settings-card" aria-labelledby="production-status-editor-heading">
+        <div class="settings-card-heading">
+          <div>
+            <h3 id="production-status-editor-heading">Squarecoil statuses</h3>
+            <p>Jobs already on the install calendar stay on the production calendar and are never listed twice. When two statuses list the same job, the one higher in this list wins.</p>
+          </div>
+        </div>
+        <div id="production-status-list" class="production-status-list"></div>
+        <div class="production-status-actions">
+          <button id="production-status-save" class="settings-action primary">Save changes</button>
+        </div>
+        <div id="production-status-hint" class="notes-save-hint" role="status" aria-live="polite"></div>
       </section>
     </div>
   </section>

@@ -1,0 +1,48 @@
+#production-status-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-panel);
+  overflow-y: auto;
+  background: var(--surface-canvas);
+}
+#production-status-overlay.open { display: block; }
+.production-status-panel { width: 100%; max-width: 1100px; min-height: 100%; margin: 0 auto; padding: var(--space-7) clamp(var(--space-4), 4vw, var(--space-8)); }
+.production-status-header { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
+.production-status-header h2 { margin: 0; color: var(--ink-primary); font-size: var(--text-2xl); letter-spacing: var(--tracking-tight); }
+.production-status-header p { margin: var(--space-1) 0 0; color: var(--ink-tertiary); font-size: var(--text-sm); }
+.production-status-body .settings-card { margin: 0; }
+.production-status-list { display: grid; gap: var(--space-2); }
+.production-status-empty { padding: var(--space-7); color: var(--ink-tertiary); font-size: var(--text-sm); text-align: center; }
+
+.production-status-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.production-status-row:hover { border-color: var(--border-strong); }
+.production-status-row:focus-within { border-color: var(--accent-solid); }
+.production-status-checkbox { width: 20px; height: 20px; accent-color: var(--accent-solid); cursor: pointer; }
+.production-status-name { color: var(--ink-primary); font-size: var(--text-base); font-weight: var(--weight-medium); }
+.production-status-warning {
+  grid-column: 2;
+  color: var(--status-critical-text);
+  font-size: var(--text-xs);
+}
+
+.production-status-actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--border-subtle); }
+.production-status-actions .settings-action { width: auto; min-width: 180px; margin-top: 0; }
+
+@media (max-width: 720px) {
+  .production-status-panel { padding: calc(var(--space-5) + env(safe-area-inset-top)) var(--space-3) calc(var(--space-6) + env(safe-area-inset-bottom)); }
+  .production-status-header { grid-template-columns: 1fr; gap: var(--space-3); }
+  .production-status-actions { flex-direction: column; }
+  .production-status-actions .settings-action { width: 100%; }
+}

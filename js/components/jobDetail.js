@@ -508,9 +508,10 @@ function renderCompletedInfo(job) {
 
 function updateMetaText(job) {
   if (job.isOtherProduction) {
+    const status = job.squarecoilStatus || 'Squarecoil';
     document.getElementById('job-detail-meta').textContent = job.dueDate
-      ? `Project Handoff · production due ${fmtMD(job.dueDate)}`
-      : 'Project Handoff · unscheduled production';
+      ? `${status} · production due ${fmtMD(job.dueDate)}`
+      : `${status} · unscheduled production`;
     return;
   }
   document.getElementById('job-detail-meta').textContent =

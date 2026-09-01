@@ -59,6 +59,8 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     durationMinutes: 90, status: 'closed', editedAt: '', editedBy: '',
   }];
   let remainingDepartmentConflicts = departmentConflictOnce ? 1 : 0;
+  let productionStatuses = ['Project Handoff', 'Pre-Production Approval', 'Graphics', 'Manufacturing', 'Assembly'];
+
   await page.route(/https:\/\/script\.google\.com\/macros\/s\/.*\/exec(?:\?.*)?$/, async route => {
     const request = route.request();
     let action;
@@ -121,6 +123,16 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'getCostingButtons') {
       if (costingButtonsDelayMs) await new Promise(resolve => setTimeout(resolve, costingButtonsDelayMs));
       body = { buttons: costingButtons };
+    } else if (action === 'getProductionStatuses') {
+      body = {
+        statuses: productionStatuses,
+        available: ['Project Handoff', 'Pre-Production Approval', 'Graphics', 'Manufacturing', 'Assembly', 'Shipping'],
+        unresolved: [],
+        error: '',
+      };
+    } else if (action === 'saveProductionStatuses') {
+      productionStatuses = payload.statuses;
+      body = { success: true, statuses: productionStatuses };
     } else if (action === 'getSquarecoilStatus') {
       body = { connected: false, hasCredentials: false };
     } else if (action === 'getSystemHealth') {
@@ -439,6 +451,40 @@ test('a Manager can schedule an Other Production job onto the production calenda
   await expect(page.getByRole('button', { name: /Open 261383/ })).toHaveCount(0);
   await page.locator('.view-switcher:visible').getByRole('button', { name: 'Week' }).click();
   await expect(page.getByRole('button', { name: /Open 261383, Customer Pickup Job/ })).toBeVisible();
+});
+
+test('an Admin chooses which Squarecoil statuses feed Other Production', async ({ page }) => {
+  await mockBackend(page, { department: 'Admin' });
+  await login(page);
+
+  await page.locator('#settings-btn').click();
+  await page.getByRole('button', { name: 'Production Statuses' }).click();
+  await expect(page.getByRole('heading', { name: 'Production Statuses' })).toBeVisible();
+
+  const rows = page.locator('.production-status-row');
+  // The five defaults come first and checked; the rest of Squarecoil's
+  // statuses follow, unchecked.
+  await expect(rows).toHaveCount(6);
+  for (const status of ['Project Handoff', 'Pre-Production Approval', 'Graphics', 'Manufacturing', 'Assembly']) {
+    await expect(rows.filter({ hasText: status }).locator('.production-status-checkbox')).toBeChecked();
+  }
+  await expect(rows.filter({ hasText: 'Shipping' }).locator('.production-status-checkbox')).not.toBeChecked();
+
+  await rows.filter({ hasText: 'Graphics' }).locator('.production-status-checkbox').uncheck();
+  await rows.filter({ hasText: 'Shipping' }).locator('.production-status-checkbox').check();
+  await page.locator('#production-status-save').click();
+
+  await expect(page.getByText('Production statuses saved')).toBeVisible();
+  await expect(rows.filter({ hasText: 'Shipping' }).locator('.production-status-checkbox')).toBeChecked();
+  await expect(rows.filter({ hasText: 'Graphics' }).locator('.production-status-checkbox')).not.toBeChecked();
+});
+
+test('a Manager cannot reach the Production Statuses setting', async ({ page }) => {
+  await mockBackend(page, { department: 'Manager' });
+  await login(page);
+
+  await page.locator('#settings-btn').click();
+  await expect(page.getByRole('button', { name: 'Production Statuses' })).toBeHidden();
 });
 
 test('a stale save rebases rapid Manager selections instead of erasing them', async ({ page }) => {

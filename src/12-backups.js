@@ -92,6 +92,7 @@ function configurationSnapshot() {
     })),
     commonTasks: getCommonTasks(),
     costingButtons: getCostingButtons(),
+    productionStatuses: getProductionStatuses(),
   };
 }
 
@@ -175,6 +176,11 @@ function restoreConfigurationFromBackup(backupFileId) {
     { buttons: Array.isArray(snapshot.costingButtons) ? snapshot.costingButtons : DEFAULT_COSTING_BUTTONS },
   );
   if (!buttonsResult.success) throw new Error(buttonsResult.error || 'Could not restore costing buttons');
+  const statusesResult = saveProductionStatuses(
+    { department: 'Admin' },
+    { statuses: Array.isArray(snapshot.productionStatuses) ? snapshot.productionStatuses : DEFAULT_PRODUCTION_STATUSES },
+  );
+  if (!statusesResult.success) throw new Error(statusesResult.error || 'Could not restore production statuses');
   saveUsers(restoredUsers);
   const props = PropertiesService.getScriptProperties();
   props.setProperty('TRAINING_PIN_BATCH', TRAINING_PIN_BATCH);

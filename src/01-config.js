@@ -15,6 +15,34 @@ function normalizeCrew(names) {
 const DUE_DATE_BUSINESS_DAYS = 2;
 const SQUARECOIL_FILES_REFRESH_HOURS = 6;
 const SQUARECOIL_BATCH_CHUNK_SIZE = 15;
-const SQUARECOIL_PROJECT_HANDOFF_MILESTONE_ID = '30';
 const SQUARECOIL_HANDOFF_CACHE_SECONDS = 300;
 const SQUARECOIL_HANDOFF_STALE_CACHE_SECONDS = 21600;
+const SQUARECOIL_MILESTONE_INDEX_CACHE_SECONDS = 21600;
+
+// Which Squarecoil project statuses feed the Other Production queue out of the
+// box. Admins re-order or change this list in Settings > Production Statuses
+// (see getProductionStatuses); a missing property means a new installation and
+// receives these, while an explicitly saved [] stays empty.
+const DEFAULT_PRODUCTION_STATUSES = [
+  'Project Handoff',
+  'Pre-Production Approval',
+  'Graphics',
+  'Manufacturing',
+  'Assembly',
+];
+
+// Squarecoil serves one report per milestone (jq.milestone_report.php?id=N), so
+// every configured status has to be resolved to its milestone id. The ids are
+// discovered by scraping Squarecoil's own report navigation
+// (squarecoilMilestoneIndex_) rather than hardcoded, because they differ per
+// tenant and change when milestones are added. Project Handoff's id is seeded
+// here as a known-good fallback so the original queue keeps working even if
+// that scrape ever comes back empty.
+const SQUARECOIL_SEED_MILESTONE_IDS = { 'project handoff': '30' };
+
+// Pages that carry Squarecoil's milestone navigation, tried in order until one
+// yields a usable index.
+const SQUARECOIL_MILESTONE_INDEX_PATHS = [
+  'milestone_report.php?id=' + SQUARECOIL_SEED_MILESTONE_IDS['project handoff'],
+  'dashboard.php',
+];

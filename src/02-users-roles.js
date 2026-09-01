@@ -78,11 +78,18 @@ function canEditDueDates(department) {
   return department === 'Admin';
 }
 
-// The Project Handoff queue is a management/read-only surface. Managers may
+// The Other Production queue is a management/read-only surface. Managers may
 // schedule these otherwise-unscheduled production jobs, but that narrower
 // permission does not grant them due-date access on install-calendar jobs.
 function canViewOtherProduction(department) {
   return department === 'Admin' || department === 'Manager' || department === 'Viewer';
+}
+
+// Which Squarecoil statuses feed that queue is an Admin-only setting: it
+// changes what every Manager and Viewer sees, so it sits alongside
+// canEditDueDates rather than with the broader management permissions.
+function canManageProductionStatuses(department) {
+  return department === 'Admin';
 }
 
 function canEditDueDateForJob(department, job) {
