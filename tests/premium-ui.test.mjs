@@ -46,6 +46,7 @@ test('view navigation uses a lightweight animation class without delaying render
 test('desktop work views form a right-aligned companion switcher and the role badge is vertically centered', () => {
   const html = read('index.html');
   const layout = read('styles/layout.css');
+  const app = read('js/app.js');
 
   assert.match(
     html,
@@ -55,4 +56,5 @@ test('desktop work views form a right-aligned companion switcher and the role ba
   assert.match(layout, /\.desktop-view-switcher,\s*\.work-view-switcher\s*\{/);
   assert.match(layout, /\.desktop-view-switcher button,\s*\.work-view-switcher button\s*\{/);
   assert.match(layout, /\.desktop-view-switcher button\.active,\s*\.work-view-switcher button\.active\s*\{/);
+  assert.match(app, /querySelectorAll\('\.view-switcher button\[data-view\]'\)/);
 });

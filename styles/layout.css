@@ -100,6 +100,9 @@ header.app-header {
 }
 
 .dept-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1022,7 +1025,8 @@ header.app-header::after {
   letter-spacing: -0.01em;
 }
 
-.desktop-view-switcher {
+.desktop-view-switcher,
+.work-view-switcher {
   gap: 4px;
   padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.13);
@@ -1031,7 +1035,8 @@ header.app-header::after {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-.desktop-view-switcher button {
+.desktop-view-switcher button,
+.work-view-switcher button {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
@@ -1042,12 +1047,15 @@ header.app-header::after {
   color: rgba(255, 255, 255, 0.65);
   font-size: 12px;
 }
-.desktop-view-switcher button.active {
+.desktop-view-switcher button.active,
+.work-view-switcher button.active {
   background: linear-gradient(145deg, #ffc34f, var(--color-brand-gold));
   color: #17386f;
   box-shadow: 0 5px 16px rgba(5, 20, 49, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
-.desktop-view-switcher button:first-child { border-left: 0; }
+.desktop-view-switcher button:first-child,
+.work-view-switcher button:first-child { border-left: 0; }
+.work-view-switcher button[hidden] { display: none; }
 
 .mobile-view-switcher { display: none; }
 

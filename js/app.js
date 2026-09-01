@@ -131,7 +131,7 @@ function renderActiveView() {
   const container = document.getElementById('view-area');
   view.render(container, refDate, getJobs());
   document.getElementById('current-range').textContent = view.label(refDate);
-  document.querySelectorAll('.view-switcher button').forEach(btn => {
+  document.querySelectorAll('.view-switcher button[data-view]').forEach(btn => {
     const isActive = btn.dataset.view === activeView;
     btn.classList.toggle('active', isActive);
     btn.setAttribute('aria-selected', String(isActive));
@@ -474,7 +474,7 @@ function boot() {
   document.getElementById('view-btn-hours-log').hidden = !canViewHoursLog();
   applyZoom();
 
-  document.querySelectorAll('.view-switcher button').forEach(btn => {
+  document.querySelectorAll('.view-switcher button[data-view]').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
   document.getElementById('view-btn-assign').addEventListener('click', () => switchView('assign'));
