@@ -78,6 +78,18 @@ function canEditDueDates(department) {
   return department === 'Admin';
 }
 
+// The Project Handoff queue is a management/read-only surface. Managers may
+// schedule these otherwise-unscheduled production jobs, but that narrower
+// permission does not grant them due-date access on install-calendar jobs.
+function canViewOtherProduction(department) {
+  return department === 'Admin' || department === 'Manager' || department === 'Viewer';
+}
+
+function canEditDueDateForJob(department, job) {
+  return canEditDueDates(department)
+    || (department === 'Manager' && !!(job && job.isOtherProduction));
+}
+
 // Departments a Manager can't see in the user list at all.
 const PM_HIDDEN_DEPARTMENTS = ['Admin', 'Viewer', 'Costing Viewer', 'TV'];
 // Departments a Manager can see but can't add/edit/delete — separate from

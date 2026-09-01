@@ -83,6 +83,12 @@ function getProductionJobs(e, actor) {
     job.updatedAt = t.updatedAt || '';
   });
 
+  let handoffJobs = [];
+  if (actor && canViewOtherProduction(actor.department)) {
+    handoffJobs = squarecoilProjectHandoffJobs_();
+    jobs = mergeProjectHandoffJobs_(jobs, handoffJobs, tracking);
+  }
+
   // Production-department users (Manufacturing, Graphics, etc.) see every
   // job their department is ever assigned to, whether or not it's
   // currently their turn — including once they've finished their own
@@ -96,7 +102,65 @@ function getProductionJobs(e, actor) {
     jobs = jobs.filter(job => job.departments.indexOf(actor.department) !== -1);
   }
 
-  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: getTrackingVersion() };
+  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: productionJobsVersion_(actor, handoffJobs) };
+}
+
+function otherProductionJob_(source, tracking) {
+  const t = tracking || {};
+  return {
+    jobKey: source.jobNum,
+    jobNum: source.jobNum,
+    title: source.title,
+    addr: source.addr || '',
+    crew: [],
+    startDate: '',
+    endDate: '',
+    dueDate: t.dueOverride || '',
+    autoDueDate: '',
+    dueOverride: t.dueOverride || '',
+    multiDay: false,
+    isOtherProduction: true,
+    squarecoilStatus: source.squarecoilStatus || 'Project Handoff',
+    completed: !!t.completed,
+    completedAt: t.completedAt || '',
+    completedBy: t.completedBy || '',
+    notes: t.notes || [],
+    departments: t.departments || [],
+    departmentChecklists: t.departmentChecklists || {},
+    currentDepartments: t.currentDepartments || [],
+    additionalFiles: additionalFilesForClient(t.additionalFiles),
+    updatedAt: t.updatedAt || '',
+  };
+}
+
+function mergeProjectHandoffJobs_(calendarJobs, handoffJobs, tracking) {
+  const scheduledJobNums = new Set((calendarJobs || []).map(job => String(job.jobNum || job.jobKey || '')));
+  const otherJobs = (handoffJobs || [])
+    .filter(job => !scheduledJobNums.has(String(job.jobNum || '')))
+    .map(job => otherProductionJob_(job, (tracking || {})[String(job.jobNum)]));
+  return (calendarJobs || []).concat(otherJobs);
+}
+
+function projectHandoffVersion_(handoffJobs) {
+  return (handoffJobs || [])
+    .map(job => [job.jobNum, job.title, job.addr, job.squarecoilStatus].join('~'))
+    .sort()
+    .join('|');
+}
+
+function productionJobsVersion_(actor, loadedHandoffJobs) {
+  if (!actor || !canViewOtherProduction(actor.department)) return getTrackingVersion();
+  const handoffJobs = loadedHandoffJobs || squarecoilProjectHandoffJobs_();
+  return String(getTrackingVersion()) + ':' + projectHandoffVersion_(handoffJobs);
+}
+
+function isOtherProductionJob_(jobKey) {
+  const value = String(jobKey || '');
+  if (!validJobKey(value)) return false;
+  const handoff = squarecoilProjectHandoffJobs_().some(job => job.jobNum === value);
+  if (!handoff) return false;
+  const window = defaultCalendarWindow();
+  return !getCalendarJobs(window.start, window.end).some(job => job.jobNum === value);
 }
 
 function normalizeArchiveSnapshot(jobKey, value) {

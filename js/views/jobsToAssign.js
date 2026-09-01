@@ -4,7 +4,7 @@ import { renderJobCard } from '../components/jobCard.js';
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
 export function renderJobsToAssign(container, refDate, jobs) {
   const today = new Date();
-  const unassigned = jobs.filter(j => !j.completed && (!j.departments || !j.departments.length));
+  const unassigned = jobs.filter(j => j.dueDate && !j.completed && (!j.departments || !j.departments.length));
   const grouped = groupByDueDate(unassigned);
   const dueDates = Object.keys(grouped).sort();
 

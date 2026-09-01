@@ -60,6 +60,21 @@ function squarecoilGet_(path, cookie) {
   });
 }
 
+function squarecoilPost_(path, payload, cookie) {
+  return UrlFetchApp.fetch(squarecoilUrl_(path), {
+    method: 'post',
+    payload,
+    headers: {
+      Cookie: cookie,
+      Accept: 'application/json,text/plain,*/*',
+      'User-Agent': 'Mozilla/5.0 (compatible; SWS-Production-Calendar/1.0)',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    followRedirects: false,
+    muteHttpExceptions: true,
+  });
+}
+
 function squarecoilGetBatch_(paths, cookie) {
   const results = [];
   for (let i = 0; i < paths.length; i += SQUARECOIL_BATCH_CHUNK_SIZE) {
@@ -147,6 +162,99 @@ function squarecoilDecodeText_(value) {
     .replace(/&#0*160;|&#x0*a0;/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function squarecoilProjectAddress_(row) {
+  const address = String(row.address_1 || row.location || '').trim();
+  const city = String(row.city || '').trim();
+  const stateZip = [String(row.state || '').trim(), String(row.zip || '').trim()].filter(Boolean).join(' ');
+  return [address, city, stateZip].filter(Boolean).join(', ').slice(0, 500);
+}
+
+function squarecoilParseProjectHandoffJobs_(payload) {
+  const rows = payload && Array.isArray(payload.data) ? payload.data : [];
+  const seen = new Set();
+  return rows.reduce((jobs, row) => {
+    const jobNum = String((row && row.project_id) || '').trim();
+    const status = String((row && row.project_status) || '').trim();
+    if (!validJobKey(jobNum) || status.toLowerCase() !== 'project handoff' || seen.has(jobNum)) return jobs;
+    seen.add(jobNum);
+    jobs.push({
+      jobNum,
+      title: String(row.project_name || ('Squarecoil project ' + jobNum)).trim().slice(0, 300),
+      addr: squarecoilProjectAddress_(row),
+      squarecoilStatus: 'Project Handoff',
+    });
+    return jobs;
+  }, []);
+}
+
+function squarecoilProjectHandoffPayload_() {
+  const columns = [
+    'project_id', 'project_name', 'address_1', 'city', 'state', 'zip', 'location',
+    'salesperson', 'project_manager', 'shipping_milestone_date', 'due_date',
+    'days_on_ms', 'days_open', 'date_opened', 'selling_price', 'project_status',
+    'scope_of_work', 'shop_order_type', 'lead_source', 'project_contact',
+    'project_contact_phone', 'project_contact_email', 'site_contact',
+    'site_contact_phone', 'site_contact_email', 'date_opened_ts',
+  ];
+  const payload = {
+    draw: '1',
+    start: '0',
+    length: '10000',
+    'search[value]': '',
+    'search[regex]': 'false',
+    'order[0][column]': '0',
+    'order[0][dir]': 'desc',
+  };
+  columns.forEach((column, index) => {
+    payload['columns[' + index + '][data]'] = column;
+    payload['columns[' + index + '][name]'] = '';
+    payload['columns[' + index + '][searchable]'] = 'true';
+    payload['columns[' + index + '][orderable]'] = 'true';
+    payload['columns[' + index + '][search][value]'] = '';
+    payload['columns[' + index + '][search][regex]'] = 'false';
+  });
+  return payload;
+}
+
+function squarecoilProjectHandoffJobs_() {
+  if (!isSquarecoilConfigured_()) return [];
+  const cache = CacheService.getScriptCache();
+  const liveKey = 'squarecoil_project_handoff_v1';
+  const staleKey = liveKey + '_stale';
+  const cached = cache.get(liveKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (err) { /* fetch fresh below */ }
+  }
+
+  try {
+    const credentials = squarecoilCredentials_();
+    const cookie = squarecoilLogin_(credentials.username, credentials.password);
+    const response = squarecoilPost_(
+      'jq.milestone_report.php?id=' + SQUARECOIL_PROJECT_HANDOFF_MILESTONE_ID + '&multiple_location_id=',
+      squarecoilProjectHandoffPayload_(),
+      cookie,
+    );
+    if (response.getResponseCode() !== 200) throw new Error('Project Handoff returned HTTP ' + response.getResponseCode());
+    const parsed = JSON.parse(response.getContentText());
+    const jobs = squarecoilParseProjectHandoffJobs_(parsed);
+    if (Number(parsed.recordsFiltered || 0) > jobs.length) {
+      throw new Error('Project Handoff response was incomplete or contained an unexpected status');
+    }
+    const encoded = JSON.stringify(jobs);
+    cache.put(liveKey, encoded, SQUARECOIL_HANDOFF_CACHE_SECONDS);
+    cache.put(staleKey, encoded, SQUARECOIL_HANDOFF_STALE_CACHE_SECONDS);
+    clearOperationalFailure('squarecoil-handoff');
+    return jobs;
+  } catch (err) {
+    recordOperationalFailure('squarecoil-handoff', err);
+    const stale = cache.get(staleKey);
+    if (stale) {
+      try { return JSON.parse(stale); } catch (parseError) { /* empty fallback below */ }
+    }
+    return [];
+  }
 }
 
 function squarecoilFindProjectName_(html, jobNum) {

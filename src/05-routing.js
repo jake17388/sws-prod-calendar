@@ -57,7 +57,7 @@ function routeGet(e) {
   if (action === 'getTrackingVersion') {
     const actor = resolveActor(e.parameter.token);
     if (!actor) return json(UNAUTHORIZED);
-    return json({ version: getTrackingVersion() });
+    return json({ version: productionJobsVersion_(actor) });
   }
   if (action === 'getJobTimeStatus') {
     const actor = resolveActor(e.parameter.token);
@@ -171,7 +171,8 @@ function routePost(e) {
   }
   if (data.action === 'updateDueDate') {
     return respond(() => {
-      if (!canEditDueDates(actor.department)) return { error: 'forbidden' };
+      const job = { isOtherProduction: actor.department === 'Manager' && isOtherProductionJob_(data.jobKey) };
+      if (!canEditDueDateForJob(actor.department, job)) return { error: 'forbidden' };
       const dueDate = String(data.dueDate || '');
       if (!validDateOverride(dueDate)) return { success: false, error: 'Invalid due date' };
       return setTracking(data.jobKey, { dueOverride: dueDate }, user);

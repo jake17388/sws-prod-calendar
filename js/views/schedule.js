@@ -54,12 +54,13 @@ function appendDayGroups(parent, jobs, refDate, today, { includeAnchors = false,
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
 export function renderSchedule(container, refDate, jobs) {
   const today = new Date();
-  const { open, completed } = partitionScheduleJobs(jobs);
+  const scheduledJobs = jobs.filter(job => !!job.dueDate);
+  const { open, completed } = partitionScheduleJobs(scheduledJobs);
   const openIso = firstOpenDueDate(open);
 
   container.innerHTML = '';
 
-  if (!jobs.length) {
+  if (!scheduledJobs.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.innerHTML = `

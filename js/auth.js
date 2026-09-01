@@ -55,13 +55,17 @@ export const isTvDisplay = () => !!auth && auth.department === 'TV';
 // see the Code.js comment for why keying a permission off an editable name was
 // a privilege escalation. Deriving it here also means sessions cached in
 // localStorage before this change self-correct instead of keeping a stale flag.
-export const canEditDueDates = () => !!auth && auth.department === 'Admin';
+export const canEditDueDates = job => !!auth && (
+  auth.department === 'Admin'
+  || (auth.department === 'Manager' && !!job?.isOtherProduction)
+);
 export const canManageUsers = () => !!(auth && auth.canManageUsers);
 // Only Admin/Manager can mark an entire job complete or assign departments.
 export const canMarkJobComplete = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canAssignDepartments = () => !!auth && (auth.department === 'Admin' || auth.department === 'Manager');
 export const canUseJobSelector = () => !!auth && ['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(auth.department);
 export const canViewHoursLog = () => !!auth && ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(auth.department);
+export const canViewOtherProduction = () => !!auth && ['Admin', 'Manager', 'Viewer'].includes(auth.department);
 export const canEditHoursLog = () => !!auth && ['Admin', 'Costing Viewer'].includes(auth.department);
 export const canManageCostingButtons = () => !!auth && ['Admin', 'Costing Viewer'].includes(auth.department);
 export const canUploadAdditionalFiles = () => !!auth && ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(auth.department);

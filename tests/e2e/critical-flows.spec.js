@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false, jobTimeEntries = null, filterJobTimeByDate = false } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false, jobTimeEntries = null, filterJobTimeByDate = false, otherProductionJob = null } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -76,7 +76,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
         ? { ok: false }
         : { ok: true, token: 'eyJ1aWQiOiJhZG1pbiJ9.signature', userId: 'admin', user, department, canManageUsers: department === 'Admin', canViewHoursLog: ['Admin', 'Manager', 'Viewer', 'Costing Viewer'].includes(department), canEditHoursLog: department === 'Admin' || department === 'Costing Viewer', mustChangePin };
     } else if (action === 'getProductionJobs') {
-      body = { jobs: [currentJob], version: 1 };
+      body = { jobs: [currentJob, ...(otherProductionJob ? [otherProductionJob] : [])], version: 1 };
     } else if (action === 'getTrackingVersion') {
       body = { version: 1 };
     } else if (action === 'getJobTimeStatus') {
@@ -154,6 +154,14 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'addNote') {
       currentJob = { ...currentJob, notes: [{ id: payload.noteId, text: payload.text, author: 'Test Admin', authorId: 'admin', createdAt: '2026-08-10T12:01:00.000Z' }], updatedAt: '2026-08-10T12:01:00.000Z' };
       body = { success: true, notes: currentJob.notes, updatedAt: currentJob.updatedAt };
+    } else if (action === 'updateDueDate') {
+      if (otherProductionJob && payload.jobKey === otherProductionJob.jobKey) {
+        otherProductionJob = { ...otherProductionJob, dueDate: payload.dueDate, dueOverride: payload.dueDate };
+        body = { success: true, dueOverride: payload.dueDate, updatedAt: '2026-08-10T12:02:00.000Z' };
+      } else {
+        currentJob = { ...currentJob, dueDate: payload.dueDate || currentJob.autoDueDate, dueOverride: payload.dueDate };
+        body = { success: true, dueOverride: payload.dueDate, updatedAt: '2026-08-10T12:02:00.000Z' };
+      }
     } else if (action === 'updateJobDepartments') {
       if (departmentSaveDelayMs) await new Promise(resolve => setTimeout(resolve, departmentSaveDelayMs));
       if (remainingDepartmentConflicts > 0) {
@@ -392,6 +400,38 @@ test('a Manager can assign departments and keep typing while the save finishes',
   for (const role of ['Manufacturing', 'Graphics', 'Assembly']) {
     await expect(departments.locator('.dept-assign-item').filter({ hasText: role }).locator('.dept-needed-checkbox')).toBeChecked();
   }
+});
+
+test('a Manager can schedule an Other Production job onto the production calendar', async ({ page }) => {
+  const pickupJob = {
+    ...structuredClone(job),
+    jobKey: '261383',
+    jobNum: '261383',
+    title: 'Customer Pickup Job',
+    addr: '4401 E McKellips',
+    startDate: '',
+    endDate: '',
+    dueDate: '',
+    autoDueDate: '',
+    isOtherProduction: true,
+    squarecoilStatus: 'Project Handoff',
+  };
+  await mockBackend(page, { department: 'Manager', otherProductionJob: pickupJob });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Other Production' }).click();
+  await expect(page.getByRole('heading', { name: 'Other Production' })).toBeVisible();
+  await page.getByRole('button', { name: /Open 261383/ }).click();
+  await expect(page.locator('#job-detail-meta')).toHaveText('Project Handoff · unscheduled production');
+  await page.getByRole('button', { name: 'Assign production due date' }).click();
+  await page.locator('#due-date-input').fill(today);
+  await page.locator('#due-date-save-btn').click();
+  await expect(page.getByText('Job added to the production calendar')).toBeVisible();
+
+  await page.locator('#job-detail-close').click();
+  await expect(page.getByRole('button', { name: /Open 261383/ })).toHaveCount(0);
+  await page.locator('.desktop-view-switcher').getByRole('button', { name: 'Week' }).click();
+  await expect(page.getByRole('button', { name: /Open 261383, Customer Pickup Job/ })).toBeVisible();
 });
 
 test('a stale save rebases rapid Manager selections instead of erasing them', async ({ page }) => {

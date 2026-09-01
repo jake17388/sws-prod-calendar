@@ -5,7 +5,8 @@ export function renderStatsBar(jobs) {
   const el = document.getElementById('stats-bar');
   if (!el) return;
 
-  const open = jobs.filter(j => !j.completed);
+  const scheduled = jobs.filter(j => !!j.dueDate);
+  const open = scheduled.filter(j => !j.completed);
   const overdue = open.filter(j => dueStateClass(j.dueDate, false) === 'due-overdue').length;
   const dueSoon = open.filter(j => dueStateClass(j.dueDate, false) === 'due-soon').length;
   const onTrack = open.length - overdue - dueSoon;
@@ -26,6 +27,6 @@ export function renderStatsBar(jobs) {
       <span class="stat-chip-value">${onTrack}</span>
       <span class="stat-chip-label">On track</span>
     </div>
-    <div class="stats-bar-total">${jobs.length} job${jobs.length === 1 ? '' : 's'} tracked</div>
+    <div class="stats-bar-total">${scheduled.length} job${scheduled.length === 1 ? '' : 's'} tracked</div>
   `;
 }

@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canManageCostingButtons, canUseJobSelector, canViewHoursLog, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
+import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canManageCostingButtons, canUseJobSelector, canViewHoursLog, canViewOtherProduction, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
@@ -16,6 +16,7 @@ import { renderJobsToAssign, jobsToAssignRangeLabel } from './views/jobsToAssign
 import { renderJobSelector, jobSelectorRangeLabel, resetJobSelectorStatus } from './views/jobSelector.js';
 import { renderHoursLog, hoursLogRangeLabel, resetHoursLog } from './views/hoursLog.js';
 import { renderArchive } from './views/archive.js';
+import { renderOtherProduction } from './views/otherProduction.js';
 import { addDays } from './dates.js';
 import { showToast } from './toast.js';
 import { setHeaderDimmed } from './headerDim.js';
@@ -38,6 +39,7 @@ const VIEWS = {
   jobSelector: { render: renderJobSelector, label: jobSelectorRangeLabel, step: d => d },
   hoursLog: { render: renderHoursLog, label: hoursLogRangeLabel, step: d => d },
   archive: { render: renderArchive, label: () => 'Archive', step: d => d },
+  otherProduction: { render: renderOtherProduction, label: () => 'Other Production', step: d => d },
 };
 
 function isJobDetailOpen() {
@@ -135,9 +137,10 @@ function renderActiveView() {
     btn.setAttribute('aria-selected', String(isActive));
   });
   document.getElementById('view-btn-assign').classList.toggle('active', activeView === 'assign');
+  document.getElementById('view-btn-other-production').classList.toggle('active', activeView === 'otherProduction');
   document.getElementById('view-btn-job-selector').classList.toggle('active', activeView === 'jobSelector');
   document.getElementById('view-btn-hours-log').classList.toggle('active', activeView === 'hoursLog');
-  const isFocusedScreen = activeView === 'archive' || activeView === 'jobSelector' || activeView === 'hoursLog';
+  const isFocusedScreen = activeView === 'archive' || activeView === 'otherProduction' || activeView === 'jobSelector' || activeView === 'hoursLog';
   document.querySelector('.date-nav').hidden = isFocusedScreen;
   document.getElementById('stats-bar').hidden = isFocusedScreen;
   renderPendingWriteStatus();
@@ -201,7 +204,11 @@ function refreshJobs(userInitiated = false) {
       saveCachedJobs(currentDepartment(), jobs);
       queueTwoWeekProofPreload(jobs);
       lastKnownVersion = version;
-      document.getElementById('header-count').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`;
+      const otherCount = jobs.filter(job => job.isOtherProduction && !job.dueDate && !job.completed).length;
+      const scheduledCount = jobs.filter(job => !!job.dueDate).length;
+      document.getElementById('header-count').textContent = otherCount
+        ? `${scheduledCount} scheduled · ${otherCount} other`
+        : `${scheduledCount} job${scheduledCount === 1 ? '' : 's'} shown`;
       document.getElementById('last-updated').textContent =
         `Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
       reportSyncSuccess();
@@ -462,6 +469,7 @@ function boot() {
   document.getElementById('settings-costing-buttons-btn').hidden = !canManageCostingButtons();
   document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments() || canManageCostingButtons());
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
+  document.getElementById('view-btn-other-production').hidden = !canViewOtherProduction();
   document.getElementById('view-btn-job-selector').hidden = !canUseJobSelector();
   document.getElementById('view-btn-hours-log').hidden = !canViewHoursLog();
   applyZoom();
@@ -470,6 +478,7 @@ function boot() {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
   document.getElementById('view-btn-assign').addEventListener('click', () => switchView('assign'));
+  document.getElementById('view-btn-other-production').addEventListener('click', () => switchView('otherProduction'));
   document.getElementById('view-btn-job-selector').addEventListener('click', () => switchView('jobSelector'));
   document.getElementById('view-btn-hours-log').addEventListener('click', () => switchView('hoursLog'));
   // The arrows step by date in every view, schedule included — that's what

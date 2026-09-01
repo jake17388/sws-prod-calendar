@@ -507,26 +507,35 @@ function renderCompletedInfo(job) {
 }
 
 function updateMetaText(job) {
+  if (job.isOtherProduction) {
+    document.getElementById('job-detail-meta').textContent = job.dueDate
+      ? `Project Handoff · production due ${fmtMD(job.dueDate)}`
+      : 'Project Handoff · unscheduled production';
+    return;
+  }
   document.getElementById('job-detail-meta').textContent =
     `${job.crew && job.crew.length ? job.crew.join('/') : 'Unassigned'} · starts ${fmtMD(job.startDate)}${job.multiDay ? ' – ' + fmtMD(job.endDate) : ''} · due ${fmtMD(job.dueDate)}`;
 }
 
 function renderDueDateEditor(job) {
   const wrap = document.getElementById('due-date-editor');
-  wrap.hidden = !canEditDueDates();
-  if (!canEditDueDates()) return;
+  wrap.hidden = !canEditDueDates(job);
+  if (!canEditDueDates(job)) return;
 
   const editBtn = document.getElementById('due-date-edit-btn');
   const form = document.getElementById('due-date-edit-form');
   const input = document.getElementById('due-date-input');
   const hint = document.getElementById('due-date-edit-hint');
+  const resetBtn = document.getElementById('due-date-reset-btn');
 
   form.hidden = true;
   editBtn.hidden = false;
+  editBtn.textContent = job.isOtherProduction ? 'Assign production due date' : 'Edit due date';
+  resetBtn.hidden = !!job.isOtherProduction && !job.dueDate;
   hint.textContent = '';
 
   editBtn.onclick = () => {
-    input.value = job.dueDate;
+    input.value = job.dueDate || '';
     form.hidden = false;
     editBtn.hidden = true;
   };
@@ -548,6 +557,7 @@ function renderDueDateEditor(job) {
       updateMetaText(job);
       form.hidden = true;
       editBtn.hidden = false;
+      resetBtn.hidden = !!job.isOtherProduction && !job.dueDate;
     });
   };
 
@@ -555,13 +565,13 @@ function renderDueDateEditor(job) {
     if (!input.value) { hint.textContent = 'Pick a date first'; return; }
     hint.textContent = 'Saving…';
     applyOverride(input.value)
-      .then(() => showToast('Due date updated'))
+      .then(() => showToast(job.isOtherProduction ? 'Job added to the production calendar' : 'Due date updated'))
       .catch(() => { hint.textContent = 'Failed to save — try again'; showToast('Failed to save due date', 'error'); });
   };
-  document.getElementById('due-date-reset-btn').onclick = () => {
+  resetBtn.onclick = () => {
     hint.textContent = 'Resetting…';
     applyOverride('')
-      .then(() => showToast('Due date reset to automatic'))
+      .then(() => showToast(job.isOtherProduction ? 'Job moved back to Other Production' : 'Due date reset to automatic'))
       .catch(() => { hint.textContent = 'Failed to reset — try again'; showToast('Failed to reset due date', 'error'); });
   };
 }
