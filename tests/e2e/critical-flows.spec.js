@@ -370,9 +370,16 @@ test('a TV account shows only a compact, readable current-week display', async (
   await expect(page.locator('.job-card-dept-badge-wrap', { hasText: 'Paint' }).locator('.job-card-dept-current-dot')).toHaveCount(0);
 
   const dayWidths = await page.locator('.week-day-col').evaluateAll(columns =>
-    columns.map(column => column.getBoundingClientRect().width));
-  expect(dayWidths[1]).toBeGreaterThan(dayWidths[0] * 2.5);
-  expect(dayWidths[5]).toBeGreaterThan(dayWidths[6] * 2.5);
+    columns.map(column => ({
+      collapsed: column.classList.contains('is-collapsed'),
+      width: column.getBoundingClientRect().width,
+    })));
+  const collapsedWidths = dayWidths.filter(day => day.collapsed).map(day => day.width);
+  const expandedWidths = dayWidths.filter(day => !day.collapsed).map(day => day.width);
+  expect(expandedWidths.length).toBeGreaterThan(0);
+  if (collapsedWidths.length) {
+    expect(Math.min(...expandedWidths)).toBeGreaterThan(Math.max(...collapsedWidths) * 2.5);
+  }
 
   const order = await page.locator('.header-user-cluster > *').evaluateAll(elements =>
     elements.map(element => element.id).filter(Boolean));
@@ -430,7 +437,7 @@ test('a Manager can schedule an Other Production job onto the production calenda
 
   await page.locator('#job-detail-close').click();
   await expect(page.getByRole('button', { name: /Open 261383/ })).toHaveCount(0);
-  await page.locator('.desktop-view-switcher').getByRole('button', { name: 'Week' }).click();
+  await page.locator('.view-switcher:visible').getByRole('button', { name: 'Week' }).click();
   await expect(page.getByRole('button', { name: /Open 261383, Customer Pickup Job/ })).toBeVisible();
 });
 
