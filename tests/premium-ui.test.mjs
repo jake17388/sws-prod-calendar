@@ -42,3 +42,17 @@ test('view navigation uses a lightweight animation class without delaying render
   assert.match(app, /requestAnimationFrame/);
   assert.doesNotMatch(app, /setTimeout\([^)]*renderActiveView/);
 });
+
+test('desktop work views form a right-aligned companion switcher and the role badge is vertically centered', () => {
+  const html = read('index.html');
+  const layout = read('styles/layout.css');
+
+  assert.match(
+    html,
+    /class="view-switcher work-view-switcher"[\s\S]*id="view-btn-other-production"[\s\S]*id="view-btn-assign"[\s\S]*id="view-btn-hours-log"[\s\S]*<\/div>[\s\S]*<\/div>\s*<div class="nav-row">/,
+  );
+  assert.match(layout, /\.dept-badge\s*\{[\s\S]{0,240}display:\s*inline-flex;[\s\S]{0,160}align-items:\s*center;/);
+  assert.match(layout, /\.desktop-view-switcher,\s*\.work-view-switcher\s*\{/);
+  assert.match(layout, /\.desktop-view-switcher button,\s*\.work-view-switcher button\s*\{/);
+  assert.match(layout, /\.desktop-view-switcher button\.active,\s*\.work-view-switcher button\.active\s*\{/);
+});
