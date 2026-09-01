@@ -34,3 +34,42 @@ test('Manager due-date access is scoped to Other Production jobs in the job deta
   assert.match(detail, /canEditDueDates\(job\)/);
   assert.match(detail, /added to the production calendar/);
 });
+
+test('the Other Production queue is described by the configured statuses, not a fixed one', () => {
+  const view = read('js/views/otherProduction.js');
+  const detail = read('js/components/jobDetail.js');
+
+  // The heading and the job-detail meta line both used to hardcode
+  // "Project Handoff"; they now follow whatever status the job came in on.
+  assert.doesNotMatch(view, /Project Handoff/);
+  assert.doesNotMatch(detail, /Project Handoff/);
+  assert.match(detail, /job\.squarecoilStatus/);
+});
+
+test('Admins get a Production Statuses settings subpage', () => {
+  const html = read('index.html');
+  const app = read('js/app.js');
+  const auth = read('js/auth.js');
+  const api = read('js/api.js');
+
+  assert.match(html, /id="settings-production-statuses-btn"[^>]*>Production Statuses</);
+  assert.match(html, /id="production-status-overlay"/);
+  assert.match(html, /id="production-status-list"/);
+  assert.match(html, /id="production-status-save"/);
+  assert.match(auth, /canManageProductionStatuses\s*=\s*\(\)\s*=>\s*isAdmin\(\)/);
+  assert.match(api, /fetchProductionStatuses/);
+  assert.match(api, /saveProductionStatuses/);
+  assert.match(app, /productionStatusManagement\.js/);
+  assert.match(app, /settings-production-statuses-btn'\)\.hidden = !canManageProductionStatuses\(\)/);
+});
+
+test('the Production Statuses editor offers every Squarecoil status and marks the enabled ones', () => {
+  const component = read('js/components/productionStatusManagement.js');
+
+  assert.match(component, /fetchProductionStatuses/);
+  assert.match(component, /type="checkbox"/);
+  assert.match(component, /saveProductionStatuses/);
+  // Statuses Squarecoil could not resolve to a milestone must be called out
+  // rather than silently returning no jobs.
+  assert.match(component, /unresolved/i);
+});
