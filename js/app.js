@@ -1,5 +1,5 @@
 import { fetchProductionJobs, fetchTrackingVersion, updateSelf } from './api.js';
-import { initAuth, currentUser, currentDepartment, canManageUsers, canAssignDepartments, canManageCostingButtons, canManageProductionStatuses, canUseJobSelector, canViewHoursLog, canViewOtherProduction, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
+import { initAuth, currentUser, currentUserId, currentDepartment, canManageUsers, canAssignDepartments, canManageCostingButtons, canManageProductionStatuses, canUseJobSelector, canViewHoursLog, canViewOtherProduction, updateAuthProfile, signOut, isAdmin, mustChangePin, isTvDisplay } from './auth.js';
 import { getJobs, setJobs, subscribe } from './state.js';
 import { closeJobDetail, closeProofViewer } from './components/jobDetail.js';
 import { preloadPdfViewer } from './pdfViewer.js';
@@ -66,7 +66,26 @@ window.addEventListener('beforeunload', event => {
   event.returnValue = '';
 });
 
-let activeView = 'week';
+const DEFAULT_VIEW_KEY = 'sws_prod_cal_default_view';
+const DEFAULT_VIEW = 'schedule';
+const defaultViewKey = () => `${DEFAULT_VIEW_KEY}:${currentUserId() || currentUser() || 'anonymous'}`;
+function canOpenView(view) {
+  return ['month', 'week', 'schedule', 'archive'].includes(view)
+    || (view === 'assign' && canAssignDepartments())
+    || (view === 'otherProduction' && canViewOtherProduction())
+    || (view === 'jobSelector' && canUseJobSelector())
+    || (view === 'hoursLog' && canViewHoursLog());
+}
+function getDefaultView() {
+  const saved = localStorage.getItem(defaultViewKey());
+  return saved && canOpenView(saved) ? saved : DEFAULT_VIEW;
+}
+function saveDefaultView(view) {
+  if (!canOpenView(view)) return;
+  localStorage.setItem(defaultViewKey(), view);
+}
+
+let activeView = DEFAULT_VIEW;
 let refDate = new Date();
 let tvDayKey = '';
 
@@ -394,6 +413,9 @@ function openSettings(forcePinChange = false) {
   nameField.readOnly = !isAdmin();
   nameField.title = isAdmin() ? 'Admins can update account names' : 'Only an Admin can change account names';
   document.getElementById('my-account-hint').textContent = '';
+  const defaultView = document.getElementById('default-view-select');
+  defaultView.value = getDefaultView();
+  Array.from(defaultView.options).forEach(option => { option.hidden = !canOpenView(option.value); });
 
   // Fetched fresh each time rather than kept in the session, so the PIN lives
   // only in this input while the panel is open — it's never written to
@@ -451,9 +473,7 @@ function saveMyAccount() {
 }
 
 function boot() {
-  // Keep the calendar as the default landing view while job costing is being
-  // rolled out; production crews can still open Job Selector from the header.
-  activeView = 'week';
+  activeView = getDefaultView();
   if (isTvDisplay()) activeView = 'week';
   configureHeaderForRole();
   // Warm the PDF engine in parallel with the first jobs request. This does
@@ -516,6 +536,10 @@ function boot() {
   document.getElementById('settings-backdrop').addEventListener('click', closeSettings);
   document.getElementById('settings-signout-btn').addEventListener('click', () => { closeSettings(); signOut(); });
   document.getElementById('settings-check-btn').addEventListener('click', () => checkForUpdate(true));
+  document.getElementById('default-view-select').addEventListener('change', event => {
+    saveDefaultView(event.target.value);
+    showToast(`Default view set to ${event.target.selectedOptions[0].textContent}`);
+  });
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
   document.getElementById('settings-costing-buttons-btn').addEventListener('click', () => { closeSettings(); openCostingButtonManagement(); });

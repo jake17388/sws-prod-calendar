@@ -521,6 +521,8 @@ main.view-area {
 .settings-row[hidden] { display: none; }
 .settings-row-stacked { align-items: flex-start; flex-direction: column; gap: var(--space-2); }
 .settings-row-stacked span:last-child { color: var(--ink-primary); overflow-wrap: anywhere; }
+.settings-row select { min-width: 180px; }
+.settings-row small { color: var(--ink-secondary); }
 .zoom-controls { display: flex; align-items: center; gap: var(--space-2); }
 .zoom-btn {
   width: 30px;
