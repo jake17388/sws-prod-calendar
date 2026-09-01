@@ -33,16 +33,26 @@ const DEFAULT_PRODUCTION_STATUSES = [
 
 // Squarecoil serves one report per milestone (jq.milestone_report.php?id=N), so
 // every configured status has to be resolved to its milestone id. The ids are
-// discovered by scraping Squarecoil's own report navigation
-// (squarecoilMilestoneIndex_) rather than hardcoded, because they differ per
-// tenant and change when milestones are added. Project Handoff's id is seeded
-// here as a known-good fallback so the original queue keeps working even if
-// that scrape ever comes back empty.
-const SQUARECOIL_SEED_MILESTONE_IDS = { 'project handoff': '30' };
+// discovered by scraping Squarecoil's own queue navigation
+// (squarecoilMilestoneIndex_) rather than relying on this list, because they
+// differ per tenant and change when milestones are added. The defaults are
+// seeded here as verified fallbacks so the queue still works if that scrape
+// ever comes back empty.
+const SQUARECOIL_SEED_MILESTONE_IDS = {
+  'project handoff': '30',
+  'pre-production approval': '26',
+  'graphics': '28',
+  'manufacturing': '2',
+  'assembly': '27',
+};
 
 // Pages that carry Squarecoil's milestone navigation, tried in order until one
-// yields a usable index.
+// yields a usable index. queues.php is the real one — it holds the full list of
+// "milestone_report.php?id=N" links. The milestone report pages themselves
+// carry no milestone navigation at all, which is why discovery found nothing
+// when they were tried first.
 const SQUARECOIL_MILESTONE_INDEX_PATHS = [
+  'queues.php',
   'milestone_report.php?id=' + SQUARECOIL_SEED_MILESTONE_IDS['project handoff'],
   'dashboard.php',
 ];

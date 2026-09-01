@@ -66,6 +66,54 @@ test('the milestone index also reads a milestone select when links are absent', 
   ]);
 });
 
+test('the real queues.php markup yields every milestone with its id', () => {
+  const context = loadBackend();
+
+  // Trimmed from the live Squarecoil queues.php. The queue links carry the
+  // milestone ids; the "Orders:" entries point at a different endpoint and
+  // must be skipped rather than parsed as milestones.
+  const index = context.squarecoilParseMilestoneIndex_(`
+    <ul class="nav">
+      <li><a href="projects.php?action=1&amp;filter=pending">Orders: All Pending</a></li>
+      <li><a href="milestone_report.php?id=30&amp;multiple_location_id=">Project Handoff</a></li>
+      <li><a href="milestone_report.php?id=33&amp;multiple_location_id=">Project Handoff &quot;On Hold&quot;</a></li>
+      <li><a href="milestone_report.php?id=26&amp;multiple_location_id=">Pre-Production Approval</a></li>
+      <li><a href="milestone_report.php?id=28&amp;multiple_location_id=">Graphics</a></li>
+      <li><a href="milestone_report.php?id=2&amp;multiple_location_id=">Manufacturing</a></li>
+      <li><a href="milestone_report.php?id=27&amp;multiple_location_id=">Assembly</a></li>
+    </ul>
+  `);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(index)), [
+    { id: '30', name: 'Project Handoff' },
+    { id: '33', name: 'Project Handoff "On Hold"' },
+    { id: '26', name: 'Pre-Production Approval' },
+    { id: '28', name: 'Graphics' },
+    { id: '2', name: 'Manufacturing' },
+    { id: '27', name: 'Assembly' },
+  ]);
+});
+
+test('queues.php is tried first when discovering milestones', () => {
+  // The milestone report pages carry no milestone navigation, so looking there
+  // first is what left every status but Project Handoff unresolved.
+  assert.match(source, /const SQUARECOIL_MILESTONE_INDEX_PATHS = \[\s*'queues\.php',/);
+});
+
+test('every default status has a verified seeded milestone id', () => {
+  const context = loadBackend();
+
+  // A fresh install reports exactly the defaults (top-level `const`s are not
+  // reachable as vm globals, so read them back through the accessor).
+  context.getProductionStatuses().forEach(status => {
+    assert.equal(
+      context.squarecoilMilestoneIdForStatus_(status, []),
+      { 'Project Handoff': '30', 'Pre-Production Approval': '26', Graphics: '28', Manufacturing: '2', Assembly: '27' }[status],
+      status + ' must resolve without a live scrape',
+    );
+  });
+});
+
 test('milestone ids resolve case-insensitively and fall back to the seeded ids', () => {
   const context = loadBackend();
   const index = [{ id: '31', name: 'Graphics' }];
@@ -75,7 +123,7 @@ test('milestone ids resolve case-insensitively and fall back to the seeded ids',
   // Project Handoff's id is seeded in config so the queue keeps working even
   // when the index scrape comes back empty.
   assert.equal(context.squarecoilMilestoneIdForStatus_('Project Handoff', []), '30');
-  assert.equal(context.squarecoilMilestoneIdForStatus_('Assembly', []), '');
+  assert.equal(context.squarecoilMilestoneIdForStatus_('Permits', []), '');
 });
 
 test('milestone rows are normalized against the status that was requested', () => {
