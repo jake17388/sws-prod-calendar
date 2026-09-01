@@ -521,8 +521,13 @@ main.view-area {
 .settings-row[hidden] { display: none; }
 .settings-row-stacked { align-items: flex-start; flex-direction: column; gap: var(--space-2); }
 .settings-row-stacked span:last-child { color: var(--ink-primary); overflow-wrap: anywhere; }
-.settings-row select { min-width: 180px; }
-.settings-row small { color: var(--ink-secondary); }
+.default-view-row { align-items: flex-start; }
+.default-view-row label { padding-top: 9px; }
+.default-view-control { display: grid; gap: var(--space-1); min-width: 300px; }
+.default-view-select { width: 100%; min-width: 0; appearance: none; padding: 8px 34px 8px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-2sm); background: var(--surface-input) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%235c6f8f' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center; color: var(--ink-primary); font: inherit; cursor: pointer; }
+.default-view-select:hover { border-color: var(--border-strong); }
+.default-view-select:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
+.default-view-control small { color: var(--ink-secondary); font-size: var(--text-xs); }
 .zoom-controls { display: flex; align-items: center; gap: var(--space-2); }
 .zoom-btn {
   width: 30px;

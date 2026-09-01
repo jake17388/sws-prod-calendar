@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.08.11.8" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.09.01.4" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.09.01.5" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.09.01.1" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.08.11.8" />
@@ -180,9 +180,10 @@
             <button class="zoom-reset-btn" id="zoom-reset-btn">Reset</button>
           </div>
         </div>
-        <div class="settings-row">
+        <div class="settings-row default-view-row">
           <label for="default-view-select">Default view</label>
-          <select id="default-view-select" aria-describedby="default-view-hint">
+          <div class="default-view-control">
+            <select id="default-view-select" class="default-view-select" aria-describedby="default-view-hint">
             <option value="month">Month</option>
             <option value="week">Week</option>
             <option value="schedule">Schedule</option>
@@ -191,8 +192,9 @@
             <option value="otherProduction">Other Production</option>
             <option value="jobSelector">Job Selector</option>
             <option value="hoursLog">Hours Log</option>
-          </select>
-          <small id="default-view-hint">Choose the view shown when you open the calendar.</small>
+            </select>
+            <small id="default-view-hint">Shown when you open the calendar.</small>
+          </div>
         </div>
         <button class="settings-action" id="settings-check-btn">Check for updates</button>
       </section>
@@ -472,6 +474,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.09.01.4"></script>
+<script type="module" src="js/app.js?v=2026.09.01.5"></script>
 </body>
 </html>

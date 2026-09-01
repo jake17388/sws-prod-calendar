@@ -9,9 +9,13 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 test('Settings offers a personal default view and the app defaults to Schedule', () => {
   const html = read('index.html');
   const app = read('js/app.js');
+  const css = read('styles/layout.css');
   assert.match(html, /id="default-view-select"/);
   assert.match(html, /value="schedule"[^>]*>Schedule</);
   assert.match(html, /value="jobSelector"[^>]*>Job Selector</);
+  assert.match(html, /class="settings-row default-view-row"/);
+  assert.match(css, /\.default-view-select/);
+  assert.match(css, /appearance:\s*none/);
   assert.match(app, /DEFAULT_VIEW_KEY/);
   assert.match(app, /activeView\s*=\s*getDefaultView\(\)/);
   assert.match(app, /const DEFAULT_VIEW\s*=\s*'schedule'/);
