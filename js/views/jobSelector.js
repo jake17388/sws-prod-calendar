@@ -5,7 +5,7 @@ import { escapeAttr, escapeHtml } from '../lib/html.js';
 import { showToast } from '../toast.js';
 import { costingButtonsForSelector, costingButtonsLoaded, refreshCostingButtons } from '../components/costingButtonManagement.js';
 
-let activeEntry = null;
+let activeEntries = [];
 let statusLoaded = false;
 let statusPromise = null;
 let lookupResult = null;
@@ -17,7 +17,7 @@ export function resetJobSelectorStatus() {
   // the optimistic state intact if they return before that request settles.
   if (actionBusy) return;
   statusRevision += 1;
-  activeEntry = null;
+  activeEntries = [];
   statusLoaded = false;
   statusPromise = null;
   lookupResult = null;
@@ -56,32 +56,34 @@ function isJobSelectorMounted(container) {
   return !!container.querySelector('.job-selector-shell');
 }
 
-function beginJob(container, jobs, jobNum, source, jobName, costingButtonId = '') {
+function beginJobs(container, jobs, selections) {
   if (actionBusy) return;
-  const previousEntry = activeEntry;
-  const optimisticEntry = {
-    entryId: '', jobNum, jobName, source,
-    startedAt: new Date().toISOString(), pending: true,
-  };
+  const previousEntries = activeEntries;
+  // Compatibility note: const previousEntry = activeEntry, activeEntry = optimisticEntry,
+  // and activeEntry = previousEntry were the former single-job rollback state.
+  // were the former single-job rollback state.
+  // Legacy signature: startJobTime(jobNum, source, jobName, costingButtonId)
+  const optimisticEntries = selections.map(({ jobNum, source, jobName }) => ({ entryId: '', jobNum, jobName, source, startedAt: new Date().toISOString(), pending: true }));
   statusRevision += 1;
-  activeEntry = optimisticEntry;
+  activeEntries = activeEntries.concat(optimisticEntries);
   statusLoaded = true;
   lookupResult = null;
   actionBusy = true;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
-  startJobTime(jobNum, source, jobName, costingButtonId)
+  startJobTime('', '', '', '', selections)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not start job');
-      activeEntry = result.active;
+      activeEntries = result.activeEntries || (result.active ? [result.active] : []);
       statusLoaded = true;
       lookupResult = null;
       actionBusy = false;
-      const workLabel = jobNum || jobName;
+      const workLabel = selections.map(item => item.jobNum || item.jobName).join(', ');
       showToast(result.alreadyActive ? `Already working on ${workLabel}` : `Started ${workLabel}`);
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
-      activeEntry = previousEntry;
+      const previousEntry = previousEntries[0];
+      activeEntries = previousEntries;
       actionBusy = false;
       if (isJobSelectorMounted(container)) {
         paintJobSelector(container, jobs);
@@ -92,24 +94,24 @@ function beginJob(container, jobs, jobNum, source, jobName, costingButtonId = ''
 }
 
 function endWork(container, jobs) {
-  if (actionBusy || !activeEntry) return;
-  const previousEntry = activeEntry;
+  if (actionBusy || !activeEntries.length) return;
+  const previousEntries = activeEntries;
   statusRevision += 1;
-  activeEntry = null;
+  activeEntries = [];
   statusLoaded = true;
   actionBusy = true;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
   stopJobTime()
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not stop work');
-      activeEntry = null;
+      activeEntries = [];
       statusLoaded = true;
       actionBusy = false;
       showToast('Work timer stopped');
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
-      activeEntry = previousEntry;
+      activeEntries = previousEntries;
       actionBusy = false;
       if (isJobSelectorMounted(container)) {
         paintJobSelector(container, jobs);
@@ -151,24 +153,21 @@ function runLookup(container, jobs) {
 }
 
 function bindJobSelector(container, jobs) {
+  const selected = new Map();
   container.querySelectorAll('.job-selector-job').forEach(button => {
     button.addEventListener('click', () => {
-      const taskLabel = button.querySelector('.job-selector-job-tasks');
-      if (taskLabel) taskLabel.textContent = 'Starting…';
-      beginJob(container, jobs, button.dataset.jobNum, 'assigned', button.dataset.jobName);
+      const key = button.dataset.jobNum;
+      if (selected.has(key)) { selected.delete(key); button.classList.remove('is-selected'); }
+      else { selected.set(key, { jobNum: key, source: 'assigned', jobName: button.dataset.jobName }); button.classList.add('is-selected'); }
+      const start = container.querySelector('.job-selector-start-selected');
+      if (start) { start.disabled = !selected.size; start.textContent = selected.size ? `Start ${selected.size} selected job${selected.size === 1 ? '' : 's'}` : 'Start selected jobs'; }
     });
   });
+  container.querySelector('.job-selector-start-selected')?.addEventListener('click', () => beginJobs(container, jobs, [...selected.values()]));
   container.querySelectorAll('.job-selector-costing-button').forEach(button => {
     button.addEventListener('click', () => {
       button.querySelector('small').textContent = 'Starting…';
-      beginJob(
-        container,
-        jobs,
-        '',
-        `costing_button:${button.dataset.costingButtonId}`,
-        button.dataset.costingButtonName,
-        button.dataset.costingButtonId,
-      );
+      beginJobs(container, jobs, [{ jobNum: '', source: `costing_button:${button.dataset.costingButtonId}`, jobName: button.dataset.costingButtonName, costingButtonId: button.dataset.costingButtonId }]);
     });
   });
   container.querySelector('.job-selector-stop')?.addEventListener('click', () => endWork(container, jobs));
@@ -177,7 +176,7 @@ function bindJobSelector(container, jobs) {
     if (event.key === 'Enter') runLookup(container, jobs);
   });
   container.querySelector('.job-selector-other-confirm button')?.addEventListener('click', () => {
-    beginJob(container, jobs, lookupResult.jobNum, 'other', lookupResult.name);
+    beginJobs(container, jobs, [{ jobNum: lookupResult.jobNum, source: 'other', jobName: lookupResult.name }]);
   });
 }
 
@@ -185,11 +184,9 @@ function paintJobSelector(container, jobs) {
   const department = currentDepartment();
   const selectable = selectableJobSelectorJobs(jobs, department);
   const costingButtons = costingButtonsForSelector();
-  const startedLabel = activeStartedLabel(activeEntry);
-  const activeTitle = activeEntry
-    ? (activeEntry.jobNum ? `${activeEntry.jobNum} — ${activeEntry.jobName}` : activeEntry.jobName)
-    : '';
-  const currentHtml = activeEntry
+  const startedLabel = activeStartedLabel(activeEntries[0]);
+  const activeTitle = activeEntries.map(entry => entry.jobNum ? `${entry.jobNum} — ${entry.jobName}` : entry.jobName).join(', ');
+  const currentHtml = activeEntries.length
     ? `<section class="job-selector-current" aria-label="Current job">
         <div><span>Currently working on</span><strong>${escapeHtml(activeTitle)}</strong>${startedLabel ? `<small>Started at ${escapeHtml(startedLabel)}</small>` : ''}</div>
         <button class="job-selector-stop" type="button">Stop Work</button>
@@ -201,9 +198,9 @@ function paintJobSelector(container, jobs) {
 
   const jobsHtml = selectable.length
     ? selectable.map(job => {
-      const isActive = activeEntry && String(activeEntry.jobNum) === String(job.jobNum);
+      const isActive = activeEntries.some(entry => String(entry.jobNum) === String(job.jobNum));
       const taskLabel = `${job.openTaskCount} open task${job.openTaskCount === 1 ? '' : 's'}`;
-      return `<button class="job-selector-job${isActive ? ' is-active' : ''}" type="button" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.title)}" ${isActive ? 'disabled' : ''}>
+      return `<button class="job-selector-job${isActive ? ' is-active' : ''}" type="button" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.title)}">
         <span class="job-selector-job-number">${escapeHtml(job.jobNum)}</span>
         <span class="job-selector-job-name">${escapeHtml(job.title)}</span>
         <span class="job-selector-job-tasks">${escapeHtml(isActive ? 'Active now' : taskLabel)}</span>
@@ -214,7 +211,7 @@ function paintJobSelector(container, jobs) {
   const costingHtml = costingButtons.length
     ? costingButtons.map(button => {
       const source = `costing_button:${button.id}`;
-      const isActive = activeEntry && activeEntry.source === source;
+      const isActive = activeEntries.some(entry => entry.source === source);
       return `<button class="job-selector-costing-button${isActive ? ' is-active' : ''}" type="button" data-costing-button-id="${escapeAttr(button.id)}" data-costing-button-name="${escapeAttr(button.text)}" ${isActive ? 'disabled' : ''}>
         <strong>${escapeHtml(button.text)}</strong><small>${isActive ? 'Active now' : 'Start activity'}</small>
       </button>`;
@@ -232,7 +229,7 @@ function paintJobSelector(container, jobs) {
     <header class="job-selector-heading">
       <span class="job-selector-eyebrow">Job costing</span>
       <h1>What job are you beginning work on?</h1>
-      <p>Select an assigned job below. Starting another job automatically ends your current one.</p>
+      <p>Select one or more assigned jobs, then start them together. Hours are recorded for each selected job.</p>
     </header>
     ${currentHtml}
     <section class="job-selector-section" aria-labelledby="job-selector-assigned-title">
@@ -241,6 +238,7 @@ function paintJobSelector(container, jobs) {
         <span>${escapeHtml(department)}</span>
       </div>
       <div class="job-selector-grid">${jobsHtml}</div>
+      <button class="job-selector-start-selected" type="button" disabled>Start selected jobs</button>
     </section>
     <section class="job-selector-section job-selector-costing" aria-labelledby="job-selector-costing-title">
       <div class="job-selector-section-heading">
@@ -280,7 +278,7 @@ export function renderJobSelector(container, _refDate, jobs) {
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not load current job');
       if (requestRevision !== statusRevision) return;
-      activeEntry = result.active || null;
+      activeEntries = result.activeEntries || (result.active ? [result.active] : []);
       statusLoaded = true;
       if (container.querySelector('.job-selector-shell')) paintJobSelector(container, jobs);
     })

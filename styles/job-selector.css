@@ -140,6 +140,9 @@
   background: var(--status-success-bg);
   cursor: default;
 }
+.job-selector-job.is-selected { border-color: var(--accent-solid); background: var(--status-success-bg); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-solid) 25%, transparent); }
+.job-selector-start-selected { min-height: 44px; margin-top: var(--space-4); border: 1px solid var(--accent-solid); border-radius: var(--radius-sm); padding: 0 var(--space-4); background: var(--accent-solid); color: var(--ink-inverse); font-weight: var(--weight-bold); }
+.job-selector-start-selected:disabled { opacity: .45; cursor: default; }
 .job-selector-job-number { grid-row: span 2; color: var(--color-brand-gold); font-size: var(--text-lg); font-weight: var(--weight-bold); }
 .job-selector-job-name { overflow: hidden; font-weight: var(--weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
 .job-selector-job-tasks { color: var(--ink-secondary); font-size: var(--text-xs); }

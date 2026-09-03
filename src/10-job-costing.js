@@ -366,8 +366,8 @@ function getJobTimeStatus(actor) {
   try {
     const rows = getJobTimeEntriesSheet_().getDataRange().getValues();
     const activeRows = activeJobTimeRows_(rows, actor.id);
-    const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
-    return { success: true, active: latest ? jobTimeEntryFromRow_(latest.row) : null };
+    const active = activeRows.map(item => jobTimeEntryFromRow_(item.row));
+    return { success: true, active: active.length ? active[active.length - 1] : null, activeEntries: active };
   } catch (err) {
     console.error('Job time status failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not load current job' };
@@ -376,8 +376,11 @@ function getJobTimeStatus(actor) {
 
 function startJobTime(actor, data) {
   if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
-  const selection = resolveJobTimeSelection_(actor, data);
-  if (selection.error) return { success: false, error: selection.error };
+  const requested = Array.isArray(data && data.selections) && data.selections.length
+    ? data.selections : [data];
+  const selections = requested.map(item => resolveJobTimeSelection_(actor, item));
+  const invalid = selections.find(item => item.error);
+  if (invalid) return { success: false, error: invalid.error };
 
   const lock = LockService.getScriptLock();
   try {
@@ -385,31 +388,28 @@ function startJobTime(actor, data) {
     const sheet = getJobTimeEntriesSheet_();
     const rows = sheet.getDataRange().getValues();
     const activeRows = activeJobTimeRows_(rows, actor.id);
-    const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
-    const sameSelection = latest && (selection.source.indexOf('costing_button:') === 0
-      ? String(latest.row[6] || '') === selection.source
-      : String(latest.row[4] || '') === selection.jobNum);
-    if (sameSelection) {
-      return { success: true, alreadyActive: true, active: jobTimeEntryFromRow_(latest.row) };
-    }
-
     const startedAt = jobTimeNow_();
-    closeActiveJobTimeRows_(sheet, activeRows, startedAt);
-    const row = [
-      Utilities.getUuid(),
-      String(actor.id),
-      sanitizeSheetText(actor.name),
-      sanitizeSheetText(actor.department),
-      selection.jobNum,
-      sanitizeSheetText(selection.jobName),
-      selection.source,
-      startedAt,
-      '',
-      '',
-      'active',
-    ];
-    sheet.appendRow(row);
-    return { success: true, active: jobTimeEntryFromRow_(row) };
+    // Legacy single-selection callers retain switch-job behavior.
+    if (!(Array.isArray(data && data.selections) && data.selections.length)) {
+      const selection = selections[0];
+      const latest = activeRows.length ? activeRows[activeRows.length - 1] : null;
+      const sameSelection = latest && (selection.source.indexOf('costing_button:') === 0
+        ? String(latest.row[6] || '') === selection.source
+        : String(latest.row[4] || '') === selection.jobNum);
+      if (sameSelection) return { success: true, alreadyActive: true, active: jobTimeEntryFromRow_(latest.row) };
+      closeActiveJobTimeRows_(sheet, activeRows, startedAt);
+    }
+    const existing = new Set(activeRows.map(item => `${item.row[4] || ''}|${item.row[6] || ''}`));
+    const created = [];
+    selections.forEach(selection => {
+      const key = `${selection.jobNum}|${selection.source}`;
+      if (existing.has(key)) return;
+      const row = [Utilities.getUuid(), String(actor.id), sanitizeSheetText(actor.name), sanitizeSheetText(actor.department), selection.jobNum, sanitizeSheetText(selection.jobName), selection.source, startedAt, '', '', 'active'];
+      sheet.appendRow(row);
+      created.push(jobTimeEntryFromRow_(row));
+    });
+    const activeEntries = activeRows.map(item => jobTimeEntryFromRow_(item.row)).concat(created);
+    return { success: true, alreadyActive: !created.length, active: activeEntries[activeEntries.length - 1] || null, activeEntries };
   } catch (err) {
     console.error('Start job time failed for user %s: %s\n%s', actor.id, err && err.message, err && err.stack);
     return { success: false, error: 'Could not start job — try again' };

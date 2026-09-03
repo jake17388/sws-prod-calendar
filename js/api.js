@@ -68,8 +68,8 @@ export const deleteJobTimeEntry = entryId =>
 
 export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { jobNum });
 
-export const startJobTime = (jobNum, source, jobName, costingButtonId = '') =>
-  scriptPost({ action: 'startJobTime', jobNum, source, jobName, costingButtonId });
+export const startJobTime = (jobNum, source, jobName, costingButtonId = '', selections = null) =>
+  scriptPost({ action: 'startJobTime', jobNum, source, jobName, costingButtonId, selections });
 
 export const stopJobTime = () => scriptPost({ action: 'stopJobTime' });
 
