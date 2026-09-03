@@ -71,7 +71,7 @@ export const lookupSquarecoilJob = jobNum => scriptGet('lookupSquarecoilJob', { 
 export const startJobTime = (jobNum, source, jobName, costingButtonId = '', selections = null) =>
   scriptPost({ action: 'startJobTime', jobNum, source, jobName, costingButtonId, selections });
 
-export const stopJobTime = () => scriptPost({ action: 'stopJobTime' });
+export const stopJobTime = (entryId = '') => scriptPost({ action: 'stopJobTime', entryId });
 
 export const fetchArchivedJobs = (query = '') =>
   scriptGet('getArchivedJobs', { q: query }).then(d => {

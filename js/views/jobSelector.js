@@ -93,18 +93,18 @@ function beginJobs(container, jobs, selections) {
     });
 }
 
-function endWork(container, jobs) {
+function endWork(container, jobs, entryId) {
   if (actionBusy || !activeEntries.length) return;
   const previousEntries = activeEntries;
   statusRevision += 1;
-  activeEntries = [];
+  activeEntries = entryId ? activeEntries.filter(entry => entry.entryId !== entryId) : [];
   statusLoaded = true;
   actionBusy = true;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
-  stopJobTime()
+  stopJobTime(entryId)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not stop work');
-      activeEntries = [];
+      activeEntries = entryId ? activeEntries.filter(entry => entry.entryId !== entryId) : [];
       statusLoaded = true;
       actionBusy = false;
       showToast('Work timer stopped');
@@ -156,21 +156,18 @@ function bindJobSelector(container, jobs) {
   const selected = new Map();
   container.querySelectorAll('.job-selector-job').forEach(button => {
     button.addEventListener('click', () => {
-      const key = button.dataset.jobNum;
-      if (selected.has(key)) { selected.delete(key); button.classList.remove('is-selected'); }
-      else { selected.set(key, { jobNum: key, source: 'assigned', jobName: button.dataset.jobName }); button.classList.add('is-selected'); }
-      const start = container.querySelector('.job-selector-start-selected');
-      if (start) { start.disabled = !selected.size; start.textContent = selected.size ? `Start ${selected.size} selected job${selected.size === 1 ? '' : 's'}` : 'Start selected jobs'; }
+      beginJobs(container, jobs, [{ jobNum: button.dataset.jobNum, source: 'assigned', jobName: button.dataset.jobName }]);
     });
   });
-  container.querySelector('.job-selector-start-selected')?.addEventListener('click', () => beginJobs(container, jobs, [...selected.values()]));
   container.querySelectorAll('.job-selector-costing-button').forEach(button => {
     button.addEventListener('click', () => {
       button.querySelector('small').textContent = 'Starting…';
       beginJobs(container, jobs, [{ jobNum: '', source: `costing_button:${button.dataset.costingButtonId}`, jobName: button.dataset.costingButtonName, costingButtonId: button.dataset.costingButtonId }]);
     });
   });
-  container.querySelector('.job-selector-stop')?.addEventListener('click', () => endWork(container, jobs));
+  container.querySelectorAll('.job-selector-stop-entry').forEach(button => {
+    button.addEventListener('click', () => endWork(container, jobs, button.dataset.entryId));
+  });
   container.querySelector('.job-selector-lookup')?.addEventListener('click', () => runLookup(container, jobs));
   container.querySelector('#job-selector-other-number')?.addEventListener('keydown', event => {
     if (event.key === 'Enter') runLookup(container, jobs);
@@ -187,9 +184,8 @@ function paintJobSelector(container, jobs) {
   const startedLabel = activeStartedLabel(activeEntries[0]);
   const activeTitle = activeEntries.map(entry => entry.jobNum ? `${entry.jobNum} — ${entry.jobName}` : entry.jobName).join(', ');
   const currentHtml = activeEntries.length
-    ? `<section class="job-selector-current" aria-label="Current job">
-        <div><span>Currently working on</span><strong>${escapeHtml(activeTitle)}</strong>${startedLabel ? `<small>Started at ${escapeHtml(startedLabel)}</small>` : ''}</div>
-        <button class="job-selector-stop" type="button">Stop Work</button>
+    ? `<section class="job-selector-current" aria-label="Currently working on">
+        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry"><strong>${escapeHtml(entry.jobNum ? `${entry.jobNum} — ${entry.jobName}` : entry.jobName)}</strong><button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}">Stop</button></div>`).join('')}</div>
       </section>`
     : `<section class="job-selector-current is-idle" aria-label="Current job">
         <div><span>Currently working on</span><strong>${statusLoaded ? 'No active job' : 'Checking current job…'}</strong></div>
@@ -229,7 +225,7 @@ function paintJobSelector(container, jobs) {
     <header class="job-selector-heading">
       <span class="job-selector-eyebrow">Job costing</span>
       <h1>What job are you beginning work on?</h1>
-      <p>Select one or more assigned jobs, then start them together. Hours are recorded for each selected job.</p>
+      <p>Click a job to start logging time. You can log multiple jobs at the same time.</p>
     </header>
     ${currentHtml}
     <section class="job-selector-section" aria-labelledby="job-selector-assigned-title">
@@ -238,7 +234,6 @@ function paintJobSelector(container, jobs) {
         <span>${escapeHtml(department)}</span>
       </div>
       <div class="job-selector-grid">${jobsHtml}</div>
-      <button class="job-selector-start-selected" type="button" disabled>Start selected jobs</button>
     </section>
     <section class="job-selector-section job-selector-costing" aria-labelledby="job-selector-costing-title">
       <div class="job-selector-section-heading">

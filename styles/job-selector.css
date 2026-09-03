@@ -44,6 +44,8 @@
   background: var(--surface-card);
 }
 .job-selector-current div { display: grid; gap: 3px; }
+.job-selector-active-entry { display: flex !important; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.job-selector-stop-entry { min-height: 36px; border: 1px solid var(--status-critical-border); border-radius: var(--radius-sm); padding: 0 var(--space-3); background: var(--status-critical-bg); color: var(--status-critical-text); font-weight: var(--weight-bold); }
 .job-selector-current span,
 .job-selector-other-confirm span {
   color: var(--ink-secondary);

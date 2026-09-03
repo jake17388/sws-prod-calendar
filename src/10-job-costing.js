@@ -425,7 +425,9 @@ function stopJobTime(actor) {
     lock.waitLock(10000);
     const sheet = getJobTimeEntriesSheet_();
     const rows = sheet.getDataRange().getValues();
-    const activeRows = activeJobTimeRows_(rows, actor.id);
+    const requestedEntryId = String((arguments[1] && arguments[1].entryId) || '').trim();
+    const activeRows = activeJobTimeRows_(rows, actor.id)
+      .filter(item => !requestedEntryId || String(item.row[0] || '') === requestedEntryId);
     if (!activeRows.length) return { success: true, stopped: false, active: null };
     closeActiveJobTimeRows_(sheet, activeRows, jobTimeNow_());
     return { success: true, stopped: true, active: null };
