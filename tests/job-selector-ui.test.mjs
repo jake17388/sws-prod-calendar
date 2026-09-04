@@ -88,6 +88,13 @@ test('active jobs use a two-line identity and stable action columns with an opti
   assert.match(css, /\.job-selector-active-note-preview/);
 });
 
+test('stopping an active job does not put the whole selector into a busy state', () => {
+  const view = read('js/views/jobSelector.js');
+  assert.doesNotMatch(view, /function endWork\(container, jobs, entryId\) \{\n  if \(actionBusy/);
+  assert.match(view, /stopPending/);
+  assert.match(view, /Stopping…/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');

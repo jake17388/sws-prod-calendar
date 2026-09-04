@@ -91,25 +91,27 @@ function beginJobs(container, jobs, selections) {
 }
 
 function endWork(container, jobs, entryId) {
-  if (actionBusy || !activeEntries.length) return;
-  const previousEntries = activeEntries;
+  if (!activeEntries.length) return;
+  const entry = activeEntries.find(item => !entryId || item.entryId === entryId);
+  if (!entry || entry.stopPending) return;
   statusRevision += 1;
-  activeEntries = entryId ? activeEntries.filter(entry => entry.entryId !== entryId) : [];
+  activeEntries = entryId
+    ? activeEntries.map(item => item.entryId === entryId ? { ...item, stopPending: true } : item)
+    : activeEntries.map(item => ({ ...item, stopPending: true }));
   statusLoaded = true;
-  actionBusy = true;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
   stopJobTime(entryId)
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not stop work');
       activeEntries = entryId ? activeEntries.filter(entry => entry.entryId !== entryId) : [];
       statusLoaded = true;
-      actionBusy = false;
       showToast('Work timer stopped');
       if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
     })
     .catch(err => {
-      activeEntries = previousEntries;
-      actionBusy = false;
+      activeEntries = entryId
+        ? activeEntries.map(item => item.entryId === entryId ? { ...item, stopPending: false } : item)
+        : activeEntries.map(item => ({ ...item, stopPending: false }));
       if (isJobSelectorMounted(container)) {
         paintJobSelector(container, jobs);
         showHint(container, err.message || 'Could not stop work — try again', true);
@@ -200,7 +202,7 @@ function paintJobSelector(container, jobs) {
   const selectable = selectableJobSelectorJobs(jobs, department);
   const currentHtml = activeEntries.length
     ? `<section class="job-selector-current" aria-label="Currently working on">
-        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : ''}</div><button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button><button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending ? ' disabled' : ''}>Stop</button></div>`).join('')}</div>
+        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : ''}</div><button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button><button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.stopPending ? ' disabled' : ''}>${entry.stopPending ? 'Stopping…' : 'Stop'}</button></div>`).join('')}</div>
       </section>`
     : `<section class="job-selector-current is-idle" aria-label="Current job">
         <div><span>Currently working on</span><strong>${statusLoaded ? 'No active job' : 'Checking current job…'}</strong></div>
