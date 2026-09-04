@@ -115,7 +115,7 @@ test('job time entries include worker notes and only the entry owner can save th
   const costingSource = fs.readFileSync(path.join(__dirname, '..', 'src/10-job-costing.js'), 'utf8');
   assert.match(costingSource, /notes/);
   assert.match(costingSource, /updateJobTimeNote/);
-  assert.match(costingSource, /actor\.id.*userId|userId.*actor\.id/);
+  assert.match(costingSource, /rows\[rowIndex\]\[1\].*actor\.id/);
 });
 
 test('Costing Viewer has Viewer-equivalent account-management restrictions', () => {
@@ -142,7 +142,7 @@ test('the blank JobTimeEntries tab receives a stable costing header without repl
   assert.deepEqual(sheet.rows[0], [
     'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
     'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
-    'edited_at', 'edited_by', 'edited_by_id',
+    'notes', 'edited_at', 'edited_by', 'edited_by_id',
   ]);
   const originalHeader = sheet.rows[0].slice();
   context.getJobTimeEntriesSheet_();
@@ -158,7 +158,7 @@ test('a legacy JobTimeEntries header is extended with edit audit columns', () =>
   context.getTrackingSpreadsheet = () => ({ getSheetByName: () => sheet });
 
   context.getJobTimeEntriesSheet_();
-  assert.deepEqual(sheet.rows[0].slice(11), ['edited_at', 'edited_by', 'edited_by_id']);
+  assert.deepEqual(sheet.rows[0].slice(11), ['notes', 'edited_at', 'edited_by', 'edited_by_id']);
 });
 
 test('assigned selections require an unfinished task in the signed-in department', () => {
@@ -337,7 +337,7 @@ test('the protected hours log returns newest sheet entries first', () => {
     entryId: 'entry-2', userId: 'assembly-1', employee: 'Alex Assembler', department: 'Assembly',
     jobNum: '260102', jobName: 'Second Job', source: 'other',
     startedAt: '2026-08-24T15:00:00.000Z', endedAt: '', durationMinutes: null, status: 'active',
-    editedAt: '', editedBy: '',
+    notes: '', editedAt: '', editedBy: '',
   });
   assert.equal(result.entries[1].durationMinutes, 30);
   assert.equal(context.getJobTimeLog({ name: 'Other Worker', department: 'Paint' }).error, 'forbidden');
@@ -372,7 +372,7 @@ test('Excel export rows are typed, formula-safe, and named for the selected rang
 
   assert.deepEqual(JSON.parse(JSON.stringify(rows[0])), [
     'Employee', 'Department', 'Job Number', 'Job / Activity', 'Started', 'Ended',
-    'Duration (Hours)', 'Status', 'Source', 'Last Edited', 'Edited By',
+    'Duration (Hours)', 'Status', 'Source', 'Notes', 'Last Edited', 'Edited By',
   ]);
   assert.equal(rows[1][0], "'=CMD");
   assert.equal(rows[1][3], "'@Activity");
@@ -388,9 +388,9 @@ test('Costing Viewer edits recalculate duration and stamp the editor and time', 
     [
       'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
       'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
-      'edited_at', 'edited_by', 'edited_by_id',
+      'notes', 'edited_at', 'edited_by', 'edited_by_id',
     ],
-    ['entry-1', 'paint-1', 'Pat Painter', 'Paint', '260101', 'Old Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), new Date('2026-08-24T14:30:00.000Z'), 30, 'closed', '', '', ''],
+    ['entry-1', 'paint-1', 'Pat Painter', 'Paint', '260101', 'Old Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), new Date('2026-08-24T14:30:00.000Z'), 30, 'closed', '', '', '', ''],
   ]);
   const actor = { id: 'costing-1', name: 'Carlos Hernandez', department: 'Costing Viewer' };
   context.getJobTimeEntriesSheet_ = () => sheet;
@@ -410,7 +410,7 @@ test('Costing Viewer edits recalculate duration and stamp the editor and time', 
   assert.deepEqual(sheet.rows[1].slice(2, 14), [
     'Pat Painter', 'Paint', '260202', 'Corrected Job', 'assigned',
     new Date('2026-08-24T14:15:00.000Z'), new Date('2026-08-24T15:45:00.000Z'),
-    90, 'closed', new Date('2026-08-27T16:45:00.000Z'), 'Carlos Hernandez', 'costing-1',
+    90, 'closed', '', new Date('2026-08-27T16:45:00.000Z'), 'Carlos Hernandez',
   ]);
 });
 

@@ -115,13 +115,14 @@ function editIcon() {
 
 function editableRowHtml(entry) {
   const saving = savingEntries.has(entry.entryId);
+  const notesCell = escapeHtml(entry.notes || '—');
   const jobEditor = isCostingEntry(entry)
     ? `<strong>${escapeHtml(entry.jobName)}</strong><small>Not job specific</small>`
     : `<input class="hours-log-input hours-log-job-number" aria-label="Job number" inputmode="numeric" maxlength="6" value="${escapeAttr(entry.jobNum)}" ${saving ? 'disabled' : ''} /><small>${escapeHtml(entry.jobName)}</small>`;
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}" ${saving ? 'aria-busy="true"' : ''}>
     <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
     <td data-label="Job">${jobEditor}</td>
-    <td data-label="Started"><input class="hours-log-input hours-log-started" aria-label="Started" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.startedAt))}" ${saving ? 'disabled' : ''} /></td>
+    <td data-label="Notes">${notesCell}</td><td data-label="Started"><input class="hours-log-input hours-log-started" aria-label="Started" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.startedAt))}" ${saving ? 'disabled' : ''} /></td>
     <td data-label="Ended"><input class="hours-log-input hours-log-ended" aria-label="Ended" type="datetime-local" value="${escapeAttr(dateTimeLocalValue(entry.endedAt))}" ${saving ? 'disabled' : ''} /></td>
     <td data-label="Duration">${durationCell(entry)}</td>
     <td data-label="Source">${escapeHtml(sourceLabel(entry))}</td>
@@ -138,7 +139,7 @@ function readOnlyRowHtml(entry) {
   return `<tr data-entry-id="${escapeAttr(entry.entryId)}">
     <td data-label="Employee"><strong>${escapeHtml(entry.employee)}</strong><small>${escapeHtml(entry.department)}</small></td>
     <td data-label="Job">${jobCell}</td>
-    <td data-label="Started">${escapeHtml(formatDate(entry.startedAt))}</td>
+    <td data-label="Notes">${escapeHtml(entry.notes || '—')}</td><td data-label="Started">${escapeHtml(formatDate(entry.startedAt))}</td>
     <td data-label="Ended">${escapeHtml(formatDate(entry.endedAt))}</td>
     <td data-label="Duration">${durationCell(entry)}</td>
     <td data-label="Source">${escapeHtml(sourceLabel(entry))}</td>
@@ -149,7 +150,7 @@ function readOnlyRowHtml(entry) {
 
 function rowsHtml() {
   if (!entries || !entries.length) {
-    return '<tr><td class="hours-log-empty" colspan="8">No job-costing time has been logged yet.</td></tr>';
+    return '<tr><td class="hours-log-empty" colspan="9">No job-costing time has been logged yet.</td></tr>';
   }
   return entries.map(entry => entry.entryId === editingEntryId ? editableRowHtml(entry) : readOnlyRowHtml(entry)).join('');
 }
@@ -462,8 +463,8 @@ function paint(container) {
       </div>
       <div class="hours-log-status" role="status" aria-live="polite">${escapeHtml(loading ? 'Loading hours…' : error)}</div>
       <div class="hours-log-table-wrap"><table class="hours-log-table">
-        <colgroup><col class="hours-log-col-employee"><col class="hours-log-col-job"><col class="hours-log-col-started"><col class="hours-log-col-ended"><col class="hours-log-col-duration"><col class="hours-log-col-source"><col class="hours-log-col-edited"><col class="hours-log-col-actions"></colgroup>
-        <thead><tr><th>Employee</th><th>Job</th><th>Started</th><th>Ended</th><th>Duration</th><th>Source</th><th>Last edited</th><th>Actions</th></tr></thead>
+        <colgroup><col class="hours-log-col-employee"><col class="hours-log-col-job"><col class="hours-log-col-notes"><col class="hours-log-col-started"><col class="hours-log-col-ended"><col class="hours-log-col-duration"><col class="hours-log-col-source"><col class="hours-log-col-edited"><col class="hours-log-col-actions"></colgroup>
+        <thead><tr><th>Employee</th><th>Job</th><th>Notes</th><th>Started</th><th>Ended</th><th>Duration</th><th>Source</th><th>Last edited</th><th>Actions</th></tr></thead>
         <tbody>${loading ? '' : rowsHtml()}</tbody>
       </table></div>
     </section>

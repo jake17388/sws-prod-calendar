@@ -72,6 +72,7 @@ export const startJobTime = (jobNum, source, jobName, costingButtonId = '', sele
   scriptPost({ action: 'startJobTime', jobNum, source, jobName, costingButtonId, selections });
 
 export const stopJobTime = (entryId = '') => scriptPost({ action: 'stopJobTime', entryId });
+export const saveJobTimeNote = (entryId, notes) => scriptPost({ action: 'updateJobTimeNote', entryId, notes });
 
 export const fetchArchivedJobs = (query = '') =>
   scriptGet('getArchivedJobs', { q: query }).then(d => {

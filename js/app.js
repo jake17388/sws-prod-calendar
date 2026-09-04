@@ -7,7 +7,6 @@ import { preloadCurrentAndNextWeekProofs } from './currentWeekProofPreload.mjs';
 import { initUserManagement, openUserManagement } from './components/userManagement.js';
 import { initSquarecoilSettings, refreshSquarecoilSettingsUI } from './components/squarecoilSettings.js';
 import { initCommonTaskManagement, openCommonTaskManagement, refreshCommonTasks } from './components/commonTaskManagement.js';
-import { initCostingButtonManagement, openCostingButtonManagement } from './components/costingButtonManagement.js';
 import { initProductionStatusManagement, openProductionStatusManagement } from './components/productionStatusManagement.js';
 import { renderStatsBar } from './components/statsBar.js';
 import { renderMonth, monthRangeLabel } from './views/month.js';
@@ -500,7 +499,8 @@ function boot() {
   deptBadge.hidden = !department || department === 'Viewer' || department === 'Costing Viewer' || department === 'TV';
   document.getElementById('settings-usermgmt-btn').hidden = !canManageUsers();
   document.getElementById('settings-common-tasks-btn').hidden = !canAssignDepartments();
-  document.getElementById('settings-costing-buttons-btn').hidden = !canManageCostingButtons();
+  const costingButtonsControl = document.getElementById('settings-costing-buttons-btn');
+  if (costingButtonsControl) costingButtonsControl.hidden = true;
   document.getElementById('settings-production-statuses-btn').hidden = !canManageProductionStatuses();
   document.getElementById('settings-management-card').hidden = !(canManageUsers() || canAssignDepartments() || canManageCostingButtons() || canManageProductionStatuses());
   document.getElementById('view-btn-assign').hidden = !canAssignDepartments();
@@ -559,7 +559,6 @@ function boot() {
   });
   document.getElementById('settings-usermgmt-btn').addEventListener('click', () => { closeSettings(); openUserManagement(); });
   document.getElementById('settings-common-tasks-btn').addEventListener('click', () => { closeSettings(); openCommonTaskManagement(); });
-  document.getElementById('settings-costing-buttons-btn').addEventListener('click', () => { closeSettings(); openCostingButtonManagement(); });
   document.getElementById('settings-production-statuses-btn').addEventListener('click', () => { closeSettings(); openProductionStatusManagement(); });
   window.addEventListener('open-settings', openSettings);
   document.getElementById('my-account-save-btn').addEventListener('click', saveMyAccount);
@@ -568,7 +567,6 @@ function boot() {
   });
   initUserManagement();
   initCommonTaskManagement();
-  initCostingButtonManagement();
   initProductionStatusManagement();
   initSquarecoilSettings();
   initSystemHealth();

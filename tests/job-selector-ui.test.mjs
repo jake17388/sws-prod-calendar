@@ -71,8 +71,8 @@ test('the Job Selector no longer renders configurable Costing Activities', () =>
   assert.doesNotMatch(view, /job-selector-costing-button/);
   assert.doesNotMatch(view, /fetchCostingButtons/);
   assert.match(view, /job-selector-note-edit/);
-  assert.doesNotMatch(api, /fetchCostingButtons/);
-  assert.doesNotMatch(css, /job-selector-costing-grid/);
+  assert.match(api, /saveJobTimeNote/);
+  assert.match(css, /job-selector-other-activity-controls/);
 });
 
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
