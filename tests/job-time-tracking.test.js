@@ -53,6 +53,7 @@ function createSheet(initialRows = []) {
   };
   return {
     rows,
+    insertColumnAfter(column) { rows.forEach(row => row.splice(column, 0, '')); },
     getLastRow: () => rows.reduce((last, row, index) => row.some(value => value !== '') ? index + 1 : last, 0),
     getDataRange: () => ({ getValues: () => rows.map(row => row.slice()) }),
     getRange(row, column, rowCount = 1, columnCount = 1) {

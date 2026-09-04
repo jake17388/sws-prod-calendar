@@ -40,7 +40,8 @@ function getJobTimeEntriesSheet_() {
     }
     sheet.getRange(1, JOB_TIME_BASE_HEADERS.length + 1).setValue('notes');
   }
-  const auditHeader = header.slice(JOB_TIME_BASE_HEADERS.length + 1, JOB_TIME_HEADERS.length);
+  const refreshedHeader = (sheet.getDataRange().getValues()[0] || []).map(String);
+  const auditHeader = refreshedHeader.slice(JOB_TIME_BASE_HEADERS.length + 1, JOB_TIME_HEADERS.length);
   if (auditHeader.every(value => !value)) {
       sheet.getRange(1, JOB_TIME_BASE_HEADERS.length + 2, 1, JOB_TIME_AUDIT_HEADERS.length)
       .setValues([JOB_TIME_AUDIT_HEADERS]);
@@ -73,6 +74,7 @@ function jobTimeEntryFromRow_(row) {
     jobName: String(row[5] || ''),
     source: String(row[6] || ''),
     startedAt: started ? started.toISOString() : '',
+    notes: row.length > 14 ? String(row[11] || '') : '',
   };
 }
 
