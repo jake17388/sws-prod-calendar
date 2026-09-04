@@ -34,6 +34,7 @@ function setBusy(container, busy) {
   actionBusy = busy;
   container.setAttribute('aria-busy', String(busy));
   container.querySelectorAll('button, input').forEach(control => {
+    if (control.classList.contains('job-selector-note-edit') || control.classList.contains('job-selector-stop-entry')) return;
     if (busy) {
       control.dataset.disabledBeforeBusy = String(control.disabled);
       control.disabled = true;
