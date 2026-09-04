@@ -34,8 +34,8 @@ function getJobTimeEntriesSheet_() {
     throw new Error('JobTimeEntries sheet headers are not recognized');
   }
   const noteHeader = header[JOB_TIME_BASE_HEADERS.length] || '';
-  if (!noteHeader) {
-    if (header[JOB_TIME_BASE_HEADERS.length + 1] === JOB_TIME_AUDIT_HEADERS[0] && sheet.insertColumnAfter) {
+  if (noteHeader !== JOB_TIME_NOTE_HEADERS[0]) {
+    if (noteHeader === JOB_TIME_AUDIT_HEADERS[0] && sheet.insertColumnAfter) {
       sheet.insertColumnAfter(JOB_TIME_BASE_HEADERS.length);
     }
     sheet.getRange(1, JOB_TIME_BASE_HEADERS.length + 1).setValue('notes');

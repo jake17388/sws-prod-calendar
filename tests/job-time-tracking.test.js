@@ -162,6 +162,18 @@ test('a legacy JobTimeEntries header is extended with edit audit columns', () =>
   assert.deepEqual(sheet.rows[0].slice(11), ['notes', 'edited_at', 'edited_by', 'edited_by_id']);
 });
 
+test('an existing audited JobTimeEntries header inserts notes before audit columns', () => {
+  const context = loadBackend();
+  const sheet = createSheet([[
+    'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+    'source', 'started_at', 'ended_at', 'duration_minutes', 'status',
+    'edited_at', 'edited_by', 'edited_by_id',
+  ]]);
+  context.getTrackingSpreadsheet = () => ({ getSheetByName: () => sheet });
+  context.getJobTimeEntriesSheet_();
+  assert.deepEqual(sheet.rows[0].slice(11), ['notes', 'edited_at', 'edited_by', 'edited_by_id']);
+});
+
 test('assigned selections require an unfinished task in the signed-in department', () => {
   const context = loadBackend();
   const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
