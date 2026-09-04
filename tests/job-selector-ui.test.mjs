@@ -44,13 +44,15 @@ test('production workers land on Schedule while Job Selector remains available',
   assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName,\s*costingButtonId/);
 });
 
-test('the Job Selector screen includes assigned jobs, Other lookup, active status, and Stop Work', () => {
+test('the Job Selector screen includes assigned jobs, separate Other activity input, active status, and Stop Work', () => {
   const view = read('js/views/jobSelector.js');
   const api = read('js/api.js');
   const css = read('styles/job-selector.css');
 
   assert.match(view, /What job are you beginning work on\?/);
-  assert.match(view, /Other job number/);
+  assert.match(view, /Other Job Numbers\/Activities/);
+  assert.match(view, /job-selector-other-activity/);
+  assert.match(view, /source: 'other_activity'/);
   assert.match(view, /Stop Work/);
   assert.match(view, /Currently working on/);
   assert.match(api, /fetchJobTimeStatus/);
@@ -60,18 +62,17 @@ test('the Job Selector screen includes assigned jobs, Other lookup, active statu
   assert.match(css, /min-height:\s*44px/);
 });
 
-test('the Job Selector offers configured non-job costing activities below assigned jobs', () => {
+test('the Job Selector no longer renders configurable Costing Activities', () => {
   const view = read('js/views/jobSelector.js');
   const api = read('js/api.js');
   const css = read('styles/job-selector.css');
 
-  assert.match(view, /Costing activities/);
-  assert.match(view, /job-selector-costing-button/);
-  assert.match(view, /costing_button:/);
-  assert.ok(view.indexOf('job-selector-assigned-title') < view.indexOf('job-selector-costing-title'));
-  assert.ok(view.indexOf('job-selector-costing-title') < view.indexOf('job-selector-other-title'));
-  assert.match(api, /fetchCostingButtons/);
-  assert.match(css, /job-selector-costing-grid/);
+  assert.doesNotMatch(view, /Costing activities/);
+  assert.doesNotMatch(view, /job-selector-costing-button/);
+  assert.doesNotMatch(view, /fetchCostingButtons/);
+  assert.match(view, /job-selector-note-edit/);
+  assert.doesNotMatch(api, /fetchCostingButtons/);
+  assert.doesNotMatch(css, /job-selector-costing-grid/);
 });
 
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {

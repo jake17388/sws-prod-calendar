@@ -111,6 +111,13 @@ test('Admins and Costing Viewers can edit while Viewers and Managers can only vi
   assert.equal(context.canViewJobTimeLog(null), false);
 });
 
+test('job time entries include worker notes and only the entry owner can save them', () => {
+  const costingSource = fs.readFileSync(path.join(__dirname, '..', 'src/10-job-costing.js'), 'utf8');
+  assert.match(costingSource, /notes/);
+  assert.match(costingSource, /updateJobTimeNote/);
+  assert.match(costingSource, /actor\.id.*userId|userId.*actor\.id/);
+});
+
 test('Costing Viewer has Viewer-equivalent account-management restrictions', () => {
   const context = loadBackend();
   assert.equal(context.canAccessUserManagement('Costing Viewer'), false);
