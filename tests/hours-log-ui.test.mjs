@@ -110,3 +110,10 @@ test('the Hours Log picks its range with the Job Map day-nav and calendar popove
   assert.match(css, /\.hours-log-calendar-grid\s*\{[^}]*repeat\(7, 1fr\)/);
   assert.doesNotMatch(css, /\.hours-log-calendar[^}]*#fafafa/);
 });
+
+test('the Hours Log gives Notes an explicit desktop column width', () => {
+  const css = read('styles/job-selector.css');
+  const view = read('js/views/hoursLog.js');
+  assert.match(view, /hours-log-col-notes/);
+  assert.match(css, /\.hours-log-col-notes\s*\{\s*width:/);
+});
