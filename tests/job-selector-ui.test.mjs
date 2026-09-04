@@ -95,6 +95,13 @@ test('stopping an active job does not put the whole selector into a busy state',
   assert.match(view, /Stopping…/);
 });
 
+test('rapid start responses reconcile active jobs without duplicate rows', () => {
+  const view = read('js/views/jobSelector.js');
+  assert.match(view, /dedupeActiveEntries/);
+  assert.match(view, /activeEntries = dedupeActiveEntries/);
+  assert.match(view, /activeEntries\.some\(item => entryKey\(item\)/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');

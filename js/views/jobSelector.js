@@ -56,6 +56,20 @@ function isJobSelectorMounted(container) {
   return !!container.querySelector('.job-selector-shell');
 }
 
+function entryKey(entry) {
+  return `${entry.jobNum || ''}|${entry.jobName || ''}`;
+}
+
+function dedupeActiveEntries(entries) {
+  const seen = new Set();
+  return entries.filter(entry => {
+    const key = entryKey(entry);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function beginJobs(container, jobs, selections) {
   // Compatibility note: const previousEntry = activeEntry, activeEntry = optimisticEntry,
   // and activeEntry = previousEntry were the former single-job rollback state.
@@ -63,7 +77,9 @@ function beginJobs(container, jobs, selections) {
   // Legacy signature: startJobTime(jobNum, source, jobName, costingButtonId)
   const optimisticEntries = selections.map(({ jobNum, source, jobName }) => ({ entryId: '', jobNum, jobName, source, startedAt: new Date().toISOString(), pending: true }));
   statusRevision += 1;
-  activeEntries = activeEntries.concat(optimisticEntries);
+  const newSelections = optimisticEntries.filter(entry => !activeEntries.some(item => entryKey(item) === entryKey(entry)));
+  if (!newSelections.length) return;
+  activeEntries = dedupeActiveEntries(activeEntries.concat(newSelections));
   statusLoaded = true;
   lookupResult = null;
   if (isJobSelectorMounted(container)) paintJobSelector(container, jobs);
@@ -72,7 +88,7 @@ function beginJobs(container, jobs, selections) {
       if (!result.success) throw new Error(result.error || 'Could not start job');
       const serverEntries = result.activeEntries || (result.active ? [result.active] : []);
       const startedKeys = new Set(selections.map(item => `${item.jobNum}|${item.jobName}`));
-      activeEntries = activeEntries.filter(entry => !entry.pending || !startedKeys.has(`${entry.jobNum}|${entry.jobName}`)).concat(serverEntries);
+      activeEntries = dedupeActiveEntries(activeEntries.filter(entry => !entry.pending || !startedKeys.has(entryKey(entry))).concat(serverEntries));
       statusLoaded = true;
       lookupResult = null;
       const workLabel = selections.map(item => item.jobNum || item.jobName).join(', ');
@@ -270,7 +286,7 @@ export function renderJobSelector(container, _refDate, jobs) {
     .then(result => {
       if (!result.success) throw new Error(result.error || 'Could not load current job');
       if (requestRevision !== statusRevision) return;
-      activeEntries = result.activeEntries || (result.active ? [result.active] : []);
+      activeEntries = dedupeActiveEntries(result.activeEntries || (result.active ? [result.active] : []));
       statusLoaded = true;
       if (container.querySelector('.job-selector-shell')) paintJobSelector(container, jobs);
     })
