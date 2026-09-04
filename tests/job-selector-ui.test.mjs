@@ -75,6 +75,19 @@ test('the Job Selector no longer renders configurable Costing Activities', () =>
   assert.match(css, /job-selector-other-activity-controls/);
 });
 
+test('active jobs use a two-line identity and stable action columns with an optimistic note preview', () => {
+  const view = read('js/views/jobSelector.js');
+  const css = read('styles/job-selector.css');
+
+  assert.match(view, /job-selector-active-job-number/);
+  assert.match(view, /job-selector-active-job-name/);
+  assert.match(view, /job-selector-active-note-preview/);
+  assert.match(view, /pending: true/);
+  assert.doesNotMatch(view, /if \(actionBusy\) return;\n  const previousEntries = activeEntries;/);
+  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto/);
+  assert.match(css, /\.job-selector-active-note-preview/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');
