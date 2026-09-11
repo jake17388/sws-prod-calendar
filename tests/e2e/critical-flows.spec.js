@@ -961,3 +961,37 @@ test('text size scales rendered glyphs through 250 percent and persists', async 
   await expect(page.locator('#zoom-label')).toHaveText('50%');
   expect(await glyphHeight()).toBeCloseTo(baseline / 2, 0);
 });
+
+
+for (const percent of [200, 250]) {
+  test(`job selector names wrap at ${percent}% text size`, async ({ page }, testInfo) => {
+    const name = 'Canyon Ridge Community Center Monument and Directional Sign Package — North Entrance and Visitor Parking';
+    await mockBackend(page, { department: 'Assembly', jobTitle: name });
+    await page.addInitScript(value => localStorage.setItem('sws_prod_cal_zoom', value), String(percent));
+    await login(page);
+    await page.getByRole('button', { name: 'Job Selector', exact: true }).click();
+    const card = page.locator('.job-selector-job').first();
+    const number = card.locator('.job-selector-job-number');
+    const title = card.locator('.job-selector-job-name');
+    await expect(title).toHaveText(name);
+    await expect(async () => { await card.scrollIntoViewIfNeeded(); }).toPass();
+    const metrics = await card.evaluate(element => {
+      const title = element.querySelector('.job-selector-job-name');
+      const number = element.querySelector('.job-selector-job-number');
+      const bounds = title.getBoundingClientRect();
+      return {
+        titleTop: bounds.top, numberBottom: number.getBoundingClientRect().bottom,
+        titleWidth: bounds.width, cardWidth: element.getBoundingClientRect().width,
+        titleHeight: title.clientHeight, lineHeight: parseFloat(getComputedStyle(title).lineHeight),
+        fits: title.scrollWidth <= title.clientWidth && title.scrollHeight <= title.clientHeight,
+      };
+    });
+    expect(metrics.titleTop).toBeGreaterThanOrEqual(metrics.numberBottom);
+    expect(metrics.titleWidth / metrics.cardWidth).toBeGreaterThan(0.65);
+    expect(metrics.titleHeight).toBeGreaterThan(metrics.lineHeight);
+    expect(metrics.fits).toBe(true);
+    await expect(number).toHaveText('260001');
+    await page.screenshot({ path: testInfo.outputPath('job-selector-large-text.png') });
+
+  });
+}
