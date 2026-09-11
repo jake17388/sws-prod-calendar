@@ -18,6 +18,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'ipad-webkit', use: { ...devices['iPad Pro 11'], browserName: 'webkit' }, testMatch: '**/critical-flows.spec.js', grep: /text size/ },
     { name: 'ipad', use: { ...devices['iPad Pro 11'], browserName: 'chromium' } },
     { name: 'phone', use: { ...devices['iPhone 14'], browserName: 'chromium' } },
   ],

@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build:pages
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - run: npm run test:load
       - name: Upload Playwright report

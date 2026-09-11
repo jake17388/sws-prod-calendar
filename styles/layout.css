@@ -262,8 +262,23 @@ header.app-header {
 .view-switcher button.active { background: var(--color-brand-gold); color: var(--color-brand-navy); }
 .view-switcher button:not(.active):hover { background: rgba(255, 255, 255, 0.12); color: var(--color-header-text); }
 
-main.view-area {
+.view-viewport {
   flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scale the rendered surface, including glyphs. iPad Safari can counter-scale
+   fonts with CSS zoom. Inverse dimensions keep this scrollport on screen. */
+main.view-area {
+  --view-scale: 1;
+  width: calc(100% / var(--view-scale));
+  height: calc(100% / var(--view-scale));
+  scale: var(--view-scale);
+  transform-origin: top left;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   overflow: auto;
   position: relative;
   background: var(--surface-canvas);

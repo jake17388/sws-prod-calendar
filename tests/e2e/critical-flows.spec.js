@@ -911,3 +911,53 @@ test('an Admin can reset an account with a regular PIN', async ({ page }) => {
   await expect(row.locator('.user-row-training-status')).toHaveCount(0);
   await expect(row.getByText('Regular PIN updated')).toBeVisible();
 });
+
+
+test('text size scales rendered glyphs through 250 percent and persists', async ({ page }, testInfo) => {
+  await mockBackend(page);
+  await login(page);
+  const title = page.locator('.job-card-title').first();
+  await expect(title).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  // Measure glyphs rather than the button box or computed font-size: Safari's
+  // CSS zoom bug can enlarge the box while leaving the glyphs unchanged.
+  const glyphHeight = () => title.evaluate(element => {
+    const range = document.createRange();
+    range.setStart(element.firstChild, 0);
+    range.setEnd(element.firstChild, 1);
+    return range.getBoundingClientRect().height;
+  });
+  const baseline = await glyphHeight();
+  await page.locator('#settings-btn').click();
+  for (const percent of [110, 125, 150, 175, 200, 225, 250]) {
+    await page.locator('#zoom-in-btn').click();
+    await expect(page.locator('#zoom-label')).toHaveText(`${percent}%`);
+    if (percent >= 200) {
+      expect(await glyphHeight()).toBeCloseTo(baseline * percent / 100, 0);
+    }
+  }
+  await page.locator('#zoom-in-btn').click();
+  await expect(page.locator('#zoom-label')).toHaveText('250%');
+  const bounds = await page.locator('#view-area').boundingBox();
+  const viewport = await page.locator('.view-viewport').boundingBox();
+  expect(bounds.width).toBeCloseTo(viewport.width, 0);
+  expect(bounds.height).toBeCloseTo(viewport.height, 0);
+  await page.locator('#settings-close-btn').click();
+  await page.screenshot({ path: testInfo.outputPath('text-size-250.png') });
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.getByRole('button', { name: '+ Add note' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#app')).toBeVisible();
+  await expect(title).toBeVisible();
+  expect(await glyphHeight()).toBeCloseTo(baseline * 2.5, 0);
+  await page.locator('#settings-btn').click();
+  await expect(page.locator('#zoom-label')).toHaveText('250%');
+  await page.locator('#zoom-out-btn').click();
+  await expect(page.locator('#zoom-label')).toHaveText('225%');
+  await page.locator('#zoom-reset-btn').click();
+  await expect(page.locator('#zoom-label')).toHaveText('100%');
+  expect(await glyphHeight()).toBeCloseTo(baseline, 0);
+  for (let step = 0; step < 5; step++) await page.locator('#zoom-out-btn').click();
+  await expect(page.locator('#zoom-label')).toHaveText('50%');
+  expect(await glyphHeight()).toBeCloseTo(baseline / 2, 0);
+});

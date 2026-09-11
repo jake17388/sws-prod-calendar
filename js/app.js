@@ -387,7 +387,7 @@ function reloadForUpdate() {
   window.location.href = updateReloadUrl(window.location.href);
 }
 
-const ZOOM_STEPS = [50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200];
+const ZOOM_STEPS = [50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 225, 250];
 const ZOOM_KEY = 'sws_prod_cal_zoom';
 const THEME_KEY = 'sws_prod_cal_theme';
 const savedTheme = localStorage.getItem(THEME_KEY);
@@ -406,7 +406,7 @@ let zoomIdx = savedZoomIdx !== -1 ? savedZoomIdx : ZOOM_STEPS.indexOf(100);
 
 function applyZoom() {
   const pct = ZOOM_STEPS[zoomIdx];
-  document.getElementById('view-area').style.zoom = pct / 100;
+  document.getElementById('view-area').style.setProperty('--view-scale', pct / 100);
   document.getElementById('zoom-label').textContent = `${pct}%`;
   localStorage.setItem(ZOOM_KEY, pct);
 }

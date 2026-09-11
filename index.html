@@ -18,7 +18,7 @@
      on each deploy — keep it in sync with version.json's version on every
      push (see README "Config" section). -->
 <link rel="stylesheet" href="styles/tokens.css?v=2026.09.01.6" />
-<link rel="stylesheet" href="styles/layout.css?v=2026.09.01.5" />
+<link rel="stylesheet" href="styles/layout.css?v=2026.09.11.1" />
 <link rel="stylesheet" href="styles/calendar.css?v=2026.09.01.1" />
 <link rel="stylesheet" href="styles/job-card.css?v=2026.08.11.8" />
 <link rel="stylesheet" href="styles/job-detail.css?v=2026.08.11.8" />
@@ -124,7 +124,9 @@
 
   <div id="stats-bar"></div>
 
-  <main class="view-area" id="view-area"></main>
+  <div class="view-viewport">
+    <main class="view-area" id="view-area"></main>
+  </div>
 
   <nav class="view-switcher mobile-view-switcher" aria-label="Calendar views">
     <button data-view="month"><svg class="nav-icon"><use href="#icon-month" /></svg><span>Month</span></button>
@@ -479,6 +481,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2026.09.01.6"></script>
+<script type="module" src="js/app.js?v=2026.09.11.1"></script>
 </body>
 </html>

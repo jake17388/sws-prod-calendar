@@ -16,9 +16,9 @@ test('Settings uses a wide organized desktop grid', () => {
   assert.match(css, /\.settings-grid[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
 });
 
-test('text size spans 50 through 200 percent', () => {
+test('text size spans 50 through 250 percent', () => {
   const app = read('js/app.js');
-  assert.match(app, /ZOOM_STEPS\s*=\s*\[50,[^\]]*200\]/);
+  assert.match(app, /ZOOM_STEPS\s*=\s*\[50,[^\]]*250\]/);
 });
 
 test('Display exposes a dark theme preference applied at startup and on change', () => {
