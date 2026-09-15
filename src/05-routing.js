@@ -208,8 +208,7 @@ function routePost(e) {
     return respond(() => {
       if (actor.department !== 'Admin') return { error: 'forbidden' };
       if (!isSquarecoilConfigured_()) return { success: false, error: 'Squarecoil credentials are not configured' };
-      try { refreshSquarecoilProductionFiles(); } catch (err) { return { success: false, error: err.message }; }
-      return { success: true };
+      try { return queueSquarecoilRefresh_(); } catch (err) { return { success: false, error: err.message }; }
     });
   }
   return json({ error: 'unknown action' });

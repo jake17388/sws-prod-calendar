@@ -84,8 +84,10 @@ function getProductionJobs(e, actor) {
   });
 
   let statusJobs = [];
+  let statusSnapshot = null;
   if (actor && canViewOtherProduction(actor.department)) {
-    statusJobs = squarecoilProductionStatusJobs_().jobs;
+    statusSnapshot = squarecoilProductionStatusJobs_();
+    statusJobs = statusSnapshot.jobs;
     jobs = mergeProductionStatusJobs_(jobs, statusJobs, tracking);
   }
 
@@ -102,7 +104,7 @@ function getProductionJobs(e, actor) {
     jobs = jobs.filter(job => job.departments.indexOf(actor.department) !== -1);
   }
 
-  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: productionJobsVersion_(actor, statusJobs) };
+  return { jobs, timestamp: new Date().toISOString(), fetchedFrom: formatDate(start), fetchedTo: formatDate(end), version: productionJobsVersion_(actor, statusSnapshot) };
 }
 
 function otherProductionJob_(source, tracking) {
@@ -150,10 +152,10 @@ function productionStatusVersion_(statusJobs) {
     .join('|');
 }
 
-function productionJobsVersion_(actor, loadedStatusJobs) {
+function productionJobsVersion_(actor, loadedStatusSnapshot) {
   if (!actor || !canViewOtherProduction(actor.department)) return getTrackingVersion();
-  const statusJobs = loadedStatusJobs || squarecoilProductionStatusJobs_().jobs;
-  return String(getTrackingVersion()) + ':' + productionStatusVersion_(statusJobs);
+  const snapshot = loadedStatusSnapshot || squarecoilProductionStatusJobs_();
+  return String(getTrackingVersion()) + ':' + snapshot.version;
 }
 
 function isOtherProductionJob_(jobKey) {

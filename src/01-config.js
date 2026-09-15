@@ -14,9 +14,8 @@ function normalizeCrew(names) {
 
 const DUE_DATE_BUSINESS_DAYS = 2;
 const SQUARECOIL_FILES_REFRESH_HOURS = 6;
+const SQUARECOIL_STATUS_REFRESH_MINUTES = 5;
 const SQUARECOIL_BATCH_CHUNK_SIZE = 15;
-const SQUARECOIL_HANDOFF_CACHE_SECONDS = 300;
-const SQUARECOIL_HANDOFF_STALE_CACHE_SECONDS = 21600;
 const SQUARECOIL_MILESTONE_INDEX_CACHE_SECONDS = 21600;
 
 // Which Squarecoil project statuses feed the Other Production queue out of the

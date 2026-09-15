@@ -211,11 +211,13 @@ function saveProductionStatuses(actor, data) {
   try {
     lock.waitLock(10000);
     PropertiesService.getScriptProperties().setProperty('PRODUCTION_STATUSES', JSON.stringify(statuses));
-    // Drop any queue cached under this exact list so the change is visible on
-    // the next load instead of after the 5-minute TTL.
+    // Browser requests remain read-only. Queue a one-off scheduled refresh so
+    // the new selection is picked up without waiting for the next five-minute
+    // run.
     try {
-      CacheService.getScriptCache().remove(squarecoilStatusJobsCacheKey_(statuses));
-    } catch (err) { /* best-effort — a stale entry expires on its own */ }
+      CacheService.getScriptCache().remove(SQUARECOIL_STATUS_SNAPSHOT_CACHE_KEY);
+      queueSquarecoilStatusRefresh_();
+    } catch (err) { /* the recurring trigger remains the fallback */ }
     return { success: true, statuses };
   } finally {
     lock.releaseLock();
@@ -373,57 +375,144 @@ function dedupeProductionStatusJobs_(jobs) {
   });
 }
 
-function squarecoilStatusJobsCacheKey_(statuses) {
-  return 'squarecoil_status_jobs_v2_' + (statuses || []).join('|').toLowerCase().slice(0, 200);
+const SQUARECOIL_STATUS_SNAPSHOT_CACHE_KEY = 'squarecoil_status_snapshot_v1';
+const SQUARECOIL_STATUS_SNAPSHOT_SHEET = 'SquarecoilStatusSnapshot';
+
+function emptySquarecoilStatusSnapshot_() {
+  return { jobs: [], unresolved: [], available: [], version: 0, refreshedAt: '' };
 }
 
-// Returns { jobs, unresolved } — `unresolved` lists configured statuses with no
-// matching Squarecoil milestone, so Settings can say so instead of quietly
-// showing nothing for them.
-function squarecoilProductionStatusJobs_() {
-  const statuses = getProductionStatuses();
-  if (!isSquarecoilConfigured_() || !statuses.length) return { jobs: [], unresolved: [] };
+function normalizeSquarecoilStatusSnapshot_(value) {
+  if (!value || !Array.isArray(value.jobs)) return null;
+  return {
+    jobs: dedupeProductionStatusJobs_(value.jobs),
+    unresolved: Array.isArray(value.unresolved) ? value.unresolved.map(String) : [],
+    available: Array.isArray(value.available) ? value.available.map(String) : [],
+    version: Math.max(0, Number(value.version) || 0),
+    refreshedAt: String(value.refreshedAt || ''),
+  };
+}
 
+function getSquarecoilStatusSnapshotSheet_() {
+  const spreadsheet = getTrackingSpreadsheet();
+  let sheet = spreadsheet.getSheetByName(SQUARECOIL_STATUS_SNAPSHOT_SHEET);
+  if (!sheet) sheet = spreadsheet.insertSheet(SQUARECOIL_STATUS_SNAPSHOT_SHEET);
+  return sheet;
+}
+
+function readSquarecoilStatusSnapshotStore_() {
   const cache = CacheService.getScriptCache();
-  const liveKey = squarecoilStatusJobsCacheKey_(statuses);
-  const staleKey = liveKey + '_stale';
-  const cached = cache.get(liveKey);
+  const cached = cache.get(SQUARECOIL_STATUS_SNAPSHOT_CACHE_KEY);
   if (cached) {
-    try { return JSON.parse(cached); } catch (err) { /* fetch fresh below */ }
+    try {
+      const parsed = normalizeSquarecoilStatusSnapshot_(JSON.parse(cached));
+      if (parsed) return parsed;
+    } catch (err) { /* fall through to the durable copy */ }
   }
 
   try {
-    const credentials = squarecoilCredentials_();
-    const cookie = squarecoilLogin_(credentials.username, credentials.password);
-    const index = squarecoilMilestoneIndex_(cookie);
-    const unresolved = [];
-    const jobs = dedupeProductionStatusJobs_(statuses.reduce((collected, status) => {
-      const milestoneId = squarecoilMilestoneIdForStatus_(status, index);
-      if (!milestoneId) {
-        unresolved.push(status);
-        return collected;
-      }
-      return collected.concat(squarecoilMilestoneJobs_(status, milestoneId, cookie));
-    }, []));
+    const sheet = getSquarecoilStatusSnapshotSheet_();
+    if (sheet.getLastRow() < 2) return emptySquarecoilStatusSnapshot_();
+    const metadata = sheet.getRange(1, 1, 1, 5).getValues()[0];
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+    const snapshot = normalizeSquarecoilStatusSnapshot_({
+      version: metadata[1],
+      refreshedAt: metadata[2],
+      available: JSON.parse(String(metadata[3] || '[]')),
+      unresolved: JSON.parse(String(metadata[4] || '[]')),
+      jobs: rows.filter(row => row[0]).map(row => ({
+        jobNum: String(row[0]), title: String(row[1] || ''),
+        addr: String(row[2] || ''), squarecoilStatus: String(row[3] || ''),
+      })),
+    });
+    if (snapshot) {
+      try { cache.put(SQUARECOIL_STATUS_SNAPSHOT_CACHE_KEY, JSON.stringify(snapshot), 21600); } catch (err) { /* over cache limit */ }
+    }
+    return snapshot || emptySquarecoilStatusSnapshot_();
+  } catch (err) {
+    console.warn('Squarecoil status snapshot read failed: %s', err && err.message);
+    return emptySquarecoilStatusSnapshot_();
+  }
+}
 
-    const result = { jobs, unresolved };
-    const encoded = JSON.stringify(result);
-    cache.put(liveKey, encoded, SQUARECOIL_HANDOFF_CACHE_SECONDS);
-    cache.put(staleKey, encoded, SQUARECOIL_HANDOFF_STALE_CACHE_SECONDS);
-    if (unresolved.length) {
-      recordOperationalFailure('squarecoil-handoff', new Error('No Squarecoil milestone matches: ' + unresolved.join(', ')));
+function writeSquarecoilStatusSnapshotStore_(snapshot) {
+  const normalized = normalizeSquarecoilStatusSnapshot_(snapshot);
+  if (!normalized) throw new Error('Invalid Squarecoil status snapshot');
+  const sheet = getSquarecoilStatusSnapshotSheet_();
+  const rows = normalized.jobs.map(job => [job.jobNum, job.title, job.addr, job.squarecoilStatus]);
+  const requiredRows = Math.max(2, rows.length + 1);
+  if (sheet.getMaxRows() < requiredRows) sheet.insertRowsAfter(sheet.getMaxRows(), requiredRows - sheet.getMaxRows());
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, 5).setValues([[
+    'version', normalized.version, normalized.refreshedAt,
+    JSON.stringify(normalized.available), JSON.stringify(normalized.unresolved),
+  ]]);
+  if (rows.length) sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+  try {
+    CacheService.getScriptCache().put(SQUARECOIL_STATUS_SNAPSHOT_CACHE_KEY, JSON.stringify(normalized), 21600);
+  } catch (err) { /* the durable sheet remains authoritative */ }
+}
+
+function squarecoilStatusSnapshotContent_(snapshot) {
+  return JSON.stringify({
+    jobs: (snapshot.jobs || []).slice().sort((a, b) => String(a.jobNum).localeCompare(String(b.jobNum))),
+    unresolved: (snapshot.unresolved || []).slice().sort(),
+    available: (snapshot.available || []).slice().sort(),
+  });
+}
+
+function squarecoilFetchProductionStatusSnapshot_() {
+  const statuses = getProductionStatuses();
+  if (!isSquarecoilConfigured_() || !statuses.length) {
+    return { jobs: [], unresolved: [], available: [] };
+  }
+  const credentials = squarecoilCredentials_();
+  const cookie = squarecoilLogin_(credentials.username, credentials.password);
+  const index = squarecoilMilestoneIndex_(cookie);
+  const unresolved = [];
+  const jobs = dedupeProductionStatusJobs_(statuses.reduce((collected, status) => {
+    const milestoneId = squarecoilMilestoneIdForStatus_(status, index);
+    if (!milestoneId) {
+      unresolved.push(status);
+      return collected;
+    }
+    return collected.concat(squarecoilMilestoneJobs_(status, milestoneId, cookie));
+  }, []));
+  return { jobs, unresolved, available: index.map(entry => entry.name) };
+}
+
+function refreshSquarecoilStatusSnapshot_() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return { success: true, skipped: true, reason: 'refresh_in_progress' };
+  try {
+    const previous = readSquarecoilStatusSnapshotStore_();
+    const fetched = squarecoilFetchProductionStatusSnapshot_();
+    const changed = squarecoilStatusSnapshotContent_(previous) !== squarecoilStatusSnapshotContent_(fetched);
+    const snapshot = {
+      jobs: fetched.jobs,
+      unresolved: fetched.unresolved,
+      available: fetched.available,
+      version: changed ? previous.version + 1 : previous.version,
+      refreshedAt: new Date().toISOString(),
+    };
+    writeSquarecoilStatusSnapshotStore_(snapshot);
+    if (snapshot.unresolved.length) {
+      recordOperationalFailure('squarecoil-handoff', new Error('No Squarecoil milestone matches: ' + snapshot.unresolved.join(', ')));
     } else {
       clearOperationalFailure('squarecoil-handoff');
     }
-    return result;
+    return { success: true, version: snapshot.version, jobs: snapshot.jobs.length };
   } catch (err) {
     recordOperationalFailure('squarecoil-handoff', err);
-    const stale = cache.get(staleKey);
-    if (stale) {
-      try { return JSON.parse(stale); } catch (parseError) { /* empty fallback below */ }
-    }
-    return { jobs: [], unresolved: [] };
+    throw err;
+  } finally {
+    lock.releaseLock();
   }
+}
+
+// Browser schedule and version requests only read the last valid snapshot.
+function squarecoilProductionStatusJobs_() {
+  return readSquarecoilStatusSnapshotStore_();
 }
 
 // The statuses an Admin can pick from, plus the ones currently enabled. Missing
@@ -433,16 +522,14 @@ function productionStatusSettings_() {
   if (!isSquarecoilConfigured_()) {
     return { statuses, available: [], unresolved: [], error: 'Squarecoil is not configured' };
   }
-  let index = [];
-  try {
-    const credentials = squarecoilCredentials_();
-    index = squarecoilMilestoneIndex_(squarecoilLogin_(credentials.username, credentials.password));
-  } catch (err) {
-    return { statuses, available: [], unresolved: [], error: 'Could not read the Squarecoil status list' };
-  }
-  const available = index.map(entry => entry.name);
-  const unresolved = statuses.filter(status => !squarecoilMilestoneIdForStatus_(status, index));
-  return { statuses, available, unresolved, error: '' };
+  const snapshot = readSquarecoilStatusSnapshotStore_();
+  return {
+    statuses,
+    available: snapshot.available,
+    unresolved: snapshot.unresolved,
+    refreshedAt: snapshot.refreshedAt,
+    error: snapshot.refreshedAt ? '' : 'Squarecoil status data is waiting for its first scheduled refresh',
+  };
 }
 
 function squarecoilFindProjectName_(html, jobNum) {
@@ -1004,6 +1091,17 @@ function getSquarecoilProductionFile(jobNum) {
 }
 
 const SQUARECOIL_TRIGGER_HOURS_PROP = 'SQUARECOIL_TRIGGER_HOURS';
+const SQUARECOIL_STATUS_TRIGGER_MINUTES_PROP = 'SQUARECOIL_STATUS_TRIGGER_MINUTES';
+
+function scheduledSquarecoilStatusRefresh() {
+  try {
+    return refreshSquarecoilStatusSnapshot_();
+  } catch (err) {
+    // The refresher records the failure and deliberately leaves the last valid
+    // snapshot untouched.
+    throw err;
+  }
+}
 
 function scheduledSquarecoilFileRefresh() {
   try {
@@ -1019,10 +1117,14 @@ function scheduledSquarecoilFileRefresh() {
 function ensureSquarecoilRefreshTrigger() {
   const props = PropertiesService.getScriptProperties();
   const triggers = ScriptApp.getProjectTriggers();
-  const current = triggers.filter(trigger => trigger.getHandlerFunction() === 'scheduledSquarecoilFileRefresh');
+  const files = triggers.filter(trigger => trigger.getHandlerFunction() === 'scheduledSquarecoilFileRefresh');
+  const statuses = triggers.filter(trigger => trigger.getHandlerFunction() === 'scheduledSquarecoilStatusRefresh');
   const legacy = triggers.filter(trigger => ['refreshDropboxProofs', 'scheduledDropboxProofRefresh'].indexOf(trigger.getHandlerFunction()) !== -1);
   const scheduledHours = +(props.getProperty(SQUARECOIL_TRIGGER_HOURS_PROP) || 0);
-  if (current.length === 1 && !legacy.length && scheduledHours === SQUARECOIL_FILES_REFRESH_HOURS) return;
+  const scheduledMinutes = +(props.getProperty(SQUARECOIL_STATUS_TRIGGER_MINUTES_PROP) || 0);
+  if (files.length === 1 && statuses.length === 1 && !legacy.length
+      && scheduledHours === SQUARECOIL_FILES_REFRESH_HOURS
+      && scheduledMinutes === SQUARECOIL_STATUS_REFRESH_MINUTES) return;
   resetSquarecoilRefreshTrigger();
 }
 
@@ -1033,11 +1135,41 @@ function resetSquarecoilRefreshTrigger() {
       'scheduledDropboxProofRefresh',
       'refreshSquarecoilProductionFiles',
       'scheduledSquarecoilFileRefresh',
+      'scheduledSquarecoilStatusRefresh',
     ].indexOf(trigger.getHandlerFunction()) !== -1)
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger('scheduledSquarecoilStatusRefresh').timeBased().everyMinutes(SQUARECOIL_STATUS_REFRESH_MINUTES).create();
   ScriptApp.newTrigger('scheduledSquarecoilFileRefresh').timeBased().everyHours(SQUARECOIL_FILES_REFRESH_HOURS).create();
+  queueSquarecoilStatusRefresh_();
   PropertiesService.getScriptProperties().setProperty(SQUARECOIL_TRIGGER_HOURS_PROP, String(SQUARECOIL_FILES_REFRESH_HOURS));
+  PropertiesService.getScriptProperties().setProperty(SQUARECOIL_STATUS_TRIGGER_MINUTES_PROP, String(SQUARECOIL_STATUS_REFRESH_MINUTES));
   Logger.log('Squarecoil Production File refresh trigger set to every %s hour(s)', SQUARECOIL_FILES_REFRESH_HOURS);
+}
+
+function queueSquarecoilTrigger_(handler) {
+  const exists = ScriptApp.getProjectTriggers().some(trigger => trigger.getHandlerFunction() === handler);
+  if (!exists) ScriptApp.newTrigger(handler).timeBased().after(1000).create();
+  return { success: true, queued: true };
+}
+
+function queueSquarecoilRefresh_() {
+  return queueSquarecoilTrigger_('queuedSquarecoilRefresh');
+}
+
+function queueSquarecoilStatusRefresh_() {
+  return queueSquarecoilTrigger_('queuedSquarecoilStatusRefresh');
+}
+
+function queuedSquarecoilStatusRefresh() {
+  return scheduledSquarecoilStatusRefresh();
+}
+
+function queuedSquarecoilRefresh() {
+  let statusResult;
+  let fileResult;
+  try { statusResult = scheduledSquarecoilStatusRefresh(); } catch (err) { statusResult = { success: false, error: err.message }; }
+  try { fileResult = scheduledSquarecoilFileRefresh(); } catch (err) { fileResult = { success: false, error: err.message }; }
+  return { success: !!(statusResult.success && fileResult.success), status: statusResult, files: fileResult };
 }
 
 // Existing installations may run one old handler before normal app traffic

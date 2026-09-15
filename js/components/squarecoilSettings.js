@@ -33,13 +33,13 @@ export function refreshSquarecoilSettingsUI() {
 
 function handleRefresh() {
   const button = document.getElementById('squarecoil-refresh-btn');
-  setHint('Refreshing Production Files from Squarecoil…');
+  setHint('Queuing a Production Files refresh…');
   button.disabled = true;
   return refreshSquarecoilFilesNow()
     .then(res => {
       if (!res.success) { setHint(res.error || 'Refresh failed'); return; }
-      setHint('Refreshed');
-      showToast('Production Files refreshed');
+      setHint('Refresh queued');
+      showToast('Production Files refresh queued');
       setTimeout(() => setHint(''), 1500);
     })
     .catch(() => setHint('Network error — try again'))

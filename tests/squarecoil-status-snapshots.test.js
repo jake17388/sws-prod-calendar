@@ -115,6 +115,18 @@ test('a successful refresh stores a compact version that only changes with snaps
   assert.equal(stored.version, 10, 'changed snapshot increments its small version');
 });
 
+test('the production poll version uses the snapshot number instead of serializing every job', () => {
+  const context = loadBackend();
+  context.getTrackingVersion = () => 42;
+
+  const version = context.productionJobsVersion_({ department: 'Admin' }, {
+    jobs: [{ jobNum: '261423', title: 'A very large job payload should not appear here' }],
+    version: 17,
+  });
+
+  assert.equal(version, '42:17');
+});
+
 test('the manual refresh route queues background work instead of running it inline', () => {
   assert.match(source, /data\.action === 'refreshSquarecoilFilesNow'[\s\S]*queueSquarecoilRefresh_\(\)/);
   assert.doesNotMatch(source, /data\.action === 'refreshSquarecoilFilesNow'[\s\S]{0,500}refreshSquarecoilProductionFiles\(\)/);
