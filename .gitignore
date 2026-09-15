@@ -7,3 +7,6 @@ playwright-report/
 test-results/
 .claude/settings.local.json
 /Code.js
+v2/.env*
+!v2/.env.example
+v2/.forbidden-production-identifiers

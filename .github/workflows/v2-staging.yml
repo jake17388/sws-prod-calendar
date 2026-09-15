@@ -1,0 +1,36 @@
+name: V2 staging (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Validate the isolated staging workspace (deployment is added after staging resources exist)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate-staging:
+    if: inputs.deploy
+    environment: v2-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify branch and isolation guardrails
+        env:
+          V2_FORBIDDEN_PRODUCTION_IDS: ${{ secrets.V2_FORBIDDEN_PRODUCTION_IDS }}
+        run: |
+          test "${GITHUB_REF_NAME}" = "codex/v2"
+          node --test v2/tests/workspace-guardrails.test.mjs
+          node v2/shared/check-isolation.mjs .
+      - name: Staging resource gate
+        run: |
+          echo "The v2 staging workflow is isolated and manually triggered."
+          echo "Add deployment steps only after dedicated staging resource IDs are configured."

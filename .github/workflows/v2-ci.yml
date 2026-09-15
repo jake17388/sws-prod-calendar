@@ -1,0 +1,32 @@
+name: V2 isolation checks
+
+on:
+  push:
+    branches: [codex/v2]
+    paths:
+      - 'v2/**'
+      - '.github/workflows/v2-*.yml'
+  pull_request:
+    paths:
+      - 'v2/**'
+      - '.github/workflows/v2-*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test v2 isolation guardrails
+        run: node --test v2/tests/workspace-guardrails.test.mjs
+      - name: Reject configured production identifiers
+        env:
+          V2_FORBIDDEN_PRODUCTION_IDS: ${{ secrets.V2_FORBIDDEN_PRODUCTION_IDS }}
+        run: node v2/shared/check-isolation.mjs .
