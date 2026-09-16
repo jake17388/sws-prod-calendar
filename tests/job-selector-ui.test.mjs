@@ -44,7 +44,7 @@ test('production workers land on Schedule while Job Selector remains available',
   assert.match(api, /startJobTime\s*=\s*\(jobNum,\s*source,\s*jobName,\s*costingButtonId/);
 });
 
-test('the Job Selector screen includes assigned jobs, separate Other activity input, active status, and Stop Work', () => {
+test('the Job Selector screen includes assigned jobs, separate Other activity input, and note-pause-stop controls', () => {
   const view = read('js/views/jobSelector.js');
   const api = read('js/api.js');
   const css = read('styles/job-selector.css');
@@ -59,6 +59,10 @@ test('the Job Selector screen includes assigned jobs, separate Other activity in
   assert.match(api, /lookupSquarecoilJob/);
   assert.match(api, /startJobTime/);
   assert.match(api, /stopJobTime/);
+  assert.match(api, /pauseJobTime/);
+  assert.match(api, /resumeJobTime/);
+  assert.match(view, /job-selector-note-edit[\s\S]*job-selector-pause-entry[\s\S]*job-selector-stop-entry/);
+  assert.match(view, /job-selector-resume-entry/);
   assert.match(css, /min-height:\s*44px/);
 });
 
@@ -84,7 +88,7 @@ test('active jobs use a two-line identity and stable action columns with an opti
   assert.match(view, /job-selector-active-note-preview/);
   assert.match(view, /pending: true/);
   assert.doesNotMatch(view, /if \(actionBusy\) return;\n  const previousEntries = activeEntries;/);
-  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto/);
+  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto auto/);
   assert.match(css, /\.job-selector-active-note-preview/);
 });
 
@@ -105,7 +109,7 @@ test('rapid start responses reconcile active jobs without duplicate rows', () =>
 test('active job rows reserve the far-right action area and place notes before the pencil', () => {
   const css = read('styles/job-selector.css');
   assert.match(css, /\.job-selector-current > div:first-child\s*\{[^}]*flex:\s*1/);
-  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto/);
+  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto auto/);
   assert.match(css, /\.job-selector-active-note-preview\s*\{[^}]*grid-column:\s*2/);
 });
 

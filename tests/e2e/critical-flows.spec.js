@@ -221,6 +221,12 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
       activeJobTime = null;
       body = { success: true, stopped: true, active: null };
+    } else if (action === 'pauseJobTime') {
+      activeJobTime = { ...activeJobTime, paused: true, startedAt: '' };
+      body = { success: true, paused: activeJobTime };
+    } else if (action === 'resumeJobTime') {
+      activeJobTime = { ...activeJobTime, entryId: `${activeJobTime.entryId}-resumed`, paused: false, startedAt: '2026-08-24T15:00:00.000Z' };
+      body = { success: true, active: activeJobTime };
     } else if (action === 'updateJobTimeEntry') {
       jobTimeLogEntries = jobTimeLogEntries.map(entry => entry.entryId === payload.entryId ? {
         ...entry,
@@ -639,6 +645,23 @@ test('a production employee can clock into a typed Other activity without a job 
   await page.getByRole('button', { name: 'Start activity' }).click();
   await expect(page.locator('.job-selector-current').getByText('Shop cleanup', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Stop Work' }).click();
+  await expect(page.getByText('No active job')).toBeVisible();
+});
+
+test('a production employee can pause, resume into a new segment, and dismiss a paused job', async ({ page }) => {
+  await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Job Selector' }).click();
+  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.getByRole('button', { name: 'Pause Browser Test Job' }).click();
+  await expect(page.getByRole('button', { name: 'Resume Browser Test Job' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resume Browser Test Job' }).click();
+  await expect(page.getByRole('button', { name: 'Pause Browser Test Job' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Pause Browser Test Job' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByText('No active job')).toBeVisible();
 });
 

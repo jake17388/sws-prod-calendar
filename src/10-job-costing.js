@@ -11,6 +11,26 @@ const JOB_TIME_BASE_HEADERS = [
 const JOB_TIME_AUDIT_HEADERS = ['edited_at', 'edited_by', 'edited_by_id'];
 const JOB_TIME_NOTE_HEADERS = ['notes'];
 const JOB_TIME_HEADERS = JOB_TIME_BASE_HEADERS.concat(JOB_TIME_NOTE_HEADERS, JOB_TIME_AUDIT_HEADERS);
+const PAUSED_JOB_TIME_KEY_PREFIX = 'PAUSED_JOB_TIME_';
+
+function pausedJobTimeKey_(userId) {
+  return PAUSED_JOB_TIME_KEY_PREFIX + String(userId || '');
+}
+
+function getPausedJobTimeEntries_(userId) {
+  const raw = PropertiesService.getScriptProperties().getProperty(pausedJobTimeKey_(userId));
+  if (!raw) return [];
+  try {
+    const entries = JSON.parse(raw);
+    return Array.isArray(entries) ? entries : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function savePausedJobTimeEntries_(userId, entries) {
+  PropertiesService.getScriptProperties().setProperty(pausedJobTimeKey_(userId), JSON.stringify(entries || []));
+}
 
 function getJobTimeEntriesSheet_() {
   const ss = getTrackingSpreadsheet();
@@ -241,6 +261,12 @@ function updateJobTimeNote(actor, data) {
     if (rowIndex === -1) return { success: false, error: 'Time entry not found' };
     if (String(rows[rowIndex][1] || '') !== String(actor.id || '')) return { error: 'forbidden' };
     sheet.getRange(rowIndex + 1, 12).setValue(sanitizeSheetText(notes));
+    const paused = getPausedJobTimeEntries_(actor.id);
+    if (paused.some(entry => String(entry.entryId || '') === entryId)) {
+      savePausedJobTimeEntries_(actor.id, paused.map(entry => String(entry.entryId || '') === entryId
+        ? { ...entry, notes: notes }
+        : entry));
+    }
     return { success: true, notes };
   } catch (err) { return { success: false, error: 'Could not save note' }; }
   finally { lock.releaseLock(); }
@@ -401,10 +427,60 @@ function getJobTimeStatus(actor) {
     const rows = getJobTimeEntriesSheet_().getDataRange().getValues();
     const activeRows = activeJobTimeRows_(rows, actor.id);
     const active = activeRows.map(item => jobTimeEntryFromRow_(item.row));
-    return { success: true, active: active.length ? active[active.length - 1] : null, activeEntries: active };
+    const paused = getPausedJobTimeEntries_(actor.id).map(entry => ({ ...entry, paused: true }));
+    const entries = active.concat(paused);
+    return { success: true, active: active.length ? active[active.length - 1] : null, activeEntries: entries };
   } catch (err) {
     console.error('Job time status failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not load current job' };
+  }
+}
+
+function pauseJobTime(actor, data) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const entryId = String((data && data.entryId) || '').trim();
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const sheet = getJobTimeEntriesSheet_();
+    const rows = sheet.getDataRange().getValues();
+    const activeRow = activeJobTimeRows_(rows, actor.id)
+      .find(item => String(item.row[0] || '') === entryId);
+    if (!activeRow) return { success: false, error: 'Active time entry not found' };
+    closeActiveJobTimeRows_(sheet, [activeRow], jobTimeNow_());
+    const pausedEntry = { ...jobTimeEntryFromRow_(activeRow.row), paused: true, startedAt: '' };
+    const paused = getPausedJobTimeEntries_(actor.id)
+      .filter(entry => String(entry.entryId || '') !== entryId);
+    paused.push(pausedEntry);
+    savePausedJobTimeEntries_(actor.id, paused);
+    return { success: true, paused: pausedEntry };
+  } catch (err) {
+    console.error('Pause job time failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not pause work — try again' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function resumeJobTime(actor, data) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const entryId = String((data && data.entryId) || '').trim();
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const paused = getPausedJobTimeEntries_(actor.id);
+    const entry = paused.find(item => String(item.entryId || '') === entryId);
+    if (!entry) return { success: false, error: 'Paused job not found' };
+    const startedAt = jobTimeNow_();
+    const row = [Utilities.getUuid(), String(actor.id), sanitizeSheetText(actor.name), sanitizeSheetText(actor.department), String(entry.jobNum || ''), sanitizeSheetText(entry.jobName), String(entry.source || ''), startedAt, '', '', 'active', sanitizeSheetText(entry.notes || ''), '', '', ''];
+    getJobTimeEntriesSheet_().appendRow(row);
+    savePausedJobTimeEntries_(actor.id, paused.filter(item => String(item.entryId || '') !== entryId));
+    return { success: true, active: jobTimeEntryFromRow_(row) };
+  } catch (err) {
+    console.error('Resume job time failed for user %s: %s', actor.id, err && err.message);
+    return { success: false, error: 'Could not resume work — try again' };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -462,6 +538,14 @@ function stopJobTime(actor) {
     const requestedEntryId = String((arguments[1] && arguments[1].entryId) || '').trim();
     const activeRows = activeJobTimeRows_(rows, actor.id)
       .filter(item => !requestedEntryId || String(item.row[0] || '') === requestedEntryId);
+    if (!activeRows.length && requestedEntryId) {
+      const paused = getPausedJobTimeEntries_(actor.id);
+      const remaining = paused.filter(entry => String(entry.entryId || '') !== requestedEntryId);
+      if (remaining.length !== paused.length) {
+        savePausedJobTimeEntries_(actor.id, remaining);
+        return { success: true, stopped: true, active: null };
+      }
+    }
     if (!activeRows.length) return { success: true, stopped: false, active: null };
     closeActiveJobTimeRows_(sheet, activeRows, jobTimeNow_());
     return { success: true, stopped: true, active: null };

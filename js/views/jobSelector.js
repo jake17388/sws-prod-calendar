@@ -1,4 +1,4 @@
-import { fetchJobTimeStatus, lookupSquarecoilJob, saveJobTimeNote, startJobTime, stopJobTime } from '../api.js';
+import { fetchJobTimeStatus, lookupSquarecoilJob, pauseJobTime, resumeJobTime, saveJobTimeNote, startJobTime, stopJobTime } from '../api.js';
 import { currentDepartment } from '../auth.js';
 import { selectableJobSelectorJobs } from '../jobSelectorModel.mjs';
 import { escapeAttr, escapeHtml } from '../lib/html.js';
@@ -34,7 +34,7 @@ function setBusy(container, busy) {
   actionBusy = busy;
   container.setAttribute('aria-busy', String(busy));
   container.querySelectorAll('button, input').forEach(control => {
-    if (control.classList.contains('job-selector-note-edit') || control.classList.contains('job-selector-stop-entry')) return;
+    if (control.classList.contains('job-selector-note-edit') || control.classList.contains('job-selector-pause-entry') || control.classList.contains('job-selector-resume-entry') || control.classList.contains('job-selector-stop-entry')) return;
     if (busy) {
       control.dataset.disabledBeforeBusy = String(control.disabled);
       control.disabled = true;
@@ -136,6 +136,40 @@ function endWork(container, jobs, entryId) {
     });
 }
 
+function pauseWork(container, jobs, entryId) {
+  const entry = activeEntries.find(item => item.entryId === entryId);
+  if (!entry || entry.paused || entry.pausePending) return;
+  activeEntries = activeEntries.map(item => item.entryId === entryId ? { ...item, pausePending: true } : item);
+  paintJobSelector(container, jobs);
+  pauseJobTime(entryId).then(result => {
+    if (!result.success) throw new Error(result.error || 'Could not pause work');
+    activeEntries = activeEntries.map(item => item.entryId === entryId ? { ...item, ...result.paused, paused: true, pausePending: false } : item);
+    paintJobSelector(container, jobs);
+    showToast('Work timer paused');
+  }).catch(err => {
+    activeEntries = activeEntries.map(item => item.entryId === entryId ? { ...item, pausePending: false } : item);
+    paintJobSelector(container, jobs);
+    showHint(container, err.message || 'Could not pause work — try again', true);
+  });
+}
+
+function resumeWork(container, jobs, entryId) {
+  const entry = activeEntries.find(item => item.entryId === entryId);
+  if (!entry || !entry.paused || entry.resumePending) return;
+  activeEntries = activeEntries.map(item => item.entryId === entryId ? { ...item, resumePending: true } : item);
+  paintJobSelector(container, jobs);
+  resumeJobTime(entryId).then(result => {
+    if (!result.success || !result.active) throw new Error(result.error || 'Could not resume work');
+    activeEntries = activeEntries.map(item => item.entryId === entryId ? result.active : item);
+    paintJobSelector(container, jobs);
+    showToast('Work timer resumed');
+  }).catch(err => {
+    activeEntries = activeEntries.map(item => item.entryId === entryId ? { ...item, resumePending: false } : item);
+    paintJobSelector(container, jobs);
+    showHint(container, err.message || 'Could not resume work — try again', true);
+  });
+}
+
 function runLookup(container, jobs) {
   if (actionBusy) return;
   const input = container.querySelector('#job-selector-other-number');
@@ -200,6 +234,8 @@ function bindJobSelector(container, jobs) {
     });
   });
   container.querySelectorAll('.job-selector-note-edit').forEach(button => button.addEventListener('click', () => editEntryNote(container, jobs, button.dataset.entryId)));
+  container.querySelectorAll('.job-selector-pause-entry').forEach(button => button.addEventListener('click', () => pauseWork(container, jobs, button.dataset.entryId)));
+  container.querySelectorAll('.job-selector-resume-entry').forEach(button => button.addEventListener('click', () => resumeWork(container, jobs, button.dataset.entryId)));
   container.querySelectorAll('.job-selector-stop-entry').forEach(button => {
     button.addEventListener('click', () => endWork(container, jobs, button.dataset.entryId));
   });
@@ -218,7 +254,7 @@ function paintJobSelector(container, jobs) {
   const selectable = selectableJobSelectorJobs(jobs, department);
   const currentHtml = activeEntries.length
     ? `<section class="job-selector-current" aria-label="Currently working on">
-        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong></div>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : '<span class="job-selector-active-note-empty"></span>'}<button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button><button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.stopPending ? ' disabled' : ''}>${entry.stopPending ? 'Stopping…' : 'Stop'}</button></div>`).join('')}</div>
+        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry${entry.paused ? ' is-paused' : ''}"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong></div>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : '<span class="job-selector-active-note-empty"></span>'}<button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button>${entry.paused ? `<button class="job-selector-resume-entry" type="button" aria-label="Resume ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.resumePending ? 'Resuming…' : '▶'}</button>` : `<button class="job-selector-pause-entry" type="button" aria-label="Pause ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.stopPending ? ' disabled' : ''}>${entry.pausePending ? 'Pausing…' : 'Pause'}</button>`}<button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.stopPending ? 'Stopping…' : 'Stop'}</button></div>`).join('')}</div>
       </section>`
     : `<section class="job-selector-current is-idle" aria-label="Current job">
         <div><span>Currently working on</span><strong>${statusLoaded ? 'No active job' : 'Checking current job…'}</strong></div>

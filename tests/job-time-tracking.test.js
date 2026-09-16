@@ -16,6 +16,7 @@ function phoenixDateKey(value) {
 
 function loadBackend(extraGlobals = {}) {
   let uuid = 0;
+  const scriptProperties = new Map();
   const context = vm.createContext({
     console,
     Date,
@@ -24,8 +25,8 @@ function loadBackend(extraGlobals = {}) {
     Set,
     PropertiesService: {
       getScriptProperties: () => ({
-        getProperty: () => null,
-        setProperty() {},
+        getProperty: key => scriptProperties.get(key) || null,
+        setProperty(key, value) { scriptProperties.set(key, String(value)); },
       }),
     },
     CacheService: {
@@ -329,6 +330,45 @@ test('Stop Work closes the active segment and is harmless when already stopped',
   assert.equal(repeated.success, true);
   assert.equal(repeated.stopped, false);
   assert.equal(sheet.rows.length, 2);
+});
+
+test('pausing closes the segment, keeps it in status, resumes in a new row, and paused Stop only dismisses it', () => {
+  const context = loadBackend();
+  const sheet = createSheet([
+    [
+      'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+      'source', 'started_at', 'ended_at', 'duration_minutes', 'status', 'notes',
+      'edited_at', 'edited_by', 'edited_by_id',
+    ],
+    ['entry-1', 'paint-1', 'Pat Painter', 'Paint', '260101', 'First Job', 'assigned', new Date('2026-08-24T14:00:00.000Z'), '', '', 'active', 'Mask lobby', '', '', ''],
+  ]);
+  const actor = { id: 'paint-1', name: 'Pat Painter', department: 'Paint' };
+  let now = new Date('2026-08-24T14:30:00.000Z');
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.jobTimeNow_ = () => new Date(now);
+
+  const paused = context.pauseJobTime(actor, { entryId: 'entry-1' });
+  assert.equal(paused.success, true);
+  assert.equal(sheet.rows[1][9], 30);
+  assert.equal(sheet.rows[1][10], 'closed');
+  assert.equal(context.getJobTimeStatus(actor).activeEntries[0].paused, true);
+
+  now = new Date('2026-08-24T15:00:00.000Z');
+  const resumed = context.resumeJobTime(actor, { entryId: 'entry-1' });
+  assert.equal(resumed.success, true);
+  assert.equal(sheet.rows.length, 3);
+  assert.equal(sheet.rows[2][7].toISOString(), '2026-08-24T15:00:00.000Z');
+  assert.equal(sheet.rows[2][10], 'active');
+  assert.equal(sheet.rows[2][11], 'Mask lobby');
+  assert.equal(context.getJobTimeStatus(actor).activeEntries[0].paused, undefined);
+
+  now = new Date('2026-08-24T15:10:00.000Z');
+  context.pauseJobTime(actor, { entryId: resumed.active.entryId });
+  const rowsBeforeDismiss = sheet.rows.map(row => row.slice());
+  const dismissed = context.stopJobTime(actor, { entryId: resumed.active.entryId });
+  assert.equal(dismissed.success, true);
+  assert.deepEqual(sheet.rows, rowsBeforeDismiss);
+  assert.equal(context.getJobTimeStatus(actor).activeEntries.length, 0);
 });
 
 test('the protected hours log returns newest sheet entries first', () => {
