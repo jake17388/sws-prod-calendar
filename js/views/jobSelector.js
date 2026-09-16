@@ -1,10 +1,11 @@
-import { fetchJobTimeStatus, lookupSquarecoilJob, pauseJobTime, resumeJobTime, saveJobTimeNote, startJobTime, stopJobTime } from '../api.js';
+import { fetchJobTimeStatus, lookupSquarecoilJob, pauseJobTime, resumeJobTime, saveJobTimeNote, startJobTime, stopJobTime, toggleSavedJob } from '../api.js';
 import { currentDepartment } from '../auth.js';
 import { selectableJobSelectorJobs } from '../jobSelectorModel.mjs';
 import { escapeAttr, escapeHtml } from '../lib/html.js';
 import { showToast } from '../toast.js';
 
 let activeEntries = [];
+let savedJobs = [];
 let statusLoaded = false;
 let statusPromise = null;
 let lookupResult = null;
@@ -17,6 +18,7 @@ export function resetJobSelectorStatus() {
   if (actionBusy) return;
   statusRevision += 1;
   activeEntries = [];
+  savedJobs = [];
   statusLoaded = false;
   statusPromise = null;
   lookupResult = null;
@@ -226,14 +228,33 @@ function editEntryNote(container, jobs, entryId) {
   });
 }
 
+function toggleEntrySaved(container, jobs, entryId) {
+  const entry = activeEntries.find(item => item.entryId === entryId);
+  if (!entry || !entry.jobNum) return;
+  const wasSaved = savedJobs.some(job => String(job.jobNum) === String(entry.jobNum));
+  savedJobs = wasSaved ? savedJobs.filter(job => String(job.jobNum) !== String(entry.jobNum)) : savedJobs.concat({ jobNum: entry.jobNum, jobName: entry.jobName });
+  paintJobSelector(container, jobs);
+  toggleSavedJob(entry.jobNum, entry.jobName).then(result => {
+    if (!result.success) throw new Error(result.error || 'Could not update saved job');
+    savedJobs = result.savedJobs || savedJobs;
+    paintJobSelector(container, jobs);
+    showToast(result.saved ? 'Job saved' : 'Job removed from Saved Jobs');
+  }).catch(err => {
+    savedJobs = wasSaved ? savedJobs.concat({ jobNum: entry.jobNum, jobName: entry.jobName }) : savedJobs.filter(job => String(job.jobNum) !== String(entry.jobNum));
+    paintJobSelector(container, jobs);
+    showHint(container, err.message || 'Could not update saved job', true);
+  });
+}
+
 function bindJobSelector(container, jobs) {
   const selected = new Map();
   container.querySelectorAll('.job-selector-job').forEach(button => {
     button.addEventListener('click', () => {
-      beginJobs(container, jobs, [{ jobNum: button.dataset.jobNum, source: 'assigned', jobName: button.dataset.jobName }]);
+      beginJobs(container, jobs, [{ jobNum: button.dataset.jobNum, source: button.dataset.jobSource || 'assigned', jobName: button.dataset.jobName }]);
     });
   });
   container.querySelectorAll('.job-selector-note-edit').forEach(button => button.addEventListener('click', () => editEntryNote(container, jobs, button.dataset.entryId)));
+  container.querySelectorAll('.job-selector-bookmark').forEach(button => button.addEventListener('click', () => toggleEntrySaved(container, jobs, button.dataset.entryId)));
   container.querySelectorAll('.job-selector-pause-entry').forEach(button => button.addEventListener('click', () => pauseWork(container, jobs, button.dataset.entryId)));
   container.querySelectorAll('.job-selector-resume-entry').forEach(button => button.addEventListener('click', () => resumeWork(container, jobs, button.dataset.entryId)));
   container.querySelectorAll('.job-selector-stop-entry').forEach(button => {
@@ -254,7 +275,7 @@ function paintJobSelector(container, jobs) {
   const selectable = selectableJobSelectorJobs(jobs, department);
   const currentHtml = activeEntries.length
     ? `<section class="job-selector-current" aria-label="Currently working on">
-        <div><span>Currently working on</span>${activeEntries.map(entry => `<div class="job-selector-active-entry${entry.paused ? ' is-paused' : ''}"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong></div>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : '<span class="job-selector-active-note-empty"></span>'}<button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button>${entry.paused ? `<button class="job-selector-resume-entry" type="button" aria-label="Resume ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.resumePending ? 'Resuming…' : '▶'}</button>` : `<button class="job-selector-pause-entry" type="button" aria-label="Pause ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.stopPending ? ' disabled' : ''}>${entry.pausePending ? 'Pausing…' : 'Pause'}</button>`}<button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.stopPending ? 'Stopping…' : 'Stop'}</button></div>`).join('')}</div>
+        <div><span>Currently working on</span>${activeEntries.map(entry => { const isSaved = savedJobs.some(job => String(job.jobNum) === String(entry.jobNum)); return `<div class="job-selector-active-entry${entry.paused ? ' is-paused' : ''}"><div class="job-selector-active-identity"><small class="job-selector-active-job-number">${escapeHtml(entry.jobNum || 'Other activity')}</small><strong class="job-selector-active-job-name">${escapeHtml(entry.jobName)}</strong></div>${entry.notes ? `<small class="job-selector-active-note-preview">${escapeHtml(entry.notes)}${entry.notesPending ? ' · Saving…' : ''}</small>` : '<span class="job-selector-active-note-empty"></span>'}<button class="job-selector-note-edit" type="button" aria-label="Edit notes for ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}">✎</button>${entry.jobNum ? `<button class="job-selector-bookmark${isSaved ? ' is-saved' : ''}" type="button" aria-label="${isSaved ? 'Remove' : 'Save'} ${escapeAttr(entry.jobName)} ${isSaved ? 'from' : 'to'} Saved Jobs" aria-pressed="${isSaved}" data-entry-id="${escapeAttr(entry.entryId)}">${isSaved ? '▮' : '▯'}</button>` : '<span class="job-selector-bookmark-spacer"></span>'}${entry.paused ? `<button class="job-selector-resume-entry" type="button" aria-label="Resume ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.resumePending ? 'Resuming…' : '▶'}</button>` : `<button class="job-selector-pause-entry" type="button" aria-label="Pause ${escapeAttr(entry.jobName)}" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.stopPending ? ' disabled' : ''}>${entry.pausePending ? 'Pausing…' : 'Pause'}</button>`}<button class="job-selector-stop-entry" type="button" data-entry-id="${escapeAttr(entry.entryId)}"${entry.pending || entry.pausePending || entry.resumePending || entry.stopPending ? ' disabled' : ''}>${entry.stopPending ? 'Stopping…' : 'Stop'}</button></div>`; }).join('')}</div>
       </section>`
     : `<section class="job-selector-current is-idle" aria-label="Current job">
         <div><span>Currently working on</span><strong>${statusLoaded ? 'No active job' : 'Checking current job…'}</strong></div>
@@ -280,6 +301,10 @@ function paintJobSelector(container, jobs) {
       </div>`
     : '';
 
+  const savedJobsHtml = savedJobs.length
+    ? savedJobs.map(job => { const isActive = activeEntries.some(entry => String(entry.jobNum) === String(job.jobNum)); return `<button class="job-selector-job${isActive ? ' is-active' : ''}" type="button" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}" data-job-source="saved"><span class="job-selector-job-number">${escapeHtml(job.jobNum)}</span><span class="job-selector-job-name">${escapeHtml(job.jobName)}</span><span class="job-selector-job-tasks">${isActive ? 'Active now' : 'Saved job'}</span></button>`; }).join('')
+    : '<div class="job-selector-empty">Bookmark a job while working on it to save it here.</div>';
+
   container.innerHTML = `<div class="job-selector-shell">
     <header class="job-selector-heading">
       <span class="job-selector-eyebrow">Job costing</span>
@@ -293,6 +318,10 @@ function paintJobSelector(container, jobs) {
         <span>${escapeHtml(department)}</span>
       </div>
       <div class="job-selector-grid">${jobsHtml}</div>
+    </section>
+    <section class="job-selector-section" aria-labelledby="job-selector-saved-title">
+      <div class="job-selector-section-heading"><h2 id="job-selector-saved-title">Saved Jobs</h2></div>
+      <div class="job-selector-grid">${savedJobsHtml}</div>
     </section>
     <section class="job-selector-section job-selector-other" aria-labelledby="job-selector-other-title">
       <div class="job-selector-section-heading">
@@ -323,6 +352,7 @@ export function renderJobSelector(container, _refDate, jobs) {
       if (!result.success) throw new Error(result.error || 'Could not load current job');
       if (requestRevision !== statusRevision) return;
       activeEntries = dedupeActiveEntries(result.activeEntries || (result.active ? [result.active] : []));
+      savedJobs = result.savedJobs || [];
       statusLoaded = true;
       if (container.querySelector('.job-selector-shell')) paintJobSelector(container, jobs);
     })

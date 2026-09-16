@@ -12,6 +12,7 @@ const JOB_TIME_AUDIT_HEADERS = ['edited_at', 'edited_by', 'edited_by_id'];
 const JOB_TIME_NOTE_HEADERS = ['notes'];
 const JOB_TIME_HEADERS = JOB_TIME_BASE_HEADERS.concat(JOB_TIME_NOTE_HEADERS, JOB_TIME_AUDIT_HEADERS);
 const PAUSED_JOB_TIME_KEY_PREFIX = 'PAUSED_JOB_TIME_';
+const SAVED_JOB_TIME_KEY_PREFIX = 'SAVED_JOB_TIME_';
 
 function pausedJobTimeKey_(userId) {
   return PAUSED_JOB_TIME_KEY_PREFIX + String(userId || '');
@@ -30,6 +31,29 @@ function getPausedJobTimeEntries_(userId) {
 
 function savePausedJobTimeEntries_(userId, entries) {
   PropertiesService.getScriptProperties().setProperty(pausedJobTimeKey_(userId), JSON.stringify(entries || []));
+}
+
+function savedJobTimeKey_(userId) { return SAVED_JOB_TIME_KEY_PREFIX + String(userId || ''); }
+
+function getSavedJobTimeEntries_(userId) {
+  const raw = PropertiesService.getScriptProperties().getProperty(savedJobTimeKey_(userId));
+  if (!raw) return [];
+  try {
+    const entries = JSON.parse(raw);
+    return Array.isArray(entries) ? entries.filter(entry => validJobKey(String(entry.jobNum || ''))) : [];
+  } catch (_err) { return []; }
+}
+
+function toggleSavedJob(actor, data) {
+  if (!canUseJobSelector(actor && actor.department)) return { error: 'forbidden' };
+  const jobNum = String((data && data.jobNum) || '').trim();
+  const jobName = String((data && data.jobName) || '').trim().slice(0, 300);
+  if (!validJobKey(jobNum) || !validText(jobName, 300)) return { success: false, error: 'Invalid job' };
+  const saved = getSavedJobTimeEntries_(actor.id);
+  const exists = saved.some(entry => String(entry.jobNum) === jobNum);
+  const next = exists ? saved.filter(entry => String(entry.jobNum) !== jobNum) : saved.concat({ jobNum, jobName });
+  PropertiesService.getScriptProperties().setProperty(savedJobTimeKey_(actor.id), JSON.stringify(next));
+  return { success: true, saved: !exists, savedJobs: next };
 }
 
 function getJobTimeEntriesSheet_() {
@@ -401,9 +425,9 @@ function resolveJobTimeSelection_(actor, data) {
     return { jobNum: '', jobName, source };
   }
   if (!validJobKey(jobNum)) return { error: 'Invalid job number' };
-  if (source !== 'assigned' && source !== 'other') return { error: 'Invalid job source' };
+  if (source !== 'assigned' && source !== 'other' && source !== 'saved') return { error: 'Invalid job source' };
 
-  if (source === 'other') {
+  if (source === 'other' || source === 'saved') {
     const result = lookupSquarecoilJob_(jobNum);
     if (!result.success || !result.found) return { error: result.error || 'Squarecoil job was not found' };
     return { jobNum, jobName: result.job.name, source };
@@ -429,7 +453,7 @@ function getJobTimeStatus(actor) {
     const active = activeRows.map(item => jobTimeEntryFromRow_(item.row));
     const paused = getPausedJobTimeEntries_(actor.id).map(entry => ({ ...entry, paused: true }));
     const entries = active.concat(paused);
-    return { success: true, active: active.length ? active[active.length - 1] : null, activeEntries: entries };
+    return { success: true, active: active.length ? active[active.length - 1] : null, activeEntries: entries, savedJobs: getSavedJobTimeEntries_(actor.id) };
   } catch (err) {
     console.error('Job time status failed for user %s: %s', actor.id, err && err.message);
     return { success: false, error: 'Could not load current job' };

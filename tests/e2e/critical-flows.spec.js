@@ -47,6 +47,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     };
   }
   let activeJobTime = null;
+  let savedJobs = [];
   let costingButtons = [
     { id: 'loading-unloading', text: 'Loading/Unloading' },
     { id: 'team-support', text: 'Team Support' },
@@ -82,7 +83,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'getTrackingVersion') {
       body = { version: 1 };
     } else if (action === 'getJobTimeStatus') {
-      body = { success: true, active: activeJobTime };
+      body = { success: true, active: activeJobTime, savedJobs };
     } else if (action === 'getJobTimeLog') {
       const url = new URL(request.url());
       const from = url.searchParams.get('from');
@@ -107,6 +108,10 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
     } else if (action === 'lookupSquarecoilJob') {
       const jobNum = new URL(request.url()).searchParams.get('jobNum');
       body = { success: true, found: true, job: { jobNum, name: 'Squarecoil Other Job' } };
+    } else if (action === 'toggleSavedJob') {
+      const exists = savedJobs.some(item => item.jobNum === payload.jobNum);
+      savedJobs = exists ? savedJobs.filter(item => item.jobNum !== payload.jobNum) : savedJobs.concat({ jobNum: payload.jobNum, jobName: payload.jobName });
+      body = { success: true, saved: !exists, savedJobs };
     } else if (action === 'getProofFile') {
       body = productionPdf
         ? { available: true, name: '260001-production.pdf', base64: productionPdf }
@@ -205,15 +210,16 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       body = { success: true, buttons: costingButtons };
     } else if (action === 'startJobTime') {
       if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
-      const costingButton = costingButtons.find(button => button.id === payload.costingButtonId);
+      const selection = payload.selections?.[0] || payload;
+      const costingButton = costingButtons.find(button => button.id === selection.costingButtonId);
       activeJobTime = {
-        entryId: `entry-${payload.jobNum || payload.costingButtonId}`,
+        entryId: `entry-${selection.jobNum || selection.costingButtonId}`,
         userId: 'admin',
         employee: 'Test User',
         department,
-        jobNum: payload.jobNum || '',
-        jobName: costingButton?.text || (payload.source === 'other' ? 'Squarecoil Other Job' : currentJob.title),
-        source: payload.source,
+        jobNum: selection.jobNum || '',
+        jobName: costingButton?.text || (selection.source === 'other' ? 'Squarecoil Other Job' : selection.jobName || currentJob.title),
+        source: selection.source,
         startedAt: '2026-08-24T14:00:00.000Z',
       };
       body = { success: true, active: activeJobTime };
@@ -640,7 +646,7 @@ test('a production employee can clock into a typed Other activity without a job 
   await login(page);
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
-  await expect(page.locator('.job-selector-section h2')).toHaveText(['Assigned jobs', 'Other Job Numbers/Activities']);
+  await expect(page.locator('.job-selector-section h2')).toHaveText(['Assigned jobs', 'Saved Jobs', 'Other Job Numbers/Activities']);
   await page.getByRole('textbox', { name: 'Other activity' }).fill('Shop cleanup');
   await page.getByRole('button', { name: 'Start activity' }).click();
   await expect(page.locator('.job-selector-current').getByText('Shop cleanup', { exact: true })).toBeVisible();
@@ -663,6 +669,20 @@ test('a production employee can pause, resume into a new segment, and dismiss a 
   await page.getByRole('button', { name: 'Pause Browser Test Job' }).click();
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByText('No active job')).toBeVisible();
+});
+
+test('a production employee can bookmark an active job and restart it from Saved Jobs', async ({ page }) => {
+  await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Job Selector' }).click();
+  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.getByRole('button', { name: 'Save Browser Test Job to Saved Jobs' }).click();
+  await expect(page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await expect(page.getByRole('button', { name: 'Remove Browser Test Job from Saved Jobs' })).toBeVisible();
 });
 
 test.skip('a Costing Viewer can rename, remove, and add Costing Buttons in Settings', async ({ page }) => {

@@ -75,6 +75,7 @@ export const pauseJobTime = entryId => scriptPost({ action: 'pauseJobTime', entr
 export const resumeJobTime = entryId => scriptPost({ action: 'resumeJobTime', entryId });
 export const stopJobTime = (entryId = '') => scriptPost({ action: 'stopJobTime', entryId });
 export const saveJobTimeNote = (entryId, notes) => scriptPost({ action: 'updateJobTimeNote', entryId, notes });
+export const toggleSavedJob = (jobNum, jobName) => scriptPost({ action: 'toggleSavedJob', jobNum, jobName });
 
 export const fetchArchivedJobs = (query = '') =>
   scriptGet('getArchivedJobs', { q: query }).then(d => {

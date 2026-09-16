@@ -187,6 +187,7 @@ function routePost(e) {
   if (data.action === 'updateJobDepartments') return respond(() => updateJobDepartments(actor, data));
   if (data.action === 'toggleDepartmentTaskDone') return respond(() => toggleDepartmentTaskDone(actor, data));
   if (data.action === 'startJobTime') return respond(() => startJobTime(actor, data));
+  if (data.action === 'toggleSavedJob') return respond(() => toggleSavedJob(actor, data));
   if (data.action === 'pauseJobTime') return respond(() => pauseJobTime(actor, data));
   if (data.action === 'resumeJobTime') return respond(() => resumeJobTime(actor, data));
   if (data.action === 'stopJobTime') return respond(() => stopJobTime(actor, data));

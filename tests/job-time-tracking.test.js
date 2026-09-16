@@ -204,6 +204,23 @@ test('assigned selections require an unfinished task in the signed-in department
   );
 });
 
+test('saved jobs are durable per employee and can be removed', () => {
+  const context = loadBackend();
+  const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
+
+  const saved = context.toggleSavedJob(actor, { jobNum: '260001', jobName: 'Browser Test Job' });
+  assert.equal(saved.success, true);
+  assert.equal(saved.saved, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getSavedJobTimeEntries_('paint-1'))), [
+    { jobNum: '260001', jobName: 'Browser Test Job' },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.getSavedJobTimeEntries_('paint-2'))), []);
+
+  const removed = context.toggleSavedJob(actor, { jobNum: '260001', jobName: 'Browser Test Job' });
+  assert.equal(removed.saved, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(removed.savedJobs)), []);
+});
+
 test('costing button selections use a configured server-side label and no job number', () => {
   const context = loadBackend();
   const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
