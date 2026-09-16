@@ -90,7 +90,7 @@ test('the job selector renders an accessible custom dialog and labeled note area
   assert.match(view, /Save note/);
   assert.match(view, /Add job note/);
   assert.match(view, /Edit job note/);
-  assert.match(view, /job-selector-note-content/);
+  assert.match(view, /job-selector-note-edit\$\{entry\.notes \? ' has-note' : ''\}/);
   assert.match(css, /job-note-modal/);
   assert.match(css, /@media \(max-width:\s*600px\)/);
   assert.match(css, /:focus-visible/);
