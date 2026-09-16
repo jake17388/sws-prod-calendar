@@ -81,17 +81,17 @@ test('the Job Selector no longer renders configurable Costing Activities', () =>
   assert.match(css, /job-selector-other-activity-controls/);
 });
 
-test('active jobs use a two-line identity and stable action columns with an optimistic note preview', () => {
+test('active jobs use a two-line identity, stable actions, and a separate wrapping note area', () => {
   const view = read('js/views/jobSelector.js');
   const css = read('styles/job-selector.css');
 
   assert.match(view, /job-selector-active-job-number/);
   assert.match(view, /job-selector-active-job-name/);
-  assert.match(view, /job-selector-active-note-preview/);
+  assert.match(view, /job-selector-note-content/);
   assert.match(view, /pending: true/);
   assert.doesNotMatch(view, /if \(actionBusy\) return;\n  const previousEntries = activeEntries;/);
-  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto auto auto/);
-  assert.match(css, /\.job-selector-active-note-preview/);
+  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto/);
+  assert.match(css, /\.job-selector-note-content/);
 });
 
 test('stopping an active job does not put the whole selector into a busy state', () => {
@@ -108,11 +108,11 @@ test('rapid start responses reconcile active jobs without duplicate rows', () =>
   assert.match(view, /activeEntries\.some\(item => entryKey\(item\)/);
 });
 
-test('active job rows reserve the far-right action area and place notes before the pencil', () => {
+test('active job rows reserve the far-right actions and place notes on their own row', () => {
   const css = read('styles/job-selector.css');
   assert.match(css, /\.job-selector-current > div:first-child\s*\{[^}]*flex:\s*1/);
-  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, auto\) auto auto auto auto/);
-  assert.match(css, /\.job-selector-active-note-preview\s*\{[^}]*grid-column:\s*2/);
+  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto/);
+  assert.match(css, /\.job-selector-note-content\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
 });
 
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
