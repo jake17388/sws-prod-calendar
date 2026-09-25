@@ -221,6 +221,42 @@ test('saved jobs are durable per employee and can be removed', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(removed.savedJobs)), []);
 });
 
+test('a job note survives stop and reopen without leaking to another employee', () => {
+  const context = loadBackend();
+  const sheet = createSheet([[
+    'entry_id', 'user_id', 'employee', 'department', 'job_number', 'job_name',
+    'source', 'started_at', 'ended_at', 'duration_minutes', 'status', 'notes',
+    'edited_at', 'edited_by', 'edited_by_id',
+  ]]);
+  const actor = { id: 'paint-1', name: 'Pat Painter', department: 'Paint' };
+  const otherActor = { id: 'paint-2', name: 'Parker Painter', department: 'Paint' };
+  context.getJobTimeEntriesSheet_ = () => sheet;
+  context.resolveJobTimeSelection_ = (_actor, data) => ({
+    jobNum: data.jobNum,
+    jobName: 'Browser Test Job',
+    source: data.source,
+  });
+
+  const first = context.startJobTime(actor, { jobNum: '260001', source: 'assigned' });
+  const saved = context.updateJobTimeNote(actor, { entryId: first.active.entryId, notes: 'Mask lobby first' });
+  assert.equal(saved.success, true);
+  context.stopJobTime(actor, { entryId: first.active.entryId });
+
+  const reopened = context.startJobTime(actor, { jobNum: '260001', source: 'saved' });
+  assert.equal(reopened.active.notes, 'Mask lobby first');
+  assert.equal(sheet.rows.at(-1)[11], 'Mask lobby first');
+
+  context.stopJobTime(actor, { entryId: reopened.active.entryId });
+  const otherEmployeeEntry = context.startJobTime(otherActor, { jobNum: '260001', source: 'saved' });
+  assert.equal(otherEmployeeEntry.active.notes, '');
+
+  context.stopJobTime(otherActor, { entryId: otherEmployeeEntry.active.entryId });
+  const cleared = context.updateJobTimeNote(actor, { entryId: reopened.active.entryId, notes: '' });
+  assert.equal(cleared.success, true);
+  const reopenedAfterClear = context.startJobTime(actor, { jobNum: '260001', source: 'saved' });
+  assert.equal(reopenedAfterClear.active.notes, '');
+});
+
 test('costing button selections use a configured server-side label and no job number', () => {
   const context = loadBackend();
   const actor = { id: 'paint-1', name: 'Pat', department: 'Paint' };
