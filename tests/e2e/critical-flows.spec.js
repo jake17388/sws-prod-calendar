@@ -48,6 +48,7 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
   }
   let activeJobTime = null;
   let savedJobs = [];
+  const jobTimeNotes = new Map();
   let costingButtons = [
     { id: 'loading-unloading', text: 'Loading/Unloading' },
     { id: 'team-support', text: 'Team Support' },
@@ -221,8 +222,13 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
         jobName: costingButton?.text || (selection.source === 'other' ? 'Squarecoil Other Job' : selection.jobName || currentJob.title),
         source: selection.source,
         startedAt: '2026-08-24T14:00:00.000Z',
+        notes: jobTimeNotes.get(selection.jobNum) || '',
       };
       body = { success: true, active: activeJobTime };
+    } else if (action === 'updateJobTimeNote') {
+      activeJobTime = { ...activeJobTime, notes: payload.notes };
+      if (activeJobTime.jobNum) jobTimeNotes.set(activeJobTime.jobNum, payload.notes);
+      body = { success: true, notes: payload.notes };
     } else if (action === 'stopJobTime') {
       if (jobTimeDelayMs) await new Promise(resolve => setTimeout(resolve, jobTimeDelayMs));
       activeJobTime = null;
@@ -677,12 +683,17 @@ test('a production employee can bookmark an active job and restart it from Saved
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.getByRole('button', { name: 'Add job note' }).click();
+  await page.getByRole('textbox', { name: 'Note' }).fill('Mask lobby first');
+  await page.getByRole('button', { name: 'Save note' }).click();
   await page.getByRole('button', { name: 'Save Browser Test Job to Saved Jobs' }).click();
   await expect(page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ }).click();
   await expect(page.getByRole('button', { name: 'Remove Browser Test Job from Saved Jobs' })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit job note' }).click();
+  await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('Mask lobby first');
 });
 
 test.skip('a Costing Viewer can rename, remove, and add Costing Buttons in Settings', async ({ page }) => {
