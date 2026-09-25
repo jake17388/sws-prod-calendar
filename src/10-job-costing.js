@@ -13,6 +13,7 @@ const JOB_TIME_NOTE_HEADERS = ['notes'];
 const JOB_TIME_HEADERS = JOB_TIME_BASE_HEADERS.concat(JOB_TIME_NOTE_HEADERS, JOB_TIME_AUDIT_HEADERS);
 const PAUSED_JOB_TIME_KEY_PREFIX = 'PAUSED_JOB_TIME_';
 const SAVED_JOB_TIME_KEY_PREFIX = 'SAVED_JOB_TIME_';
+const JOB_TIME_NOTE_KEY_PREFIX = 'JOB_TIME_NOTE_';
 
 function pausedJobTimeKey_(userId) {
   return PAUSED_JOB_TIME_KEY_PREFIX + String(userId || '');
@@ -34,6 +35,20 @@ function savePausedJobTimeEntries_(userId, entries) {
 }
 
 function savedJobTimeKey_(userId) { return SAVED_JOB_TIME_KEY_PREFIX + String(userId || ''); }
+
+function jobTimeNoteKey_(userId, jobNum) {
+  return JOB_TIME_NOTE_KEY_PREFIX + String(userId || '') + '_' + String(jobNum || '');
+}
+
+function getSavedJobTimeNote_(userId, jobNum) {
+  if (!userId || !validJobKey(String(jobNum || ''))) return '';
+  return String(PropertiesService.getScriptProperties().getProperty(jobTimeNoteKey_(userId, jobNum)) || '');
+}
+
+function saveJobTimeNote_(userId, jobNum, notes) {
+  if (!userId || !validJobKey(String(jobNum || ''))) return;
+  PropertiesService.getScriptProperties().setProperty(jobTimeNoteKey_(userId, jobNum), String(notes || ''));
+}
 
 function getSavedJobTimeEntries_(userId) {
   const raw = PropertiesService.getScriptProperties().getProperty(savedJobTimeKey_(userId));
@@ -284,6 +299,7 @@ function updateJobTimeNote(actor, data) {
     const rowIndex = rows.findIndex((row, index) => index > 0 && String(row[0] || '') === entryId);
     if (rowIndex === -1) return { success: false, error: 'Time entry not found' };
     if (String(rows[rowIndex][1] || '') !== String(actor.id || '')) return { error: 'forbidden' };
+    saveJobTimeNote_(actor.id, String(rows[rowIndex][4] || ''), notes);
     sheet.getRange(rowIndex + 1, 12).setValue(sanitizeSheetText(notes));
     const paused = getPausedJobTimeEntries_(actor.id);
     if (paused.some(entry => String(entry.entryId || '') === entryId)) {
@@ -538,7 +554,8 @@ function startJobTime(actor, data) {
     selections.forEach(selection => {
       const key = `${selection.jobNum}|${selection.source}`;
       if (existing.has(key)) return;
-      const row = [Utilities.getUuid(), String(actor.id), sanitizeSheetText(actor.name), sanitizeSheetText(actor.department), selection.jobNum, sanitizeSheetText(selection.jobName), selection.source, startedAt, '', '', 'active', '', '', '', ''];
+      const notes = getSavedJobTimeNote_(actor.id, selection.jobNum);
+      const row = [Utilities.getUuid(), String(actor.id), sanitizeSheetText(actor.name), sanitizeSheetText(actor.department), selection.jobNum, sanitizeSheetText(selection.jobName), selection.source, startedAt, '', '', 'active', sanitizeSheetText(notes), '', '', ''];
       sheet.appendRow(row);
       created.push(jobTimeEntryFromRow_(row));
     });
