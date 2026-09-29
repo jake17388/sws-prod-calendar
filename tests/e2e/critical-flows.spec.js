@@ -704,6 +704,24 @@ test('a production employee can bookmark an active job and restart it from Saved
   await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('Mask lobby first');
 });
 
+test('a production employee can save a searched job and unsave it without starting work', async ({ page }) => {
+  await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
+  await login(page);
+
+  await page.getByRole('button', { name: 'Job Selector' }).click();
+  await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
+  await page.getByRole('button', { name: 'Look up job' }).click();
+  await page.getByRole('button', { name: 'Save Squarecoil Other Job to Saved Jobs' }).click();
+
+  await expect(page.getByText('No active job')).toBeVisible();
+  const savedSection = page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..');
+  await expect(savedSection.getByRole('button', { name: 'View details for 231180 Squarecoil Other Job' })).toBeVisible();
+
+  await savedSection.getByRole('button', { name: 'Remove Squarecoil Other Job from Saved Jobs' }).click();
+  await expect(savedSection.getByRole('button', { name: 'View details for 231180 Squarecoil Other Job' })).toBeHidden();
+  await expect(page.getByText('No active job')).toBeVisible();
+});
+
 test.skip('a Costing Viewer can rename, remove, and add Costing Buttons in Settings', async ({ page }) => {
   await mockBackend(page, { department: 'Costing Viewer', user: 'Carlos Hernandez' });
   await login(page);
