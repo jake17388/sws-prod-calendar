@@ -678,11 +678,15 @@ test('a production employee can pause, resume into a new segment, and dismiss a 
 });
 
 test('a production employee can bookmark an active job and restart it from Saved Jobs', async ({ page }) => {
-  await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
+  await mockBackend(page, { department: 'Paint', user: 'Pat Painter', productionPdf: onePagePdfBase64() });
   await login(page);
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
+  await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
+  await expect(page.getByRole('button', { name: 'View Production File' })).toBeVisible();
+  await page.locator('#job-detail-close').click();
   await page.getByRole('button', { name: 'Add job note' }).click();
   await page.getByRole('textbox', { name: 'Note' }).fill('Mask lobby first');
   await page.getByRole('button', { name: 'Save note' }).click();
@@ -691,6 +695,10 @@ test('a production employee can bookmark an active job and restart it from Saved
 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
+  await expect(page.getByRole('button', { name: 'View Production File' })).toBeVisible();
+  await page.locator('#job-detail-close').click();
+  await page.getByRole('button', { name: 'Start work on 260001 Browser Test Job' }).click();
   await expect(page.getByRole('button', { name: 'Remove Browser Test Job from Saved Jobs' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit job note' }).click();
   await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('Mask lobby first');
