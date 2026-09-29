@@ -1,5 +1,5 @@
 import { updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
-import { findJob, patchJob } from '../state.js';
+import { findJob, getJobs, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
 import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin, isTvDisplay } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
@@ -619,8 +619,7 @@ function renderDepartmentSection(job) {
 }
 
 /** @param {string} jobKey */
-export function openJobDetail(jobKey) {
-  const job = findJob(jobKey);
+function openJob(job) {
   if (!job) return;
   activeJobKey = job.jobKey;
 
@@ -662,6 +661,29 @@ export function openJobDetail(jobKey) {
 
   document.getElementById('job-detail-overlay').classList.add('open');
   setHeaderDimmed(true);
+}
+
+export function openJobDetail(jobKey) {
+  openJob(findJob(jobKey));
+}
+
+/** Opens the normal detail panel from a costing entry, even when that job is no longer on the calendar. */
+export function openJobDetailByNumber(jobNum, title) {
+  const normalizedJobNum = String(jobNum || '');
+  const scheduledJob = getJobs().find(job => String(job.jobNum || '') === normalizedJobNum);
+  openJob(scheduledJob || {
+    jobKey: normalizedJobNum,
+    jobNum: normalizedJobNum,
+    title: title || 'Production job',
+    isOtherProduction: true,
+    squarecoilStatus: 'Squarecoil',
+    departments: [],
+    departmentChecklists: {},
+    currentDepartments: [],
+    additionalFiles: [],
+    notes: [],
+    completed: false,
+  });
 }
 
 export function closeJobDetail() {

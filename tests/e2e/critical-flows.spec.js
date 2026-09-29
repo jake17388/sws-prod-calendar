@@ -691,10 +691,10 @@ test('a production employee can bookmark an active job and restart it from Saved
   await page.getByRole('textbox', { name: 'Note' }).fill('Mask lobby first');
   await page.getByRole('button', { name: 'Save note' }).click();
   await page.getByRole('button', { name: 'Save Browser Test Job to Saved Jobs' }).click();
-  await expect(page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: 'View details for 260001 Browser Test Job' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
-  await page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.getByRole('heading', { name: 'Saved Jobs' }).locator('..').locator('..').getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
   await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
   await expect(page.getByRole('button', { name: 'View Production File' })).toBeVisible();
   await page.locator('#job-detail-close').click();
