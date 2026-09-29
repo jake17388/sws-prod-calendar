@@ -699,7 +699,7 @@ test('a production employee can bookmark an active job and restart it from Saved
   await expect(page.getByRole('button', { name: 'View Production File' })).toBeVisible();
   await page.locator('#job-detail-close').click();
   await page.getByRole('button', { name: 'Start work on 260001 Browser Test Job' }).click();
-  await expect(page.getByRole('button', { name: 'Remove Browser Test Job from Saved Jobs' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'Remove Browser Test Job from Saved Jobs' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit job note' }).click();
   await expect(page.getByRole('textbox', { name: 'Note' })).toHaveValue('Mask lobby first');
 });
@@ -709,6 +709,7 @@ test('a production employee can save a searched job and unsave it without starti
   await login(page);
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
+  await expect(page.getByText('No active job')).toBeVisible();
   await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
   await page.getByRole('button', { name: 'Look up job' }).click();
   await page.getByRole('button', { name: 'Save Squarecoil Other Job to Saved Jobs' }).click();

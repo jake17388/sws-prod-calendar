@@ -296,22 +296,27 @@ function editEntryNote(container, jobs, entryId, trigger) {
   requestAnimationFrame(() => { textarea.focus(); textarea.setSelectionRange(textarea.value.length, textarea.value.length); });
 }
 
-function toggleEntrySaved(container, jobs, entryId) {
-  const entry = activeEntries.find(item => item.entryId === entryId);
-  if (!entry || !entry.jobNum) return;
-  const wasSaved = savedJobs.some(job => String(job.jobNum) === String(entry.jobNum));
-  savedJobs = wasSaved ? savedJobs.filter(job => String(job.jobNum) !== String(entry.jobNum)) : savedJobs.concat({ jobNum: entry.jobNum, jobName: entry.jobName });
+function updateSavedJob(container, jobs, jobNum, jobName) {
+  if (!jobNum) return;
+  const wasSaved = savedJobs.some(job => String(job.jobNum) === String(jobNum));
+  savedJobs = wasSaved ? savedJobs.filter(job => String(job.jobNum) !== String(jobNum)) : savedJobs.concat({ jobNum, jobName });
   paintJobSelector(container, jobs);
-  toggleSavedJob(entry.jobNum, entry.jobName).then(result => {
+  toggleSavedJob(jobNum, jobName).then(result => {
     if (!result.success) throw new Error(result.error || 'Could not update saved job');
     savedJobs = result.savedJobs || savedJobs;
     paintJobSelector(container, jobs);
     showToast(result.saved ? 'Job saved' : 'Job removed from Saved Jobs');
   }).catch(err => {
-    savedJobs = wasSaved ? savedJobs.concat({ jobNum: entry.jobNum, jobName: entry.jobName }) : savedJobs.filter(job => String(job.jobNum) !== String(entry.jobNum));
+    savedJobs = wasSaved ? savedJobs.concat({ jobNum, jobName }) : savedJobs.filter(job => String(job.jobNum) !== String(jobNum));
     paintJobSelector(container, jobs);
     showHint(container, err.message || 'Could not update saved job', true);
   });
+}
+
+function toggleEntrySaved(container, jobs, entryId) {
+  const entry = activeEntries.find(item => item.entryId === entryId);
+  if (!entry) return;
+  updateSavedJob(container, jobs, entry.jobNum, entry.jobName);
 }
 
 function bindJobSelector(container, jobs) {
@@ -328,6 +333,9 @@ function bindJobSelector(container, jobs) {
     button.addEventListener('click', () => {
       beginJobs(container, jobs, [{ jobNum: button.dataset.jobNum, source: 'saved', jobName: button.dataset.jobName }]);
     });
+  });
+  container.querySelectorAll('.job-selector-save-job').forEach(button => {
+    button.addEventListener('click', () => updateSavedJob(container, jobs, button.dataset.jobNum, button.dataset.jobName));
   });
   container.querySelectorAll('.job-selector-note-edit').forEach(button => button.addEventListener('click', () => editEntryNote(container, jobs, button.dataset.entryId, button)));
   container.querySelectorAll('.job-selector-bookmark').forEach(button => button.addEventListener('click', () => toggleEntrySaved(container, jobs, button.dataset.entryId)));
@@ -373,12 +381,12 @@ function paintJobSelector(container, jobs) {
   const lookupHtml = lookupResult
     ? `<div class="job-selector-other-confirm">
         <div><span>Squarecoil job found</span><strong>${escapeHtml(lookupResult.jobNum)} — ${escapeHtml(lookupResult.name)}</strong></div>
-        <button type="button">Start this job</button>
+        <div class="job-selector-other-actions"><button type="button">Start this job</button><button class="job-selector-save-job" type="button" aria-label="${savedJobs.some(job => String(job.jobNum) === String(lookupResult.jobNum)) ? 'Remove' : 'Save'} ${escapeAttr(lookupResult.name)} ${savedJobs.some(job => String(job.jobNum) === String(lookupResult.jobNum)) ? 'from' : 'to'} Saved Jobs" data-job-num="${escapeAttr(lookupResult.jobNum)}" data-job-name="${escapeAttr(lookupResult.name)}">${savedJobs.some(job => String(job.jobNum) === String(lookupResult.jobNum)) ? 'Saved' : 'Save job'}</button></div>
       </div>`
     : '';
 
   const savedJobsHtml = savedJobs.length
-    ? savedJobs.map(job => { const isActive = activeEntries.some(entry => String(entry.jobNum) === String(job.jobNum)); return `<div class="job-selector-saved-job"><button class="job-selector-job job-selector-job-details${isActive ? ' is-active' : ''}" type="button" aria-label="View details for ${escapeAttr(job.jobNum)} ${escapeAttr(job.jobName)}" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}"><span class="job-selector-job-number">${escapeHtml(job.jobNum)}</span><span class="job-selector-job-name">${escapeHtml(job.jobName)}</span><span class="job-selector-job-tasks">${isActive ? 'Active now' : 'Saved job'}</span></button>${isActive ? '' : `<button class="job-selector-start-job" type="button" aria-label="Start work on ${escapeAttr(job.jobNum)} ${escapeAttr(job.jobName)}" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}">Start work</button>`}</div>`; }).join('')
+    ? savedJobs.map(job => { const isActive = activeEntries.some(entry => String(entry.jobNum) === String(job.jobNum)); return `<div class="job-selector-saved-job"><button class="job-selector-job job-selector-job-details${isActive ? ' is-active' : ''}" type="button" aria-label="View details for ${escapeAttr(job.jobNum)} ${escapeAttr(job.jobName)}" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}"><span class="job-selector-job-number">${escapeHtml(job.jobNum)}</span><span class="job-selector-job-name">${escapeHtml(job.jobName)}</span><span class="job-selector-job-tasks">${isActive ? 'Active now' : 'Saved job'}</span></button>${isActive ? '' : `<button class="job-selector-start-job" type="button" aria-label="Start work on ${escapeAttr(job.jobNum)} ${escapeAttr(job.jobName)}" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}">Start work</button>`}<button class="job-selector-save-job job-selector-unsave-job" type="button" aria-label="Remove ${escapeAttr(job.jobName)} from Saved Jobs" data-job-num="${escapeAttr(job.jobNum)}" data-job-name="${escapeAttr(job.jobName)}">Unsave</button></div>`; }).join('')
     : '<div class="job-selector-empty">Bookmark a job while working on it to save it here.</div>';
 
   container.innerHTML = `<div class="job-selector-shell">
