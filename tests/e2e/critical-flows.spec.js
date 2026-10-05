@@ -214,12 +214,12 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       const selection = payload.selections?.[0] || payload;
       const costingButton = costingButtons.find(button => button.id === selection.costingButtonId);
       activeJobTime = {
-        entryId: `entry-${selection.jobNum || selection.costingButtonId}`,
+        entryId: `entry-${selection.jobNum || selection.costingButtonId || selection.jobName}`,
         userId: 'admin',
         employee: 'Test User',
         department,
         jobNum: selection.jobNum || '',
-        jobName: costingButton?.text || (selection.source === 'other' ? 'Squarecoil Other Job' : selection.jobName || currentJob.title),
+        jobName: costingButton?.text || (['other', 'other_activity'].includes(selection.source) ? selection.jobName : selection.jobName || currentJob.title),
         source: selection.source,
         startedAt: '2026-08-24T14:00:00.000Z',
         notes: jobTimeNotes.get(selection.jobNum) || '',
@@ -633,17 +633,21 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await expect(page.getByRole('heading', { name: 'What job are you beginning work on?' })).toBeVisible();
 
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
-  await expect(page.getByText('260001 — Browser Test Job')).toBeVisible({ timeout: 250 });
+  await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 260001 Browser Test Job' })).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();
 
   await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
   await page.getByRole('button', { name: 'Look up job' }).click();
   await expect(page.getByText('231180 — Squarecoil Other Job')).toBeVisible();
   await page.getByRole('button', { name: 'Start this job' }).click();
-  await expect(page.getByText('231180 — Squarecoil Other Job')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 231180 Squarecoil Other Job' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Stop Work' }).click();
-  await expect(page.getByText('No active job')).toBeVisible({ timeout: 250 });
+  const squarecoilEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 231180 Squarecoil Other Job' }) });
+  await expect(squarecoilEntry.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
+  await squarecoilEntry.getByRole('button', { name: 'Stop', exact: true }).click();
+  const assignedEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }) });
+  await assignedEntry.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(page.getByText('No active job')).toBeVisible();
   await expect(page.locator('#save-status')).toBeHidden();
 });
 
@@ -651,12 +655,14 @@ test('a production employee can clock into a typed Other activity without a job 
   await mockBackend(page, { department: 'Paint', user: 'Pat Painter' });
   await login(page);
 
+  const statusLoaded = page.waitForResponse(response => response.url().includes('action=getJobTimeStatus'));
   await page.getByRole('button', { name: 'Job Selector' }).click();
+  await statusLoaded;
   await expect(page.locator('.job-selector-section h2')).toHaveText(['Assigned jobs', 'Saved Jobs', 'Other Job Numbers/Activities']);
   await page.getByRole('textbox', { name: 'Other activity' }).fill('Shop cleanup');
   await page.getByRole('button', { name: 'Start activity' }).click();
   await expect(page.locator('.job-selector-current').getByText('Shop cleanup', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Stop Work' }).click();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByText('No active job')).toBeVisible();
 });
 
@@ -727,7 +733,7 @@ test.skip('a Costing Viewer can rename, remove, and add Costing Buttons in Setti
   await mockBackend(page, { department: 'Costing Viewer', user: 'Carlos Hernandez' });
   await login(page);
 
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Costing Buttons' }).click();
   await expect(page.getByRole('heading', { name: 'Costing Buttons' })).toBeVisible();
   const inputs = page.getByRole('textbox', { name: 'Costing button name' });
@@ -752,7 +758,7 @@ test.skip('Costing Buttons cannot be changed until their configuration finishes 
   });
   await login(page);
 
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Costing Buttons' }).click();
   const addButton = page.getByRole('button', { name: 'Add costing button' });
   const saveButton = page.getByRole('button', { name: 'Save changes' });
@@ -972,7 +978,7 @@ test('User Management shows which accounts still have temporary PINs', async ({ 
   await mockBackend(page);
   await login(page);
   await expect(page.getByText('Browser Test Job')).toBeVisible();
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.locator('#settings-btn').click();
   await page.getByRole('button', { name: 'User Management' }).click();
   await expect(page.getByRole('heading', { name: 'User Management' })).toBeVisible();
   await expect(page.locator('.user-row-training-status', { hasText: 'Temporary PIN' })).toBeVisible();
@@ -981,7 +987,7 @@ test('User Management shows which accounts still have temporary PINs', async ({ 
 test('an Admin can reset an account with a regular PIN', async ({ page }) => {
   await mockBackend(page);
   await login(page);
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.locator('#settings-btn').click();
   await page.getByRole('button', { name: 'User Management' }).click();
 
   const row = page.getByRole('group', { name: /Alex Worker, Paint/ });
