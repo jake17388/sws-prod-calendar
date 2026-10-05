@@ -118,6 +118,16 @@ test('active job rows reserve the far-right action area without a note text row'
   assert.doesNotMatch(css, /grid-row:\s*2/);
 });
 
+test('saved job actions stay compact instead of stretching and squeezing the job title', () => {
+  const css = read('styles/job-selector.css');
+
+  assert.match(css, /\.job-selector-saved-job\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.job-selector-saved-job-actions\s*\{[^}]*align-self:\s*center/);
+  assert.match(css, /\.job-selector-start-job[\s\S]*?\.job-selector-unsave-job\s*\{[^}]*min-height:\s*40px/);
+  assert.doesNotMatch(css, /\.job-selector-start-job\s*\{[^}]*align-self:\s*stretch/);
+  assert.doesNotMatch(css, /\.job-selector-unsave-job\s*\{[^}]*align-self:\s*stretch/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');
