@@ -635,6 +635,8 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
   await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 260001 Browser Test Job' })).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();
+  const assignedEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }) });
+  await expect(assignedEntry.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
 
   await page.getByRole('textbox', { name: 'Job number', exact: true }).fill('231180');
   await page.getByRole('button', { name: 'Look up job' }).click();
@@ -645,7 +647,6 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   const squarecoilEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 231180 Squarecoil Other Job' }) });
   await expect(squarecoilEntry.getByRole('button', { name: 'Stop', exact: true })).toBeEnabled();
   await squarecoilEntry.getByRole('button', { name: 'Stop', exact: true }).click();
-  const assignedEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }) });
   await assignedEntry.getByRole('button', { name: 'Stop', exact: true }).click();
   await expect(page.getByText('No active job')).toBeVisible();
   await expect(page.locator('#save-status')).toBeHidden();
