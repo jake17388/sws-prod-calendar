@@ -25,6 +25,7 @@ import { reportSyncSuccess, reportSyncFailure, setOnFirstFailure } from './syncS
 import { hasPendingWrites, subscribePendingWrites } from './pendingWrites.mjs';
 import { initSystemHealth, refreshSystemHealthUI } from './components/systemHealth.js';
 import { cleanUpdateUrl, updateReloadUrl } from './updateUrl.mjs';
+import { createViewDates } from './viewDates.mjs';
 
 const cleanLoadedUrl = cleanUpdateUrl(window.location.href);
 if (cleanLoadedUrl !== window.location.href) {
@@ -86,6 +87,7 @@ function saveDefaultView(view) {
 
 let activeView = DEFAULT_VIEW;
 let refDate = new Date();
+const viewDates = createViewDates(refDate);
 let tvDayKey = '';
 
 function localDayKey(date = new Date()) {
@@ -170,7 +172,9 @@ function switchView(view) {
   if (isTvDisplay() && view !== 'week') return;
   const container = document.getElementById('view-area');
   container.classList.remove('view-enter');
+  viewDates.set(activeView, refDate);
   activeView = view;
+  refDate = viewDates.get(view);
   if (view === 'jobSelector') resetJobSelectorStatus();
   if (view === 'hoursLog') resetHoursLog();
   // Opening the schedule lands on the oldest still-open job rather than today.
@@ -521,11 +525,13 @@ function boot() {
   // and only the scroll position distinguishes one "page" from the next.
   document.getElementById('nav-prev').addEventListener('click', () => {
     refDate = VIEWS[activeView].step(refDate, -1);
+    viewDates.set(activeView, refDate);
     scheduleScrollTarget = 'date';
     renderActiveView();
   });
   document.getElementById('nav-next').addEventListener('click', () => {
     refDate = VIEWS[activeView].step(refDate, 1);
+    viewDates.set(activeView, refDate);
     scheduleScrollTarget = 'date';
     renderActiveView();
   });
@@ -533,6 +539,7 @@ function boot() {
   // it returns to the oldest open job rather than the literal current date.
   document.getElementById('nav-today').addEventListener('click', () => {
     refDate = new Date();
+    viewDates.set(activeView, refDate);
     scheduleScrollTarget = 'open';
     renderActiveView();
   });
