@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { tvWindowDays, tvColumnTemplate, isWeekend, formatISO, TV_DAY_TRACK, TV_WEEKEND_TRACK } from '../js/dates.js';
+import { tvWindowDays, tvColumnTemplate, tvJobsForDay, isWeekend, formatISO, TV_DAY_TRACK, TV_WEEKEND_TRACK } from '../js/dates.js';
 
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const weekSource = fs.readFileSync(path.join(projectRoot, 'js/views/week.js'), 'utf8');
@@ -69,6 +69,27 @@ test('the TV strip shows only jobs that are still outstanding', () => {
   assert.match(weekSource, /tv \? jobs\.filter\(job => !job\.completed\) : jobs/);
   // Everyone else keeps seeing completed jobs struck through in place.
   assert.match(weekSource, /groupByDueDate\(visibleJobs\)/);
+});
+
+test('the first TV column collects every job overdue before today', () => {
+  const jobsByDate = {
+    '2026-08-28': [{ id: 'old' }],
+    '2026-08-31': [{ id: 'yesterday' }],
+    '2026-09-01': [{ id: 'today' }],
+  };
+  const today = new Date(2026, 8, 1);
+
+  assert.deepEqual(
+    tvJobsForDay(jobsByDate, new Date(2026, 7, 31), today, true).map(job => job.id),
+    ['old', 'yesterday'],
+  );
+  assert.deepEqual(tvJobsForDay(jobsByDate, today, today, false), [{ id: 'today' }]);
+});
+
+test('the TV overdue column is labeled Overdue and past weekend slivers stay empty', () => {
+  assert.match(weekSource, /isOverdueColumn\s*=\s*tv\s*&&\s*index\s*===\s*0/);
+  assert.match(weekSource, /isPastTvPlaceholder[\s\S]{0,160}\?\s*\[\]/);
+  assert.match(weekSource, /isOverdueColumn\s*\?\s*'Overdue'/);
 });
 
 test('the TV display reloads itself once an hour', () => {
