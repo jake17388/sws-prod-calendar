@@ -73,6 +73,16 @@ export function tvWindowDays(date) {
 export const tvColumnTemplate = collapsed =>
   collapsed.map(isCollapsed => (isCollapsed ? TV_WEEKEND_TRACK : TV_DAY_TRACK)).join(' ');
 
+/** Return exact-date jobs, or all jobs due before today for the TV's first column. */
+export function tvJobsForDay(jobsByDate, day, today, isOverdueColumn) {
+  if (!isOverdueColumn) return jobsByDate[formatISO(day)] || [];
+  const todayIso = formatISO(today);
+  return Object.keys(jobsByDate)
+    .filter(iso => iso < todayIso)
+    .sort()
+    .flatMap(iso => jobsByDate[iso]);
+}
+
 export function weekDays(date) {
   const start = startOfWeek(date);
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));

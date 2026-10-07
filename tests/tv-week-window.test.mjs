@@ -89,7 +89,7 @@ test('the first TV column collects every job overdue before today', () => {
 test('the TV overdue column is labeled Overdue and past weekend slivers stay empty', () => {
   assert.match(weekSource, /isOverdueColumn\s*=\s*tv\s*&&\s*index\s*===\s*0/);
   assert.match(weekSource, /isPastTvPlaceholder[\s\S]{0,160}\?\s*\[\]/);
-  assert.match(weekSource, /isOverdueColumn\s*\?\s*'Overdue'/);
+  assert.match(weekSource, /isOverdueColumn[\s\S]{0,80}Overdue/);
 });
 
 test('the TV display reloads itself once an hour', () => {

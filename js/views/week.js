@@ -1,8 +1,8 @@
-import { weekDays, tvWindowDays, tvColumnTemplate, isWeekend, formatISO, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
+import { weekDays, tvWindowDays, tvColumnTemplate, tvJobsForDay, isWeekend, isSameDay, groupByDueDate, DAY_NAMES, MONTH_NAMES } from '../dates.js';
 import { isTvDisplay } from '../auth.js';
 import { renderJobCard } from '../components/jobCard.js';
 
-/** The production TV rolls a work-day window; everyone else gets the calendar week. */
+/** The production TV rolls an overdue/current work window; everyone else gets the calendar week. */
 const viewDays = refDate => (isTvDisplay() ? tvWindowDays(refDate) : weekDays(refDate));
 
 /** @param {HTMLElement} container @param {Date} refDate @param {object[]} jobs */
@@ -19,10 +19,11 @@ export function renderWeek(container, refDate, jobs) {
 
   const grid = document.createElement('div');
   grid.className = 'week-grid';
-  days.forEach(day => {
-    const iso = formatISO(day);
+  days.forEach((day, index) => {
     const isToday = isSameDay(day, today);
-    const dayJobs = jobsByDate[iso] || [];
+    const isOverdueColumn = tv && index === 0;
+    const isPastTvPlaceholder = tv && !isOverdueColumn && day < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const dayJobs = isPastTvPlaceholder ? [] : tvJobsForDay(jobsByDate, day, today, isOverdueColumn);
     // Weekends only collapse to a sliver when nothing is actually due on them —
     // an occasional Saturday job still gets a readable column.
     const isCollapsed = tv && isWeekend(day) && !dayJobs.length;
@@ -33,7 +34,9 @@ export function renderWeek(container, refDate, jobs) {
 
     const headerEl = document.createElement('div');
     headerEl.className = `week-day-header ${isToday ? 'is-today' : ''}`.trim();
-    headerEl.innerHTML = `<div class="dow">${DAY_NAMES[day.getDay()]}</div><div class="dom">${day.getDate()}</div>`;
+    headerEl.innerHTML = isOverdueColumn
+      ? '<div class="dow">Overdue</div>'
+      : `<div class="dow">${DAY_NAMES[day.getDay()]}</div><div class="dom">${day.getDate()}</div>`;
     col.appendChild(headerEl);
 
     const jobsWrap = document.createElement('div');
