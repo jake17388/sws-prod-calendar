@@ -84,7 +84,9 @@ jobs:
             echo "::error::Could not read SCRIPT_URL from js/config.js"
             exit 1
           fi
-          curl --fail --location --silent --show-error --retry 4 --retry-delay 3 \
+          # Google can return a transient 404 while a newly versioned web-app
+          # deployment propagates, even after clasp lists the new deployment.
+          curl --fail --location --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
             "$SCRIPT_URL" | grep -q "SWS Production Calendar"
 
       # A red run that nobody looks at is the same as no run at all — this is
