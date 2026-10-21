@@ -92,7 +92,7 @@ test('active jobs keep saved note text hidden and mark the note button with a re
   assert.match(view, /entry\.notes \? 'Edit job note' : 'Add job note'/);
   assert.match(view, /pending: true/);
   assert.doesNotMatch(view, /if \(actionBusy\) return;\n  const previousEntries = activeEntries;/);
-  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto/);
+  assert.match(css, /\.job-selector-active-entry[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto auto/);
   assert.match(css, /\.job-selector-note-edit\.has-note::after\s*\{[^}]*background:\s*var\(--status-critical-solid\)/);
   assert.doesNotMatch(css, /\.job-selector-note-content/);
 });
@@ -114,7 +114,7 @@ test('rapid start responses reconcile active jobs without duplicate rows', () =>
 test('active job rows reserve the far-right action area without a note text row', () => {
   const css = read('styles/job-selector.css');
   assert.match(css, /\.job-selector-current > div:first-child\s*\{[^}]*flex:\s*1/);
-  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto/);
+  assert.match(css, /\.job-selector-active-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto auto auto auto/);
   assert.doesNotMatch(css, /grid-row:\s*2/);
 });
 

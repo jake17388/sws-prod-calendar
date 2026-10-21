@@ -636,7 +636,7 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await assignedSection.getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
   await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
   await page.locator('#job-detail-close').click();
-  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.locator('button.job-selector-job[data-job-num="260001"]').click();
   await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 260001 Browser Test Job' })).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();
   const assignedEntry = page.locator('.job-selector-active-entry').filter({ has: page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }) });
@@ -676,7 +676,7 @@ test('a production employee can pause, resume into a new segment, and dismiss a 
   await login(page);
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
-  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
+  await page.locator('button.job-selector-job[data-job-num="260001"]').click();
   await page.getByRole('button', { name: 'Pause Browser Test Job' }).click();
   await expect(page.getByRole('button', { name: 'Resume Browser Test Job' })).toBeVisible();
 
@@ -693,8 +693,8 @@ test('a production employee can bookmark an active job and restart it from Saved
   await login(page);
 
   await page.getByRole('button', { name: 'Job Selector' }).click();
-  await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
-  await page.getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
+  await page.locator('button.job-selector-job[data-job-num="260001"]').click();
+  await page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
   await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
   await expect(page.getByRole('button', { name: 'View Production File' })).toBeVisible();
   await page.locator('#job-detail-close').click();
