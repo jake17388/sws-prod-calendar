@@ -34,6 +34,8 @@ test('CI and both deployment workflows run checks and smoke tests on Node 24', (
   assert.doesNotMatch(pages, /actions\/upload-pages-artifact/);
   assert.match(pages, /actions\/deploy-pages@v5/);
   assert.match(backend, /Smoke test live backend/);
+  assert.match(backend, /--retry 12/);
+  assert.match(backend, /--retry-all-errors/);
   assert.match(backend, /actions\/github-script@v8/);
 });
 
