@@ -1070,15 +1070,18 @@ for (const percent of [200, 250]) {
     const metrics = await card.evaluate(element => {
       const title = element.querySelector('.job-selector-job-name');
       const number = element.querySelector('.job-selector-job-number');
+      const details = element.parentElement.querySelector('.job-selector-details-button');
       const bounds = title.getBoundingClientRect();
       return {
         titleTop: bounds.top, numberBottom: number.getBoundingClientRect().bottom,
+        detailsBottom: details.getBoundingClientRect().bottom,
         titleWidth: bounds.width, cardWidth: element.getBoundingClientRect().width,
         titleHeight: title.clientHeight, lineHeight: parseFloat(getComputedStyle(title).lineHeight),
         fits: title.scrollWidth <= title.clientWidth && title.scrollHeight <= title.clientHeight,
       };
     });
     expect(metrics.titleTop).toBeGreaterThanOrEqual(metrics.numberBottom);
+    expect(metrics.titleTop).toBeGreaterThanOrEqual(metrics.detailsBottom);
     expect(metrics.titleWidth / metrics.cardWidth).toBeGreaterThan(0.65);
     expect(metrics.titleHeight).toBeGreaterThan(metrics.lineHeight);
     expect(metrics.fits).toBe(true);
