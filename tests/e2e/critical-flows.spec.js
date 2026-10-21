@@ -632,6 +632,10 @@ test('a production employee starts an assigned job, switches to a Squarecoil job
   await page.getByRole('button', { name: 'Job Selector' }).click();
   await expect(page.getByRole('heading', { name: 'What job are you beginning work on?' })).toBeVisible();
 
+  const assignedSection = page.getByRole('region', { name: 'Assigned jobs' });
+  await assignedSection.getByRole('button', { name: 'View details for 260001 Browser Test Job' }).click();
+  await expect(page.locator('#job-detail-title')).toHaveText('260001 — Browser Test Job');
+  await page.locator('#job-detail-close').click();
   await page.getByRole('button', { name: /260001.*Browser Test Job/ }).click();
   await expect(page.getByRole('region', { name: 'Currently working on' }).getByRole('button', { name: 'View details for 260001 Browser Test Job' })).toBeVisible({ timeout: 250 });
   await expect(page.locator('#save-status')).toBeHidden();

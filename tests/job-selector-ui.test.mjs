@@ -129,6 +129,21 @@ test('saved jobs give the job details a full row with equal-width actions undern
   assert.match(css, /\.job-selector-start-job[\s\S]*?\.job-selector-unsave-job\s*\{[^}]*min-height:\s*40px/);
 });
 
+test('current, assigned, and saved jobs expose a dedicated three-dot details button', () => {
+  const view = read('js/views/jobSelector.js');
+  const css = read('styles/job-selector.css');
+
+  assert.match(view, /const detailsIcon\s*=\s*['"`][\s\S]*aria-hidden="true"[\s\S]*['"`];/);
+  assert.equal(
+    [...view.matchAll(/class="job-selector-details-button job-selector-job-details"/g)].length,
+    3,
+  );
+  assert.match(view, /aria-label="View details for \$\{escapeAttr\(entry\.jobNum\)\} \$\{escapeAttr\(entry\.jobName\)\}"/);
+  assert.match(view, /aria-label="View details for \$\{escapeAttr\(job\.jobNum\)\} \$\{escapeAttr\(job\.title\)\}"/);
+  assert.match(view, /aria-label="View details for \$\{escapeAttr\(job\.jobNum\)\} \$\{escapeAttr\(job\.jobName\)\}"/);
+  assert.match(css, /\.job-selector-details-button\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/);
+});
+
 test('job starts and stops paint optimistically while backend saves stay out of the global header', () => {
   const view = read('js/views/jobSelector.js');
   const app = read('js/app.js');
