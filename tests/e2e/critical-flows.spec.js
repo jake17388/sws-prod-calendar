@@ -28,7 +28,7 @@ function onePagePdfBase64() {
   return Buffer.from(pdf).toString('base64');
 }
 
-async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false, jobTimeEntries = null, filterJobTimeByDate = false, otherProductionJob = null } = {}) {
+async function mockBackend(page, { mustChangePin = false, department = 'Admin', user = 'Test User', productionPdf = null, productionFileError = null, expectedPin = null, jobDueDate = null, jobTimeDelayMs = 0, jobTimeDeleteDelayMs = 0, costingButtonsDelayMs = 0, jobTitle = null, jobDepartments = null, jobDepartmentChecklists = null, currentDepartments = null, departmentSaveDelayMs = 0, departmentConflictOnce = false, jobTimeEntries = null, filterJobTimeByDate = false, otherProductionJob = null } = {}) {
   let currentJob = { ...structuredClone(job), ...(jobDueDate ? { dueDate: jobDueDate } : {}), ...(jobTitle ? { title: jobTitle } : {}) };
   if (['Manufacturing', 'Graphics', 'Routing', 'Paint', 'Letters', 'Assembly'].includes(department)) {
     currentJob = {
@@ -114,9 +114,9 @@ async function mockBackend(page, { mustChangePin = false, department = 'Admin', 
       savedJobs = exists ? savedJobs.filter(item => item.jobNum !== payload.jobNum) : savedJobs.concat({ jobNum: payload.jobNum, jobName: payload.jobName });
       body = { success: true, saved: !exists, savedJobs };
     } else if (action === 'getProofFile') {
-      body = productionPdf
+      body = productionFileError || (productionPdf
         ? { available: true, name: '260001-production.pdf', base64: productionPdf }
-        : { available: false };
+        : { available: false });
     } else if (action === 'getAdditionalFile') {
       body = {
         available: true,
@@ -361,6 +361,14 @@ test('a Production File three weeks out uses the same in-app source-quality view
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await expect(page.locator('#proof-viewer-zoom-label')).toHaveText('125%');
   await expect(page.locator('#proof-viewer-open-original')).toHaveCount(0);
+});
+
+test('a denied production file reports access instead of pretending the PDF is missing', async ({ page }) => {
+  await mockBackend(page, { productionFileError: { error: 'forbidden' } });
+  await login(page);
+  await page.getByRole('button', { name: /Open 260001/ }).click();
+  await expect(page.getByText('Access denied to this production file')).toBeVisible();
+  await expect(page.getByText('No File Available')).toHaveCount(0);
 });
 
 test('a Viewer can add to the same project notes timeline', async ({ page }) => {

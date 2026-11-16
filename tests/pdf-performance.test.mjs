@@ -88,6 +88,36 @@ test('recent production files remain in a bounded in-memory cache for instant re
   assert.equal(getCachedProofFile('job-4', 3000), proof);
 });
 
+test('production proof cache keys are isolated by signed-in account', async () => {
+  const { productionProofCacheKey } = await import('../js/currentWeekProofPreload.mjs');
+
+  assert.equal(productionProofCacheKey('260647', 'rigo-user'), 'production:rigo-user:260647');
+  assert.equal(productionProofCacheKey('260647', 'admin-user'), 'production:admin-user:260647');
+  assert.notEqual(
+    productionProofCacheKey('260647', 'rigo-user'),
+    productionProofCacheKey('260647', 'admin-user'),
+  );
+});
+
+test('sign-out clears memory and persistent proof caches', async () => {
+  const fs = await import('node:fs/promises');
+  const authSource = await fs.readFile(new URL('../js/auth.js', import.meta.url), 'utf8');
+  const diskSource = await fs.readFile(new URL('../js/proofDiskCache.mjs', import.meta.url), 'utf8');
+
+  assert.match(authSource, /clearProofFileCache\(\)/);
+  assert.match(authSource, /clearStoredProofs\(\)\.catch/);
+  assert.match(diskSource, /export async function clearStoredProofs/);
+});
+
+test('proof errors distinguish denied access from a genuinely missing file', async () => {
+  const fs = await import('node:fs/promises');
+  const componentSource = await fs.readFile(new URL('../js/components/jobDetail.js', import.meta.url), 'utf8');
+
+  assert.match(componentSource, /res\.error\s*===\s*'forbidden'/);
+  assert.match(componentSource, /Access denied to this production file/);
+  assert.match(componentSource, /Could not load production file/);
+});
+
 test('the app starts loading the PDF engine before a user opens a file', async () => {
   const pdfViewer = await import('../js/pdfViewer.js');
   assert.equal(typeof pdfViewer.preloadPdfViewer, 'function');

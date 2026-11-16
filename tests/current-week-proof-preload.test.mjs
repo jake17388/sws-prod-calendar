@@ -108,6 +108,25 @@ test('preloading fetches only uncached files with at most two background request
   assert.deepEqual(result, { total: 3, cached: 1, stored: 2, unavailable: 0, failed: 0 });
 });
 
+test('preloading scopes persistent cache entries to the signed-in account', async () => {
+  const { preloadCurrentWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
+  const keys = [];
+
+  await preloadCurrentWeekProofs([{ jobNum: '260647', dueDate: '2026-08-10' }], {
+    now: new Date(2026, 7, 10),
+    cacheScope: 'rigo-user',
+    readStored: async key => { keys.push(`read:${key}`); return null; },
+    fetchProof: async () => ({ available: true, name: '260647.pdf', base64: 'JVBERi0=' }),
+    storeProof: async key => { keys.push(`write:${key}`); return true; },
+    validateProof: async () => true,
+  });
+
+  assert.deepEqual(keys, [
+    'read:production:rigo-user:260647',
+    'write:production:rigo-user:260647',
+  ]);
+});
+
 test('one missing or failed proof does not stop the rest of the week', async () => {
   const { preloadCurrentWeekProofs } = await import('../js/currentWeekProofPreload.mjs');
   const jobs = ['missing', 'failed', 'ready'].map((jobNum, index) => ({
@@ -186,6 +205,26 @@ test('prefetched bytes are stored on disk with expiration metadata', async () =>
   assert.equal(stored.name, proof.name);
   assert.equal(stored.mimeType, proof.mimeType);
   assert.deepEqual(Array.from(stored.bytes), [4, 5, 6]);
+});
+
+test('all persistent proof bytes can be cleared when an account signs out', async () => {
+  const { clearStoredProofs, readStoredProof, storeProof } = await import('../js/proofDiskCache.mjs');
+  const responses = new Map();
+  const cache = {
+    put: async (request, response) => responses.set(request.url, response.clone()),
+    match: async request => responses.get(request.url)?.clone() || null,
+    delete: async request => responses.delete(request.url),
+  };
+  const cacheStorage = {
+    open: async () => cache,
+    delete: async name => name === 'sws-production-files-v1' && (responses.clear() || true),
+  };
+  const proof = { name: '260647.pdf', mimeType: 'application/pdf', bytes: new Uint8Array([1, 2, 3]) };
+
+  await storeProof('production:admin-user:260647', proof, 1000, cacheStorage);
+  assert.ok(await readStoredProof('production:admin-user:260647', 1001, cacheStorage));
+  assert.equal(await clearStoredProofs(cacheStorage), true);
+  assert.equal(await readStoredProof('production:admin-user:260647', 1001, cacheStorage), null);
 });
 
 test('expired weeks are removed from disk before another preload', async () => {

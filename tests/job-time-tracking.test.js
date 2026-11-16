@@ -221,6 +221,21 @@ test('saved jobs are durable per employee and can be removed', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(removed.savedJobs)), []);
 });
 
+test('a production employee can access a proof saved to their own account after assignment ends', () => {
+  const context = loadBackend();
+  const actor = { id: 'assembly-1', name: 'Rigo', department: 'Assembly' };
+  const otherActor = { id: 'assembly-2', name: 'Other Assembler', department: 'Assembly' };
+
+  context.getAllTracking = () => ({
+    260647: { completed: true, departments: [] },
+  });
+  context.toggleSavedJob(actor, { jobNum: '260647', jobName: 'PK Max Face Reception Sign' });
+
+  assert.equal(context.canAccessJobKey(actor, '260647'), true);
+  assert.equal(context.canAccessJobKey(otherActor, '260647'), false);
+  assert.equal(context.canAccessJobKey(actor, '260648'), false);
+});
+
 test('a job note survives stop and reopen without leaking to another employee', () => {
   const context = loadBackend();
   const sheet = createSheet([[
