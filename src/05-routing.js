@@ -158,6 +158,16 @@ function routePost(e) {
   if (actor.mustChangePin && data.action !== 'updateSelf') {
     return json({ error: 'pin_change_required', message: 'Change your temporary PIN before continuing' });
   }
+
+  // Installed iPad PWAs can reuse a stale cross-origin GET even when the URL
+  // changes. POST is already the app's proven non-cacheable iPad transport.
+  if (data.action === 'getProofFile') {
+    const jobNum = String(data.jobNum || '');
+    if (!validJobKey(jobNum)) return json({ error: 'bad_request', message: 'Invalid job number' });
+    if (!canAccessJobKey(actor, jobNum)) return json({ error: 'forbidden' });
+    return json(getSquarecoilProductionFile(jobNum));
+  }
+
   const user = actor.name;
   const respond = operation => json(runMutationOnce(actor, data, operation));
 

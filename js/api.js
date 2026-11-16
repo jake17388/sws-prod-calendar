@@ -18,14 +18,18 @@ function scriptGet(action, extraParams = {}, requestOptions = {}) {
     .then(checkAuthError);
 }
 
-/** @param {Record<string, unknown>} body @returns {Promise<any>} */
-export function scriptPost(body) {
+/**
+ * @param {Record<string, unknown>} body
+ * @param {{tracksPendingWrite?: boolean}} requestOptions
+ * @returns {Promise<any>}
+ */
+export function scriptPost(body, requestOptions = {}) {
   const auth = getAuth();
   const requestId = globalThis.crypto && globalThis.crypto.randomUUID
     ? globalThis.crypto.randomUUID()
     : `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const payload = body.action === 'login' ? body : { requestId, ...body, token: auth ? auth.token : '' };
-  const tracksPendingWrite = body.action !== 'login';
+  const tracksPendingWrite = requestOptions.tracksPendingWrite ?? body.action !== 'login';
   if (tracksPendingWrite) beginWrite();
   return fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
@@ -143,7 +147,8 @@ export const deleteNote = (jobKey, noteId) =>
   scriptPost({ action: 'deleteNote', jobKey, scope: 'project', noteId });
 
 /** @param {string} jobNum @returns {Promise<{available: boolean, name?: string, base64?: string}>} */
-export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum }, { cacheBust: true });
+export const fetchProofFile = jobNum =>
+  scriptPost({ action: 'getProofFile', jobNum }, { tracksPendingWrite: false });
 
 /** @param {string} jobKey @param {{name: string, type: string}} file @param {string} base64 */
 export const uploadAdditionalFile = (jobKey, file, base64) =>
