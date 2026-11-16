@@ -7,8 +7,26 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 
 let pdfjsLibPromise = null;
+
+// PDF.js 4 uses Promise.withResolvers, which older iPadOS Safari releases do
+// not provide. Install the small standards-compatible helper before importing
+// PDF.js so those shop tablets can still initialize the production-file viewer.
+export function ensurePromiseWithResolvers(promiseConstructor = Promise) {
+  if (typeof promiseConstructor.withResolvers === 'function') return;
+  promiseConstructor.withResolvers = () => {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 function loadPdfJs() {
   if (!pdfjsLibPromise) {
+    ensurePromiseWithResolvers();
     pdfjsLibPromise = import(PDFJS_MODULE).then(lib => {
       lib.GlobalWorkerOptions.workerSrc = new URL(PDFJS_WORKER, import.meta.url).href;
       return lib;
