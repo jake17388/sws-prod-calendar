@@ -35,3 +35,25 @@ test('the freshness service worker leaves cross-origin Apps Script responses alo
   assert.match(serviceWorker, /url\.origin\s*!==\s*self\.location\.origin/);
   assert.match(serviceWorker, /return/);
 });
+
+test('production files use the proven iPad write transport without showing global save state', () => {
+  const api = fs.readFileSync(path.join(root, 'js/api.js'), 'utf8');
+
+  assert.match(api, /fetchProofFile\s*=\s*jobNum\s*=>\s*scriptPost\(\{\s*action:\s*'getProofFile',\s*jobNum\s*\},\s*\{\s*tracksPendingWrite:\s*false\s*\}\)/);
+  assert.doesNotMatch(api, /fetchProofFile\s*=\s*jobNum\s*=>\s*scriptGet/);
+});
+
+test('installed iPads use an opaque status bar and an unblurred safe-area-aware job panel', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const jobDetail = fs.readFileSync(path.join(root, 'styles/job-detail.css'), 'utf8');
+
+  assert.match(html, /apple-mobile-web-app-status-bar-style" content="default"/);
+  assert.match(
+    jobDetail,
+    /@media\s*\(min-width:\s*641px\)\s*and\s*\(pointer:\s*coarse\)[\s\S]*#job-detail-overlay\s*\{[^}]*backdrop-filter:\s*none[^}]*-webkit-backdrop-filter:\s*none/,
+  );
+  assert.match(
+    jobDetail,
+    /@media\s*\(min-width:\s*641px\)\s*and\s*\(pointer:\s*coarse\)[\s\S]*\.job-detail-header\s*\{[^}]*padding-top:\s*calc\(var\(--space-5\)\s*\+\s*env\(safe-area-inset-top\)\)/,
+  );
+});

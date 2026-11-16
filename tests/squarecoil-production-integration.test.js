@@ -46,6 +46,26 @@ test('production file route and settings use Squarecoil instead of Dropbox', () 
   assert.doesNotMatch(retiredSurface, /getDropboxStatus|getDropboxAuthUrl|disconnectDropbox|refreshDropboxProofsNow/);
 });
 
+test('production files can use POST so installed iPads bypass cached GET responses', () => {
+  const context = loadBackend();
+  context.resolveActor = () => ({ id: 'assembly-user', name: 'Rigo', department: 'Assembly' });
+  context.canAccessJobKey = () => true;
+  context.getSquarecoilProductionFile = jobNum => ({ available: true, name: `${jobNum}.pdf`, base64: 'JVBERi0=' });
+  context.json = value => value;
+
+  const result = context.routePost({
+    postData: {
+      contents: JSON.stringify({ action: 'getProofFile', token: 'valid-session', jobNum: '260637' }),
+    },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    available: true,
+    name: '260637.pdf',
+    base64: 'JVBERi0=',
+  });
+});
+
 test('Squarecoil refresh owns the production cache and retires legacy Dropbox triggers', () => {
   assert.match(source, /function refreshSquarecoilProductionFiles\(/);
   assert.match(source, /function scheduledSquarecoilFileRefresh\(/);
