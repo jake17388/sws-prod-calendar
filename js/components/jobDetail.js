@@ -1,7 +1,7 @@
 import { updateDueDate, fetchProofFile, uploadAdditionalFile, fetchAdditionalFile, deleteAdditionalFile } from '../api.js';
 import { findJob, getJobs, patchJob } from '../state.js';
 import { fmtMD, abbreviateName, formatTimestamp } from '../dates.js';
-import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, isAdmin, isTvDisplay } from '../auth.js';
+import { canEditDueDates, canMarkJobComplete, canAssignDepartments, canUploadAdditionalFiles, currentDepartment, currentUserId, isAdmin, isTvDisplay } from '../auth.js';
 import { JOB_DEPARTMENTS } from '../config.js';
 import { renderDepartmentEditor, renderOwnDepartmentTasks, renderDepartmentsReadOnly } from './departmentAssign.js';
 import { renderNotes } from './notes.js';
@@ -265,9 +265,14 @@ function renderProofSection(job) {
   empty.textContent = 'Loading production file…';
 
   const token = ++proofRequestToken;
-  const cacheKey = productionProofCacheKey(job.jobNum);
+  const cacheKey = productionProofCacheKey(job.jobNum, currentUserId());
   const downloadProof = async () => {
     const res = await retryFileRequest(() => fetchProofFile(job.jobNum));
+    if (res && res.error) {
+      const error = new Error(res.message || res.error);
+      error.code = res.error === 'forbidden' ? 'forbidden' : 'request_failed';
+      throw error;
+    }
     if (!res || !res.available || !res.base64) return null;
     const proof = {
       name: res.name || `${job.jobNum}.pdf`,
@@ -318,9 +323,11 @@ function renderProofSection(job) {
       }
       showProof(proof);
     })
-    .catch(() => {
+    .catch(err => {
       if (token !== proofRequestToken) return;
-      empty.textContent = 'No File Available';
+      empty.textContent = err && err.code === 'forbidden'
+        ? 'Access denied to this production file'
+        : 'Could not load production file';
     });
 }
 
@@ -344,7 +351,7 @@ async function viewAdditionalFile(job, file, button) {
   const originalText = button.textContent;
   button.textContent = 'Loading…';
   try {
-    const cacheKey = `additional:${job.jobKey}:${file.id}`;
+    const cacheKey = `additional:${currentUserId()}:${job.jobKey}:${file.id}`;
     const fetchFresh = async () => {
       deleteCachedProofFile(cacheKey);
       const res = await retryFileRequest(() => fetchAdditionalFile(job.jobKey, file.id));

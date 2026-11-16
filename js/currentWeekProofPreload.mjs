@@ -4,7 +4,9 @@ import { validatePdfBytes } from './pdfViewer.js';
 
 const inFlight = new Set();
 
-export const productionProofCacheKey = jobNum => `production:${jobNum}`;
+export const productionProofCacheKey = (jobNum, cacheScope) => cacheScope
+  ? `production:${cacheScope}:${jobNum}`
+  : `production:${jobNum}`;
 
 function formatLocalISO(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -54,7 +56,7 @@ async function preloadProofTargets(targets, options, concurrency) {
   async function worker() {
     while (nextIndex < targets.length) {
       const job = targets[nextIndex++];
-      const key = productionProofCacheKey(job.jobNum);
+      const key = productionProofCacheKey(job.jobNum, options.cacheScope);
       if (inFlight.has(key)) { result.cached++; continue; }
       inFlight.add(key);
       try {

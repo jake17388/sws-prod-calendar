@@ -61,6 +61,15 @@ export async function deleteStoredProof(key, cacheStorage = globalThis.caches) {
   }
 }
 
+export async function clearStoredProofs(cacheStorage = globalThis.caches) {
+  if (!cacheStorage) return false;
+  try {
+    return await cacheStorage.delete(CACHE_NAME);
+  } catch (err) {
+    return false;
+  }
+}
+
 export async function pruneStoredProofs(now = Date.now(), cacheStorage = globalThis.caches) {
   if (!cacheStorage) return 0;
   try {

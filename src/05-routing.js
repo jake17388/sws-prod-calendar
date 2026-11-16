@@ -125,8 +125,18 @@ function routeGet(e) {
 function canAccessJobKey(actor, jobKey) {
   if (!actor || !validJobKey(jobKey)) return false;
   if (JOB_DEPARTMENTS.indexOf(actor.department) === -1) return true;
-  const tracking = getAllTracking()[String(jobKey)];
-  return !!tracking && (tracking.departments || []).indexOf(actor.department) !== -1;
+  const normalizedJobKey = String(jobKey);
+  const tracking = getAllTracking()[normalizedJobKey];
+  if (tracking && (tracking.departments || []).indexOf(actor.department) !== -1) return true;
+
+  // A saved job is an explicit, per-user bookmark. Keep its proof accessible
+  // after the live assignment is completed or removed, without granting that
+  // access to every employee in the same department.
+  try {
+    return getSavedJobTimeEntries_(actor.id).some(entry => String(entry.jobNum) === normalizedJobKey);
+  } catch (err) {
+    return false;
+  }
 }
 
 function routePost(e) {

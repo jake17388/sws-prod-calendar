@@ -130,7 +130,7 @@ test('the app starts loading the PDF engine before a user opens a file', async (
 test('additional project PDFs use the same instant-reopen cache', async () => {
   const componentSource = await import('node:fs/promises')
     .then(fs => fs.readFile(new URL('../js/components/jobDetail.js', import.meta.url), 'utf8'));
-  assert.match(componentSource, /additional:\$\{job\.jobKey\}:\$\{file\.id\}/);
+  assert.match(componentSource, /additional:\$\{currentUserId\(\)\}:\$\{job\.jobKey\}:\$\{file\.id\}/);
   assert.match(componentSource, /getCachedProofFile\(cacheKey\)/);
 });
 

@@ -206,7 +206,7 @@ function queueTwoWeekProofPreload(jobs) {
   const delay = 1000 + Math.floor(Math.random() * 4000);
   proofPreloadTimer = setTimeout(() => {
     proofPreloadTimer = null;
-    preloadCurrentAndNextWeekProofs(jobs).catch(() => {});
+    preloadCurrentAndNextWeekProofs(jobs, { cacheScope: currentUserId() }).catch(() => {});
   }, delay);
 }
 

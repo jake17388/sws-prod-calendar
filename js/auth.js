@@ -2,6 +2,8 @@ import { AUTH_KEY } from './config.js';
 import { scriptPost } from './api.js';
 import { clearCachedJobs } from './jobsCache.js';
 import { getDeviceId } from './deviceId.js';
+import { clearProofFileCache } from './proofCache.mjs';
+import { clearStoredProofs } from './proofDiskCache.mjs';
 
 const INACTIVITY_TTL_MS = 2 * 60 * 60 * 1000;
 let auth = readAuth(); // { token, user } — validated server-side on every call
@@ -96,6 +98,8 @@ function touchSession() {
 export function signOut() {
   localStorage.removeItem(AUTH_KEY);
   clearCachedJobs(); // shared devices shouldn't flash a previous account's data on the next login
+  clearProofFileCache();
+  clearStoredProofs().catch(() => {});
   auth = null;
   pinEntry = '';
   document.getElementById('app').style.display = 'none';
