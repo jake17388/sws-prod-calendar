@@ -662,7 +662,7 @@ setInterval(() => {
 // See sw.js — forces every fetch to the network so a deploy is never left
 // partially stale by the browser/CDN cache.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=2026.11.16.2', { updateViaCache: 'none' }).catch(() => {});
 }
 
 initAuth(boot);

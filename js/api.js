@@ -1,12 +1,19 @@
 import { SCRIPT_URL } from './config.js';
 import { getAuth, signOut } from './auth.js';
 import { beginWrite, endWrite } from './pendingWrites.mjs';
+import { buildScriptGetRequest } from './scriptRequest.mjs';
 
 /** @param {string} action @returns {Promise<any>} */
-function scriptGet(action, extraParams = {}) {
+function scriptGet(action, extraParams = {}, requestOptions = {}) {
   const auth = getAuth();
-  const params = new URLSearchParams({ action, token: auth ? auth.token : '', ...extraParams });
-  return fetch(`${SCRIPT_URL}?${params.toString()}`)
+  const request = buildScriptGetRequest(
+    SCRIPT_URL,
+    action,
+    auth ? auth.token : '',
+    extraParams,
+    requestOptions,
+  );
+  return fetch(request.url, request.options)
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(checkAuthError);
 }
@@ -136,7 +143,7 @@ export const deleteNote = (jobKey, noteId) =>
   scriptPost({ action: 'deleteNote', jobKey, scope: 'project', noteId });
 
 /** @param {string} jobNum @returns {Promise<{available: boolean, name?: string, base64?: string}>} */
-export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum });
+export const fetchProofFile = jobNum => scriptGet('getProofFile', { jobNum }, { cacheBust: true });
 
 /** @param {string} jobKey @param {{name: string, type: string}} file @param {string} base64 */
 export const uploadAdditionalFile = (jobKey, file, base64) =>

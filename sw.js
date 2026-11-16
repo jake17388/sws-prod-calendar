@@ -10,5 +10,10 @@ self.addEventListener('activate', event => event.waitUntil(self.clients.claim())
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  // Apps Script responses can contain multi-megabyte PDFs. Let Safari own
+  // those cross-origin streams directly instead of wrapping them in the PWA
+  // service worker, which can reuse or abort them on memory-constrained iPads.
+  if (url.origin !== self.location.origin) return;
   event.respondWith(fetch(event.request, { cache: 'no-store' }));
 });
